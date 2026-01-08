@@ -60,7 +60,11 @@ export class ClimateControlService {
 
         const roomTemperatureControlForCooling = accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`);
         if (roomTemperatureControlForCooling) {
-            this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature)
+            const coolingChar = this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature);
+            // Set value within default HomeKit range first to avoid warning when setProps narrows the range
+            const clampedCoolingValue = Math.max(10, Math.min(35, roomTemperatureControlForCooling.value));
+            coolingChar.updateValue(clampedCoolingValue);
+            coolingChar
                 .setProps({
                     minStep: roomTemperatureControlForCooling.stepValue,
                     minValue: roomTemperatureControlForCooling.minValue,
@@ -68,14 +72,17 @@ export class ClimateControlService {
                 })
                 .onGet(this.handleCoolingThresholdTemperatureGet.bind(this))
                 .onSet(this.handleCoolingThresholdTemperatureSet.bind(this));
-
         } else {
             this.service.removeCharacteristic(this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature));
         }
 
         const roomTemperatureControlForHeating = accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`);
         if (roomTemperatureControlForHeating) {
-            this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature)
+            const heatingChar = this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature);
+            // Set value within default HomeKit range first to avoid warning when setProps narrows the range
+            const clampedHeatingValue = Math.max(0, Math.min(25, roomTemperatureControlForHeating.value));
+            heatingChar.updateValue(clampedHeatingValue);
+            heatingChar
                 .setProps({
                     minStep: roomTemperatureControlForHeating.stepValue,
                     minValue: roomTemperatureControlForHeating.minValue,
@@ -108,7 +115,11 @@ export class ClimateControlService {
         const fanControl = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`);
 
         if (fanControl) {
-            this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+            const rotationChar = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
+            // Set value within default HomeKit range first to avoid warning when setProps narrows the range
+            const clampedRotationValue = Math.max(0, Math.min(100, fanControl.value));
+            rotationChar.updateValue(clampedRotationValue);
+            rotationChar
                 .setProps({
                     minStep: fanControl.stepValue,
                     minValue: fanControl.minValue,

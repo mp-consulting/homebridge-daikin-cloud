@@ -45,6 +45,9 @@ export class HotWaterTankService {
 
         const temperatureControl = accessory.context.device.getData(this.managementPointId, 'temperatureControl', '/operationModes/heating/setpoints/domesticHotWaterTemperature');
         const targetTemperature = this.hotWaterTankService.getCharacteristic(this.platform.Characteristic.TargetTemperature);
+        // Set value within default HomeKit range first to avoid warning when setProps expands the range
+        const clampedTempValue = Math.max(10, Math.min(38, temperatureControl.value));
+        targetTemperature.updateValue(clampedTempValue);
         targetTemperature.setProps({
             minStep: temperatureControl.stepValue,
             minValue: temperatureControl.minValue,
