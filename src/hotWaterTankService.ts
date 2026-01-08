@@ -1,7 +1,7 @@
 import {CharacteristicProps, CharacteristicValue, PartialAllowingNull, PlatformAccessory, Service} from 'homebridge';
 import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from './platform';
 import {DaikinCloudRepo} from './repository/daikinCloudRepo';
-import {DaikinPowerfulModes} from './climateControlService';
+import {DaikinOnOffModes, DaikinOperationModes, DaikinPowerfulModes} from './types';
 
 export class HotWaterTankService {
     readonly platform: DaikinCloudPlatform;
@@ -242,17 +242,4 @@ export class HotWaterTankService {
         this.platform.log.debug(`[${this.name}] hasPowerfulModeFeature, powerfulMode: ${Boolean(powerfulMode)}`);
         return Boolean(powerfulMode);
     }
-}
-
-enum DaikinOnOffModes {
-    ON = 'on',
-    OFF = 'off',
-}
-
-enum DaikinOperationModes {
-    FAN_ONLY = 'fanOnly',
-    HEATING = 'heating',
-    COOLING = 'cooling',
-    AUTO = 'auto',
-    DRY = 'dry'
 }

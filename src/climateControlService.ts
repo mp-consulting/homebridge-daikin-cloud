@@ -1,6 +1,20 @@
 import {CharacteristicValue, PlatformAccessory, Service} from 'homebridge';
 import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from './platform';
 import {DaikinCloudRepo} from './repository/daikinCloudRepo';
+import {
+    DaikinControlModes,
+    DaikinEconoModes,
+    DaikinFanDirectionHorizontalModes,
+    DaikinFanDirectionVerticalModes,
+    DaikinFanSpeedModes,
+    DaikinOnOffModes,
+    DaikinOperationModes,
+    DaikinOutdoorSilentModes,
+    DaikinPowerfulModes,
+    DaikinSetpointModes,
+    DaikinStreamerModes,
+    DaikinTemperatureControlSetpoints,
+} from './types';
 
 export class ClimateControlService {
     readonly platform: DaikinCloudPlatform;
@@ -687,72 +701,4 @@ export class ClimateControlService {
     hasFanOnlyOperationModeFeature() {
         return this.hasOperationMode(DaikinOperationModes.FAN_ONLY);
     }
-}
-
-enum DaikinFanSpeedModes {
-    AUTO = 'auto',
-    QUIET = 'quiet',
-    FIXED = 'fixed',
-}
-
-enum DaikinOutdoorSilentModes {
-    ON = 'on',
-    OFF = 'off',
-}
-
-enum DaikinOnOffModes {
-    ON = 'on',
-    OFF = 'off',
-}
-
-enum DaikinStreamerModes {
-    ON = 'on',
-    OFF = 'off',
-}
-
-enum DaikinEconoModes {
-    ON = 'on',
-    OFF = 'off',
-}
-
-export enum DaikinPowerfulModes {
-    ON = 'on',
-    OFF = 'off',
-}
-
-enum DaikinFanDirectionHorizontalModes {
-    STOP = 'stop',
-    SWING = 'swing',
-}
-
-enum DaikinFanDirectionVerticalModes {
-    STOP = 'stop',
-    SWING = 'swing',
-    WIND_NICE = 'windNice',
-}
-
-enum DaikinOperationModes {
-    FAN_ONLY = 'fanOnly',
-    HEATING = 'heating',
-    COOLING = 'cooling',
-    AUTO = 'auto',
-    DRY = 'dry',
-}
-
-enum DaikinControlModes {
-    ROOM_TEMPERATURE = 'roomTemperature',
-    LEAVING_WATER_TEMPERATURE = 'leavingWaterTemperature',
-    EXTERNAL_ROOM_TEMPERATURE = 'externalRoomTemperature',
-}
-
-enum DaikinTemperatureControlSetpoints {
-    ROOM_TEMPERATURE = 'roomTemperature',
-    LEAVING_WATER_OFFSET = 'leavingWaterOffset',
-    LEAVING_WATER_TEMPERATURE = 'leavingWaterTemperature',
-}
-
-enum DaikinSetpointModes {
-    FIXED = 'fixed',
-    WEATHER_DEPENDENT_HEATING_FIXED_COOLING = 'weatherDependentHeatingFixedCooling',
-    WEATHER_DEPENDENT = 'weatherDependent'
 }
