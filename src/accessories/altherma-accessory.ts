@@ -1,10 +1,9 @@
 import {PlatformAccessory} from 'homebridge';
-import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from './platform';
-import {daikinAccessory} from './daikinAccessory';
-import {ClimateControlService} from './climateControlService';
-import {HotWaterTankService} from './hotWaterTankService';
+import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../platform';
+import {BaseAccessory} from './base-accessory';
+import {ClimateControlService, HotWaterTankService} from '../services';
 
-export class daikinAlthermaAccessory extends daikinAccessory{
+export class AlthermaAccessory extends BaseAccessory {
     private readonly name: string;
     service?: ClimateControlService;
     hotWaterTankService?: HotWaterTankService;

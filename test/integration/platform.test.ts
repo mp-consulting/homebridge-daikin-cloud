@@ -1,16 +1,15 @@
-import {DaikinCloudPlatform} from '../src/platform';
-import {MockPlatformConfig} from './mocks';
+import {DaikinCloudPlatform} from '../../src/platform';
+import {MockPlatformConfig} from '../mocks';
 import {DaikinCloudController} from 'daikin-controller-cloud';
-import {daikinAirConditioningAccessory} from '../src/daikinAirConditioningAccessory';
-import {daikinAlthermaAccessory} from '../src/daikinAlthermaAccessory';
+import {AirConditioningAccessory, AlthermaAccessory} from '../../src/accessories';
 import {HomebridgeAPI} from 'homebridge/lib/api.js';
 import {Logger} from 'homebridge/lib/logger.js';
 import {DaikinCloudDevice} from 'daikin-controller-cloud/dist/device';
 
 jest.mock('daikin-controller-cloud');
 jest.mock('homebridge');
-jest.mock('../src/daikinAirConditioningAccessory');
-jest.mock('../src/daikinAlthermaAccessory');
+jest.mock('../../src/accessories/air-conditioning-accessory');
+jest.mock('../../src/accessories/altherma-accessory');
 jest.mock('daikin-controller-cloud/dist/device');
 
 afterEach(() => {
@@ -60,8 +59,8 @@ test('DaikinCloudPlatform with new Aircondition accessory', (done) => {
     api.signalFinished();
 
     setTimeout(() => {
-        expect(daikinAirConditioningAccessory).toHaveBeenCalled();
-        expect(daikinAlthermaAccessory).not.toHaveBeenCalled();
+        expect(AirConditioningAccessory).toHaveBeenCalled();
+        expect(AlthermaAccessory).not.toHaveBeenCalled();
         expect(registerPlatformAccessoriesSpy).toBeCalledWith('@mp-consulting/homebridge-daikin-cloud', 'DaikinCloud', expect.anything());
         done();
     }, 10);
@@ -94,8 +93,8 @@ test('DaikinCloudPlatform with new Altherma accessory', (done) => {
     api.signalFinished();
 
     setTimeout(() => {
-        expect(daikinAlthermaAccessory).toHaveBeenCalled();
-        expect(daikinAirConditioningAccessory).not.toHaveBeenCalled();
+        expect(AlthermaAccessory).toHaveBeenCalled();
+        expect(AirConditioningAccessory).not.toHaveBeenCalled();
         expect(registerPlatformAccessoriesSpy).toHaveBeenCalledWith('@mp-consulting/homebridge-daikin-cloud', 'DaikinCloud', expect.anything());
         done();
     }, 10);

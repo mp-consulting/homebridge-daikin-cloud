@@ -1,7 +1,7 @@
 import {CharacteristicProps, CharacteristicValue, PartialAllowingNull, PlatformAccessory, Service} from 'homebridge';
-import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from './platform';
-import {DaikinCloudRepo} from './repository/daikinCloudRepo';
-import {DaikinOnOffModes, DaikinOperationModes, DaikinPowerfulModes} from './types';
+import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../platform';
+import {DaikinCloudRepo} from '../api/daikin-cloud.repository';
+import {DaikinOnOffModes, DaikinOperationModes, DaikinPowerfulModes} from '../types';
 
 export class HotWaterTankService {
     readonly platform: DaikinCloudPlatform;

@@ -1,7 +1,7 @@
 import {API, Characteristic, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service} from 'homebridge';
 
 import {PLATFORM_NAME, PLUGIN_NAME} from './settings';
-import {AccessoryFactory} from './catalog';
+import {AccessoryFactory} from './device';
 
 import {DaikinCloudController} from 'daikin-controller-cloud';
 
@@ -11,7 +11,7 @@ import {StringUtils} from './utils/strings';
 import {OnectaClientConfig} from 'daikin-controller-cloud/dist/onecta/oidc-utils';
 
 import fs from 'node:fs';
-import {DaikinCloudRepo} from './repository/daikinCloudRepo';
+import {DaikinCloudRepo} from './api/daikin-cloud.repository';
 
 const ONE_SECOND = 1000;
 const ONE_MINUTE = ONE_SECOND * 60;

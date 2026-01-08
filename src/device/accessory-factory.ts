@@ -7,16 +7,14 @@
 
 import {PlatformAccessory, Logger} from 'homebridge';
 import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../platform';
-import {DeviceType, matchDeviceProfile, DeviceProfile} from './device-profile';
-import {daikinAirConditioningAccessory} from '../daikinAirConditioningAccessory';
-import {daikinAlthermaAccessory} from '../daikinAlthermaAccessory';
-import {daikinAccessory} from '../daikinAccessory';
+import {DeviceType, matchDeviceProfile, DeviceProfile} from './profiles/device-profile';
+import {AirConditioningAccessory, AlthermaAccessory, BaseAccessory} from '../accessories';
 
 /**
  * Result of accessory creation
  */
 export interface AccessoryFactoryResult {
-    accessory: daikinAccessory;
+    accessory: BaseAccessory;
     profile: DeviceProfile;
 }
 
@@ -48,11 +46,11 @@ export class AccessoryFactory {
             `display name: ${profile.displayName}`,
         );
 
-        let accessory: daikinAccessory;
+        let accessory: BaseAccessory;
 
         switch (profile.type) {
             case DeviceType.ALTHERMA:
-                accessory = new daikinAlthermaAccessory(this.platform, platformAccessory);
+                accessory = new AlthermaAccessory(this.platform, platformAccessory);
                 break;
 
             case DeviceType.AIR_CONDITIONING:
@@ -60,7 +58,7 @@ export class AccessoryFactory {
             default:
                 // Default to AC accessory for unknown devices with climateControl
                 if (profile.managementPoints.climateControl) {
-                    accessory = new daikinAirConditioningAccessory(this.platform, platformAccessory);
+                    accessory = new AirConditioningAccessory(this.platform, platformAccessory);
                 } else {
                     throw new Error(
                         `Unsupported device type: ${device.getDescription().deviceModel}. ` +

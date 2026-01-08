@@ -1,6 +1,6 @@
 import {CharacteristicValue, PlatformAccessory, Service} from 'homebridge';
-import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from './platform';
-import {DaikinCloudRepo} from './repository/daikinCloudRepo';
+import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../platform';
+import {DaikinCloudRepo} from '../api/daikin-cloud.repository';
 import {
     DaikinControlModes,
     DaikinFanDirectionHorizontalModes,
@@ -10,8 +10,8 @@ import {
     DaikinOperationModes,
     DaikinSetpointModes,
     DaikinTemperatureControlSetpoints,
-} from './types';
-import {FeatureManager} from './features';
+} from '../types';
+import {FeatureManager} from '../features';
 
 export class ClimateControlService {
     readonly platform: DaikinCloudPlatform;

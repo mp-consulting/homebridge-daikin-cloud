@@ -10,13 +10,15 @@ import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../platform';
 import {BaseFeature} from './base-feature';
 
 // Import all features
-import {PowerfulModeFeature} from './powerful-mode-feature';
-import {EconoModeFeature} from './econo-mode-feature';
-import {StreamerModeFeature} from './streamer-mode-feature';
-import {OutdoorSilentModeFeature} from './outdoor-silent-mode-feature';
-import {IndoorSilentModeFeature} from './indoor-silent-mode-feature';
-import {DryOperationModeFeature} from './dry-operation-mode-feature';
-import {FanOnlyOperationModeFeature} from './fan-only-operation-mode-feature';
+import {
+    PowerfulModeFeature,
+    EconoModeFeature,
+    StreamerModeFeature,
+    OutdoorSilentModeFeature,
+    IndoorSilentModeFeature,
+    DryOperationModeFeature,
+    FanOnlyOperationModeFeature,
+} from './modes';
 
 /**
  * Feature constructor type

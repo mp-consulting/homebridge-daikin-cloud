@@ -7,7 +7,7 @@
 
 import {CharacteristicValue, PlatformAccessory, Service, Logger} from 'homebridge';
 import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../platform';
-import {DaikinCloudRepo} from '../repository/daikinCloudRepo';
+import {DaikinCloudRepo} from '../api/daikin-cloud.repository';
 
 /**
  * Abstract base class for feature modules.

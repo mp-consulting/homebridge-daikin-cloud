@@ -6,8 +6,8 @@
  */
 
 import {CharacteristicValue} from 'homebridge';
-import {BaseFeature} from './base-feature';
-import {DaikinOperationModes} from '../types';
+import {BaseFeature} from '../base-feature';
+import {DaikinOperationModes} from '../../types';
 
 export class FanOnlyOperationModeFeature extends BaseFeature {
     get featureName(): string {

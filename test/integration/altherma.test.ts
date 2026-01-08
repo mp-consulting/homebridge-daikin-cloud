@@ -1,17 +1,17 @@
 import {PlatformAccessory} from 'homebridge/lib/platformAccessory';
-import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../src/platform';
-import {MockPlatformConfig} from './mocks';
-import {daikinAlthermaAccessory} from '../src/daikinAlthermaAccessory';
+import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../../src/platform';
+import {MockPlatformConfig} from '../mocks';
+import {AlthermaAccessory} from '../../src/accessories';
 import {DaikinCloudDevice} from 'daikin-controller-cloud/dist/device';
 import {OnectaClient} from 'daikin-controller-cloud/dist/onecta/oidc-client';
 import {DaikinCloudController} from 'daikin-controller-cloud/dist/index.js';
-import {althermaV1ckoeln} from './fixtures/altherma-v1ckoeln';
-import {althermaCrSense2} from './fixtures/altherma-crSense-2';
-import {althermaWithEmbeddedIdZero} from './fixtures/altherma-with-embedded-id-zero';
-import {althermaHeatPump} from './fixtures/altherma-heat-pump';
-import {althermaHeatPump2} from './fixtures/altherma-heat-pump-2';
-import {althermaFraction} from './fixtures/altherma-fraction';
-import {althermaMiladcerkic} from './fixtures/altherma-miladcerkic';
+import {althermaV1ckoeln} from '../fixtures/altherma-v1ckoeln';
+import {althermaCrSense2} from '../fixtures/altherma-crSense-2';
+import {althermaWithEmbeddedIdZero} from '../fixtures/altherma-with-embedded-id-zero';
+import {althermaHeatPump} from '../fixtures/altherma-heat-pump';
+import {althermaHeatPump2} from '../fixtures/altherma-heat-pump-2';
+import {althermaFraction} from '../fixtures/altherma-fraction';
+import {althermaMiladcerkic} from '../fixtures/altherma-miladcerkic';
 
 import {HomebridgeAPI} from 'homebridge/lib/api.js';
 import { Logger } from 'homebridge/lib/logger.js';
@@ -170,10 +170,10 @@ test.each<Array<string | string | any | DeviceState>>([
     accessory.context['device'] = device;
 
     expect(() => {
-        new daikinAlthermaAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
+        new AlthermaAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
     }).not.toThrow();
 
-    const homebridgeAccessory = new daikinAlthermaAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
+    const homebridgeAccessory = new AlthermaAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
 
 
     if (typeof state.activeState !== 'undefined') {
@@ -242,7 +242,7 @@ test('DaikinCloudAirConditioningAccessory Getters', async () => {
     const accessory = new api.platformAccessory(device.getData('climateControlMainZone', 'name', undefined).value, uuid);
     accessory.context['device'] = device;
 
-    const homebridgeAccessory = new daikinAlthermaAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
+    const homebridgeAccessory = new AlthermaAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
 
     expect(await homebridgeAccessory.service?.handleActiveStateGet()).toEqual(true);
     expect(await homebridgeAccessory.service?.handleCurrentTemperatureGet()).toEqual(22.4);
@@ -266,7 +266,7 @@ test('DaikinCloudAirConditioningAccessory Setters', async () => {
     const accessory = new api.platformAccessory(device.getData('climateControlMainZone', 'name', undefined).value, uuid);
     accessory.context['device'] = device;
 
-    const homebridgeAccessory = new daikinAlthermaAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
+    const homebridgeAccessory = new AlthermaAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
 
     await homebridgeAccessory.service?.handleActiveStateSet(1);
     expect(setDataSpy).toHaveBeenNthCalledWith(1, 'climateControlMainZone', 'onOffMode', 'on', undefined);

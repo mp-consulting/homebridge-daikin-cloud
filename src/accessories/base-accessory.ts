@@ -1,9 +1,9 @@
 import {PlatformAccessory} from 'homebridge';
-import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from './platform';
-import {DeviceCapabilityDetector} from './services';
-import {getCapabilitySummary} from './catalog';
+import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../platform';
+import {DeviceCapabilityDetector} from '../device';
+import {getCapabilitySummary} from '../device';
 
-export class daikinAccessory {
+export class BaseAccessory {
     readonly platform: DaikinCloudPlatform;
     readonly accessory: PlatformAccessory<DaikinCloudAccessoryContext>;
     public readonly gatewayManagementPointId: string | null;

@@ -5,8 +5,8 @@
  */
 
 import {CharacteristicValue} from 'homebridge';
-import {BaseFeature} from './base-feature';
-import {DaikinEconoModes} from '../types';
+import {BaseFeature} from '../base-feature';
+import {DaikinEconoModes} from '../../types';
 
 export class EconoModeFeature extends BaseFeature {
     get featureName(): string {
