@@ -1,0 +1,75 @@
+{
+  "pluginAlias": "DaikinCloud",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "clientId": {
+        "title": "Client ID",
+        "description": "The client ID of your app you created in the Daikin Developer Portal",
+        "type": "string",
+        "required": true,
+        "default": ""
+      },
+      "clientSecret": {
+        "title": "Client Secret",
+        "description": "The client Secret of your app you created in the Daikin Developer Portal",
+        "type": "string",
+        "required": true,
+        "default": ""
+      },
+      "callbackServerExternalAddress": {
+        "title": "Redirect URI address",
+        "description": "The address where the callback server is reachable. This address should be reachable from the browser you're going to do the authorisation flow. This is most likely your Homebridge instance IP address. Mind that it can't be localhost because Daikin blocks this.",
+        "type": "string",
+        "required": true,
+        "default": ""
+      },
+      "callbackServerPort": {
+        "title": "Redirect URI port",
+        "description": "The port where the callback server is reachable. This port should be free. This port should not be the same port as your Homebridge port. This port should be reachable from the browser you're going to do the authorisation flow.",
+        "type": "string",
+        "required": false,
+        "default": "8582"
+      },
+      "oidcCallbackServerBindAddr": {
+        "title": "Callback Server address listener",
+        "description": "Network interface that the HTTP server should bind to. Bind to all interfaces for convenience, please limit as needed to single interfaces. !Important: This often is 127.0.0.1. If that does not work you can also try 0.0.0.0 but be aware that is opens up the server to the whole network.",
+        "type": "string",
+        "required": false,
+        "default": "127.0.0.1"
+      },
+      "showExtraFeatures": {
+        "title": "Show advanced features",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Expose extra advanced features as streamer mode, econo mode and powerful mode. They will only appear when they are also supported by your device."
+      },
+      "excludedDevicesByDeviceId": {
+        "title": "Exclude specific devices",
+        "type": "array",
+        "items": {
+          "title": "Device id",
+          "type": "string"
+        },
+        "description": "Exclude specific devices by their device id. You can find the device id in the Homebridge logs (debug mode does not have to be on)"
+      },
+      "updateIntervalInMinutes": {
+        "title": "Update interval in minutes",
+        "type": "integer",
+        "default": 15,
+        "minimum": 1,
+        "description": "Interval in minutes when we poll the Daikin API. Because of rate limitations we recommend to leave this at 15 minutes. This will result in 96 calls to the API per day ((24 * 60) / 15). The rate limit per day is 200."
+      },
+      "forceUpdateDelay": {
+        "title": "Force update delay (in ms)",
+        "type": "integer",
+        "minimum": 0,
+        "default": 60000,
+        "description": "The amount of time in ms the plugin waits before updating the device data after a change is made. A delay is needed because the Daikin API does not always return the updated data immediately. If the delay is to low your change might not be reflected in the returned data and interface. If too high the interface feels slow. The default is 60000 (60 seconds)."
+      }
+    }
+  }
+}
