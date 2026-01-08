@@ -185,7 +185,7 @@ Labels are back!
 
 ### Added
 
-- Add funding link to https://www.paypal.me/jrnvdb
+- Add funding link to https://www.paypal.me/MickaelPalma
 
 ### Changed
 
