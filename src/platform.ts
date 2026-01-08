@@ -1,11 +1,10 @@
 import {API, Characteristic, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service} from 'homebridge';
 
 import {PLATFORM_NAME, PLUGIN_NAME} from './settings';
-import {daikinAirConditioningAccessory} from './daikinAirConditioningAccessory';
+import {AccessoryFactory} from './catalog';
 
 import {DaikinCloudController} from 'daikin-controller-cloud';
 
-import {daikinAlthermaAccessory} from './daikinAlthermaAccessory';
 import {resolve} from 'node:path';
 import {DaikinCloudDevice} from 'daikin-controller-cloud/dist/device';
 import {StringUtils} from './utils/strings';
@@ -33,6 +32,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     public readonly updateIntervalDelay = ONE_MINUTE * 15;
     public updateInterval: NodeJS.Timeout | undefined;
     public forceUpdateTimeout: NodeJS.Timeout | undefined;
+    private readonly accessoryFactory: AccessoryFactory;
 
     constructor(
         public readonly log: Logger,
@@ -70,6 +70,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         });
 
         this.controller = new DaikinCloudController(daikinCloudControllerConfig);
+        this.accessoryFactory = new AccessoryFactory(this);
 
         this.api.on('didFinishLaunching', async () => {
             this.controller.on('authorization_request', (url) => {
@@ -143,11 +144,8 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
                     existingAccessory.context.device = device;
                     this.api.updatePlatformAccessories([existingAccessory]);
 
-                    if (deviceModel === 'Altherma') {
-                        new daikinAlthermaAccessory(this, existingAccessory);
-                    } else {
-                        new daikinAirConditioningAccessory(this, existingAccessory);
-                    }
+                    const {profile} = this.accessoryFactory.createAccessory(existingAccessory);
+                    this.log.debug(`[Platform] Created ${profile.displayName} accessory`);
 
                 } else {
                     const climateControlEmbeddedId = device.desc.managementPoints.find(mp => mp.managementPointType === 'climateControl')?.embeddedId;
@@ -156,11 +154,8 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
                     const accessory = new this.api.platformAccessory<DaikinCloudAccessoryContext>(StringUtils.isEmpty(name) ? deviceModel : name, uuid);
                     accessory.context.device = device;
 
-                    if (deviceModel === 'Altherma') {
-                        new daikinAlthermaAccessory(this, accessory);
-                    } else {
-                        new daikinAirConditioningAccessory(this, accessory);
-                    }
+                    const {profile} = this.accessoryFactory.createAccessory(accessory);
+                    this.log.debug(`[Platform] Created ${profile.displayName} accessory`);
 
                     this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
                 }
