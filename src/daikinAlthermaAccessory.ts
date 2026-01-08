@@ -22,6 +22,7 @@ export class daikinAlthermaAccessory extends daikinAccessory{
 
         if (climateControlEmbeddedId !== null) {
             this.service = new ClimateControlService(this.platform, this.accessory, climateControlEmbeddedId);
+            this.logCapabilities(climateControlEmbeddedId);
         } else {
             this.platform.log.warn(`[${this.name}] No climate control management point found`);
         }
@@ -31,6 +32,5 @@ export class daikinAlthermaAccessory extends daikinAccessory{
         } else {
             this.platform.log.warn(`[${this.name}] No domestic hot water tank management point found`);
         }
-
     }
 }

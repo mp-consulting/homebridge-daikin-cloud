@@ -28,5 +28,6 @@ export class daikinAirConditioningAccessory extends daikinAccessory {
         }
 
         this.service = new ClimateControlService(this.platform, this.accessory, climateControlEmbeddedId);
+        this.logCapabilities(climateControlEmbeddedId);
     }
 }

@@ -1,5 +1,7 @@
 import {PlatformAccessory} from 'homebridge';
 import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from './platform';
+import {DeviceCapabilityDetector} from './services';
+import {getCapabilitySummary} from './catalog';
 
 export class daikinAccessory {
     readonly platform: DaikinCloudPlatform;
@@ -32,6 +34,22 @@ export class daikinAccessory {
         this.platform.log.info('[Platform]     last updated: ' + this.accessory.context.device.getLastUpdated());
         this.platform.log.info('[Platform]     modelInfo: ' + this.accessory.context.device.getData(this.gatewayManagementPointId, 'modelInfo', undefined).value);
         this.platform.log.info('[Platform]     deviceModel: ' + this.accessory.context.device.getDescription().deviceModel);
+    }
+
+    /**
+     * Log device capabilities for the given management point.
+     * Call this from subclasses after determining the management point ID.
+     */
+    protected logCapabilities(managementPointId: string): void {
+        const detector = new DeviceCapabilityDetector(
+            this.accessory.context.device,
+            managementPointId,
+        );
+        const capabilities = detector.getCapabilities();
+        const summary = getCapabilitySummary(capabilities);
+
+        this.platform.log.info(`[Platform]     capabilities: ${summary}`);
+        this.platform.log.debug(`[Platform]     operation modes: ${capabilities.supportedOperationModes.join(', ')}`);
     }
 
     getEmbeddedIdByManagementPointType(managementPointType: string): string | null {
