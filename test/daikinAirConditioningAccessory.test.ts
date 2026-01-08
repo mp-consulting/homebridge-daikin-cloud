@@ -13,6 +13,15 @@ import {dx23Airco2} from './fixtures/dx23-airco-2';
 
 import {HomebridgeAPI} from 'homebridge/lib/api.js';
 import {Logger} from 'homebridge/lib/logger.js';
+import {
+    PowerfulModeFeature,
+    EconoModeFeature,
+    StreamerModeFeature,
+    OutdoorSilentModeFeature,
+    IndoorSilentModeFeature,
+    DryOperationModeFeature,
+    FanOnlyOperationModeFeature,
+} from '../src/features';
 
 type DeviceState = {
 	activeState: boolean;
@@ -205,46 +214,45 @@ test.each<Array<string | string | any | DeviceState>>([
     }
 
     if (typeof state.powerfulMode !== 'undefined') {
-        expect(await homebridgeAccessory.service.handlePowerfulModeGet()).toBe(state.powerfulMode);
-        expect(async () => {
-            await homebridgeAccessory.service.handlePowerfulModeSet(1);
-        }).not.toThrow();
+        const feature = homebridgeAccessory.service.featureManager.getFeature(PowerfulModeFeature);
+        expect(feature).toBeDefined();
+        expect(await feature!.handleGet()).toBe(state.powerfulMode);
     }
 
     if (typeof state.econoMode !== 'undefined') {
-        expect(await homebridgeAccessory.service.handleEconoModeGet()).toBe(state.econoMode);
-        expect(async () => {
-            await homebridgeAccessory.service.handleEconoModeSet(1);
-        }).not.toThrow();
+        const feature = homebridgeAccessory.service.featureManager.getFeature(EconoModeFeature);
+        expect(feature).toBeDefined();
+        expect(await feature!.handleGet()).toBe(state.econoMode);
     }
 
     if (typeof state.streamerMode !== 'undefined') {
-        expect(await homebridgeAccessory.service.handleStreamerModeGet()).toBe(state.streamerMode);
-        expect(async () => {
-            await homebridgeAccessory.service.handleStreamerModeSet(1);
-        }).not.toThrow();
+        const feature = homebridgeAccessory.service.featureManager.getFeature(StreamerModeFeature);
+        expect(feature).toBeDefined();
+        expect(await feature!.handleGet()).toBe(state.streamerMode);
     }
 
     if (typeof state.outdoorSilentMode !== 'undefined') {
-        expect(await homebridgeAccessory.service.handleOutdoorSilentModeGet()).toBe(state.outdoorSilentMode);
-        expect(async () => {
-            await homebridgeAccessory.service.handleOutdoorSilentModeSet(1);
-        }).not.toThrow();
+        const feature = homebridgeAccessory.service.featureManager.getFeature(OutdoorSilentModeFeature);
+        expect(feature).toBeDefined();
+        expect(await feature!.handleGet()).toBe(state.outdoorSilentMode);
     }
 
     if (typeof state.indoorSilentMode !== 'undefined') {
-        expect(await homebridgeAccessory.service.handleIndoorSilentModeGet()).toBe(state.indoorSilentMode);
-        expect(async () => {
-            await homebridgeAccessory.service.handleIndoorSilentModeSet(1);
-        }).not.toThrow();
+        const feature = homebridgeAccessory.service.featureManager.getFeature(IndoorSilentModeFeature);
+        expect(feature).toBeDefined();
+        expect(await feature!.handleGet()).toBe(state.indoorSilentMode);
     }
 
     if (typeof state.dryOperationMode !== 'undefined') {
-        expect(await homebridgeAccessory.service.handleDryOperationModeGet()).toBe(state.dryOperationMode);
+        const feature = homebridgeAccessory.service.featureManager.getFeature(DryOperationModeFeature);
+        expect(feature).toBeDefined();
+        expect(await feature!.handleGet()).toBe(state.dryOperationMode);
     }
 
     if (typeof state.fanOnlyOperationMode !== 'undefined') {
-        expect(await homebridgeAccessory.service.handleFanOnlyOperationModeGet()).toBe(state.fanOnlyOperationMode);
+        const feature = homebridgeAccessory.service.featureManager.getFeature(FanOnlyOperationModeFeature);
+        expect(feature).toBeDefined();
+        expect(await feature!.handleGet()).toBe(state.fanOnlyOperationMode);
     }
 });
 
@@ -308,11 +316,18 @@ test('DaikinCloudAirConditioningAccessory Getters', async () => {
     expect(await homebridgeAccessory.service.handleHeatingThresholdTemperatureGet()).toEqual(22);
     expect(await homebridgeAccessory.service.handleTargetHeaterCoolerStateGet()).toEqual(1);
     expect(await homebridgeAccessory.service.handleSwingModeGet()).toEqual(0);
-    expect(await homebridgeAccessory.service.handlePowerfulModeGet()).toEqual(false);
-    expect(await homebridgeAccessory.service.handleEconoModeGet()).toEqual(false);
-    expect(await homebridgeAccessory.service.handleStreamerModeGet()).toEqual(false);
-    expect(await homebridgeAccessory.service.handleOutdoorSilentModeGet()).toEqual(false);
-    expect(await homebridgeAccessory.service.handleIndoorSilentModeGet()).toEqual(false);
+
+    // Feature-based getters via FeatureManager
+    const powerfulFeature = homebridgeAccessory.service.featureManager.getFeature(PowerfulModeFeature);
+    expect(await powerfulFeature!.handleGet()).toEqual(false);
+    const econoFeature = homebridgeAccessory.service.featureManager.getFeature(EconoModeFeature);
+    expect(await econoFeature!.handleGet()).toEqual(false);
+    const streamerFeature = homebridgeAccessory.service.featureManager.getFeature(StreamerModeFeature);
+    expect(await streamerFeature!.handleGet()).toEqual(false);
+    const outdoorSilentFeature = homebridgeAccessory.service.featureManager.getFeature(OutdoorSilentModeFeature);
+    expect(await outdoorSilentFeature!.handleGet()).toEqual(false);
+    const indoorSilentFeature = homebridgeAccessory.service.featureManager.getFeature(IndoorSilentModeFeature);
+    expect(await indoorSilentFeature!.handleGet()).toEqual(false);
 });
 
 test('DaikinCloudAirConditioningAccessory Setters', async () => {
@@ -358,18 +373,24 @@ test('DaikinCloudAirConditioningAccessory Setters', async () => {
     expect(setDataSpy).toHaveBeenNthCalledWith(9, 'climateControl', 'fanControl', '/operationModes/heating/fanDirection/horizontal/currentMode', 'swing');
     expect(setDataSpy).toHaveBeenNthCalledWith(10, 'climateControl', 'fanControl', '/operationModes/heating/fanDirection/vertical/currentMode', 'swing');
 
-    await homebridgeAccessory.service.handlePowerfulModeSet(1);
+    // Feature-based setters via FeatureManager
+    const powerfulFeature = homebridgeAccessory.service.featureManager.getFeature(PowerfulModeFeature);
+    await powerfulFeature!.handleSet(true);
     expect(setDataSpy).toHaveBeenNthCalledWith(11, 'climateControl', 'powerfulMode', 'on', undefined);
 
-    await homebridgeAccessory.service.handleEconoModeSet(1);
+    const econoFeature = homebridgeAccessory.service.featureManager.getFeature(EconoModeFeature);
+    await econoFeature!.handleSet(true);
     expect(setDataSpy).toHaveBeenNthCalledWith(12, 'climateControl', 'econoMode', 'on', undefined);
 
-    await homebridgeAccessory.service.handleStreamerModeSet(1);
+    const streamerFeature = homebridgeAccessory.service.featureManager.getFeature(StreamerModeFeature);
+    await streamerFeature!.handleSet(true);
     expect(setDataSpy).toHaveBeenNthCalledWith(13, 'climateControl', 'streamerMode', 'on', undefined);
 
-    await homebridgeAccessory.service.handleOutdoorSilentModeSet(1);
+    const outdoorSilentFeature = homebridgeAccessory.service.featureManager.getFeature(OutdoorSilentModeFeature);
+    await outdoorSilentFeature!.handleSet(true);
     expect(setDataSpy).toHaveBeenNthCalledWith(14, 'climateControl', 'outdoorSilentMode', 'on', undefined);
 
-    await homebridgeAccessory.service.handleIndoorSilentModeSet(1);
+    const indoorSilentFeature = homebridgeAccessory.service.featureManager.getFeature(IndoorSilentModeFeature);
+    await indoorSilentFeature!.handleSet(true);
     expect(setDataSpy).toHaveBeenNthCalledWith(15, 'climateControl', 'fanControl', '/operationModes/heating/fanSpeed/currentMode', 'quiet');
 });

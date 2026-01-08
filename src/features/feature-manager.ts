@@ -78,7 +78,7 @@ export class FeatureManager {
      * Get a specific feature by class type.
      */
     getFeature<T extends BaseFeature>(
-        featureClass: new (...args: unknown[]) => T,
+        featureClass: abstract new (...args: never[]) => T,
     ): T | undefined {
         return this.features.find(f => f instanceof featureClass) as T | undefined;
     }

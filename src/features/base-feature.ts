@@ -127,10 +127,17 @@ export abstract class BaseFeature {
 
     /**
      * Set device data on the Daikin Cloud.
+     * Note: device.setData has different parameter order depending on whether path is used:
+     * - No path: setData(managementPointId, dataPoint, value, undefined)
+     * - With path: setData(managementPointId, dataPoint, path, value)
      */
     protected async setData(dataPoint: string, value: unknown, path?: string): Promise<void> {
         try {
-            await this.accessory.context.device.setData(this.managementPointId, dataPoint, value, path);
+            if (path) {
+                await this.accessory.context.device.setData(this.managementPointId, dataPoint, path, value);
+            } else {
+                await this.accessory.context.device.setData(this.managementPointId, dataPoint, value, undefined);
+            }
             this.platform.forceUpdateDevices();
         } catch (e) {
             this.log.error(
