@@ -62,7 +62,7 @@ test('DaikinCloudPlatform with new Aircondition accessory', (done) => {
     setTimeout(() => {
         expect(daikinAirConditioningAccessory).toHaveBeenCalled();
         expect(daikinAlthermaAccessory).not.toHaveBeenCalled();
-        expect(registerPlatformAccessoriesSpy).toBeCalledWith('homebridge-daikin-cloud', 'DaikinCloud', expect.anything());
+        expect(registerPlatformAccessoriesSpy).toBeCalledWith('@mp-consulting/homebridge-daikin-cloud', 'DaikinCloud', expect.anything());
         done();
     }, 10);
 });
@@ -96,7 +96,7 @@ test('DaikinCloudPlatform with new Altherma accessory', (done) => {
     setTimeout(() => {
         expect(daikinAlthermaAccessory).toHaveBeenCalled();
         expect(daikinAirConditioningAccessory).not.toHaveBeenCalled();
-        expect(registerPlatformAccessoriesSpy).toHaveBeenCalledWith('homebridge-daikin-cloud', 'DaikinCloud', expect.anything());
+        expect(registerPlatformAccessoriesSpy).toHaveBeenCalledWith('@mp-consulting/homebridge-daikin-cloud', 'DaikinCloud', expect.anything());
         done();
     }, 10);
 });
