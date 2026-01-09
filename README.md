@@ -10,6 +10,7 @@ A [Homebridge](https://homebridge.io) plugin that integrates Daikin air conditio
 - **Operation Modes**: Cooling, heating, and auto modes
 - **Fan Control**: Adjust fan speed from the accessory settings
 - **Swing Mode**: Enable/disable swing (if supported by your device)
+- **Real-time Updates**: WebSocket support for instant device state changes (Mobile App mode)
 - **Extra Features** (individually configurable):
   - Powerful mode (`showPowerfulMode`)
   - Econo mode (`showEconoMode`)
@@ -21,12 +22,22 @@ A [Homebridge](https://homebridge.io) plugin that integrates Daikin air conditio
 
 > **Note**: HomeKit doesn't natively support all Daikin operation modes. Extra features appear as switches in the Home app. Enable them individually in the plugin settings UI.
 
+## Authentication Methods
+
+This plugin supports two authentication methods:
+
+| Method | API Calls/Day | WebSocket | Setup |
+|--------|--------------|-----------|-------|
+| **Mobile App** | 5000 | Yes | Email/password (same as Onecta app) |
+| **Developer Portal** | 200 | No | OAuth with developer credentials |
+
+**Recommended**: Mobile App authentication provides more API calls and real-time WebSocket updates.
+
 ## Requirements
 
 - Node.js >= 18.15.0
 - Homebridge >= 1.5.0
 - A Daikin account with devices registered in the Onecta app
-- Daikin Developer Portal credentials (see [Setup](#setup))
 
 ## Installation
 
@@ -38,7 +49,19 @@ npm install -g @mp-consulting/homebridge-daikin-cloud
 
 ## Setup
 
-### 1. Create a Daikin Developer App
+### Option 1: Mobile App Authentication (Recommended)
+
+1. Open the Homebridge UI and go to the plugin settings
+2. Go to the **Authentication** tab
+3. Select **Mobile App** from the authentication method dropdown
+4. Click **Configure Credentials**
+5. Enter your Daikin Onecta account email and password
+6. Click **Test & Save Credentials**
+7. Restart Homebridge
+
+### Option 2: Developer Portal Authentication
+
+#### 1. Create a Daikin Developer App
 
 1. Go to the [Daikin Developer Portal](https://developer.cloud.daikineurope.com/)
 2. Sign in and navigate to **My Apps** (top-right menu)
@@ -49,7 +72,7 @@ npm install -g @mp-consulting/homebridge-daikin-cloud
    - **Redirect URI**: `https://<your-homebridge-ip>:<callback-port>` (e.g., `https://192.168.1.100:8582`)
 5. Save and note your **Client ID** and **Client Secret**
 
-### 2. Configure the Plugin
+#### 2. Configure the Plugin
 
 Add the platform to your Homebridge `config.json`:
 
@@ -58,6 +81,7 @@ Add the platform to your Homebridge `config.json`:
   "platforms": [
     {
       "platform": "DaikinCloud",
+      "authMode": "developer_portal",
       "clientId": "<your-client-id>",
       "clientSecret": "<your-client-secret>",
       "oidcCallbackServerBindAddr": "0.0.0.0",
@@ -68,7 +92,7 @@ Add the platform to your Homebridge `config.json`:
 }
 ```
 
-### 3. Authenticate
+#### 3. Authenticate
 
 1. Restart Homebridge
 2. Open the Homebridge UI and go to the plugin settings
@@ -79,13 +103,17 @@ Add the platform to your Homebridge `config.json`:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `clientId` | string | *required* | Your Daikin Developer App Client ID |
-| `clientSecret` | string | *required* | Your Daikin Developer App Client Secret |
+| `authMode` | string | `developer_portal` | Authentication method: `developer_portal` or `mobile_app` |
+| `email` | string | - | Daikin account email (Mobile App mode) |
+| `password` | string | - | Daikin account password (Mobile App mode) |
+| `clientId` | string | - | Daikin Developer App Client ID (Developer Portal mode) |
+| `clientSecret` | string | - | Daikin Developer App Client Secret (Developer Portal mode) |
 | `callbackServerExternalAddress` | string | auto-detected | External IP/hostname for OAuth callback |
 | `callbackServerPort` | number | `8582` | Port for OAuth callback server (1-65535) |
 | `oidcCallbackServerBindAddr` | string | `0.0.0.0` | Address to bind callback server (valid IPv4) |
-| `updateIntervalInMinutes` | number | `15` | Polling interval for device updates (1-60) |
+| `updateIntervalInMinutes` | number | `15` | Polling interval (Developer Portal: 15+ min, Mobile App: 1-5 min) |
 | `forceUpdateDelay` | number | `60000` | Delay (ms) before refreshing after a change |
+| `enableWebSocket` | boolean | `true` | Enable real-time updates (Mobile App mode only) |
 | `excludedDevicesByDeviceId` | string[] | `[]` | Device IDs to exclude from HomeKit |
 | `showPowerfulMode` | boolean | `false` | Show Powerful mode switch |
 | `showEconoMode` | boolean | `false` | Show Econo mode switch |
@@ -97,11 +125,16 @@ Add the platform to your Homebridge `config.json`:
 
 ## API Rate Limits
 
-The Daikin API limits you to **200 requests per day**. The plugin manages this by:
+| Mode | Daily Limit | Recommended Polling |
+|------|-------------|---------------------|
+| Developer Portal | 200 calls/day | 15+ minutes |
+| Mobile App | 5000 calls/day | 1-5 minutes |
 
-- Polling at configurable intervals (default: 15 minutes)
+The plugin manages rate limits by:
+- Polling at configurable intervals
 - Triggering immediate updates after changes
 - Blocking requests when the rate limit is reached
+- Using WebSocket for real-time updates (Mobile App mode)
 
 ## Fan Speed
 
@@ -141,6 +174,12 @@ rm ~/.homebridge/.daikin-controller-cloud-tokenset
 - Check the Homebridge logs for device discovery
 - Verify the device is registered in the Daikin Onecta app
 - Check if the device ID is in `excludedDevicesByDeviceId`
+
+### WebSocket Not Connecting (Mobile App Mode)
+
+- Ensure `enableWebSocket` is set to `true`
+- Check Homebridge logs for WebSocket connection errors
+- Verify your credentials are valid by testing the connection in the UI
 
 ## Supported Devices
 

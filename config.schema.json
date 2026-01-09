@@ -3,37 +3,47 @@
   "pluginType": "platform",
   "singular": true,
   "customUi": true,
-  "headerDisplay": "Use the **Custom UI** tab above to authenticate with Daikin Cloud. The setup wizard will guide you through the OAuth process.",
-  "footerDisplay": "For help, visit the [GitHub repository](https://github.com/mp-consulting/homebridge-daikin-cloud). API credentials can be obtained from the [Daikin Developer Portal](https://developer.cloud.daikineurope.com/).",
+  "headerDisplay": "Use the **Custom UI** tab above to authenticate with Daikin Cloud. Choose your authentication method below.",
+  "footerDisplay": "For help, visit the [GitHub repository](https://github.com/mp-consulting/homebridge-daikin-cloud).",
   "schema": {
     "type": "object",
     "properties": {
+      "authMode": {
+        "title": "Authentication Method",
+        "description": "Choose how to authenticate with Daikin Cloud",
+        "type": "string",
+        "default": "developer_portal",
+        "oneOf": [
+          {"title": "Developer Portal (200 API calls/day)", "enum": ["developer_portal"]},
+          {"title": "Mobile App (5000 API calls/day + WebSocket)", "enum": ["mobile_app"]}
+        ]
+      },
       "clientId": {
         "title": "Client ID",
         "description": "From your Daikin Developer Portal application",
         "type": "string",
-        "required": true,
         "x-schema-form": {
-          "placeholder": "Enter your Client ID"
+          "placeholder": "Enter your Client ID",
+          "condition": "model.authMode !== 'mobile_app'"
         }
       },
       "clientSecret": {
         "title": "Client Secret",
         "description": "Keep this secret and never share it",
         "type": "string",
-        "required": true,
         "x-schema-form": {
           "type": "password",
-          "placeholder": "Enter your Client Secret"
+          "placeholder": "Enter your Client Secret",
+          "condition": "model.authMode !== 'mobile_app'"
         }
       },
       "callbackServerExternalAddress": {
         "title": "Callback Server Address",
         "description": "Your Homebridge server's external IP or domain (not localhost)",
         "type": "string",
-        "required": true,
         "x-schema-form": {
-          "placeholder": "e.g., 192.168.1.100"
+          "placeholder": "e.g., 192.168.1.100",
+          "condition": "model.authMode !== 'mobile_app'"
         }
       },
       "callbackServerPort": {
@@ -43,7 +53,8 @@
         "required": false,
         "default": "8582",
         "x-schema-form": {
-          "placeholder": "8582"
+          "placeholder": "8582",
+          "condition": "model.authMode !== 'mobile_app'"
         }
       },
       "oidcCallbackServerBindAddr": {
@@ -57,7 +68,27 @@
           "titleMap": {
             "127.0.0.1": "127.0.0.1 (localhost only - recommended)",
             "0.0.0.0": "0.0.0.0 (all network interfaces)"
-          }
+          },
+          "condition": "model.authMode !== 'mobile_app'"
+        }
+      },
+      "daikinEmail": {
+        "title": "Daikin Account Email",
+        "description": "Your Daikin Onecta account email address",
+        "type": "string",
+        "x-schema-form": {
+          "placeholder": "your@email.com",
+          "condition": "model.authMode === 'mobile_app'"
+        }
+      },
+      "daikinPassword": {
+        "title": "Daikin Account Password",
+        "description": "Your Daikin Onecta account password",
+        "type": "string",
+        "x-schema-form": {
+          "type": "password",
+          "placeholder": "Enter your password",
+          "condition": "model.authMode === 'mobile_app'"
         }
       },
       "showExtraFeatures": {
@@ -83,26 +114,53 @@
         "title": "Update Interval (minutes)",
         "type": "integer",
         "default": 15,
-        "minimum": 5,
+        "minimum": 1,
         "maximum": 60,
-        "description": "How often to poll the Daikin API. Recommended: 15 minutes (96 API calls/day). Rate limit: 200 calls/day."
+        "description": "How often to poll the Daikin API. Developer Portal: 15+ min recommended (200 calls/day limit). Mobile App: 1-5 min recommended (5000 calls/day)."
       },
       "forceUpdateDelay": {
         "title": "Force Update Delay (ms)",
         "type": "integer",
-        "minimum": 10000,
+        "minimum": 5000,
         "maximum": 300000,
         "default": 60000,
-        "description": "Delay after a change before refreshing data from API. The Daikin API may not reflect changes immediately."
+        "description": "Delay after a change before refreshing data from API. Developer Portal: 60s recommended. Mobile App: 10s recommended."
+      },
+      "enableWebSocket": {
+        "title": "Enable WebSocket (Mobile App only)",
+        "type": "boolean",
+        "default": true,
+        "description": "Enable real-time updates via WebSocket. Only available with Mobile App authentication. Provides instant device state updates."
       }
     }
   },
   "layout": [
     {
       "type": "fieldset",
-      "title": "Authentication",
+      "title": "Authentication Method",
+      "description": "Choose your authentication method",
+      "expandable": false,
+      "items": [
+        "authMode"
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Mobile App Authentication",
+      "description": "Use your Daikin Onecta account credentials (same as the mobile app). Benefits: 5000 API calls/day + real-time WebSocket updates.",
+      "expandable": false,
+      "condition": "model.authMode === 'mobile_app'",
+      "items": [
+        "daikinEmail",
+        "daikinPassword"
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Developer Portal Authentication",
       "description": "Daikin Developer Portal credentials",
       "expandable": false,
+      "condition": "model.authMode !== 'mobile_app'",
       "items": [
         "clientId",
         "clientSecret"
@@ -114,6 +172,7 @@
       "description": "OAuth callback server configuration",
       "expandable": true,
       "expanded": true,
+      "condition": "model.authMode !== 'mobile_app'",
       "items": [
         "callbackServerExternalAddress",
         "callbackServerPort",
@@ -137,6 +196,7 @@
       "expandable": true,
       "expanded": false,
       "items": [
+        "enableWebSocket",
         "updateIntervalInMinutes",
         "forceUpdateDelay",
         "excludedDevicesByDeviceId"

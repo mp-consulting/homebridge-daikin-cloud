@@ -7,10 +7,14 @@ import {resolve} from 'node:path';
 import {StringUtils} from './utils/strings';
 
 import fs from 'node:fs';
-import {DaikinCloudRepo, DaikinCloudController, DaikinCloudDevice, DaikinClientConfig} from './api';
-
-const ONE_SECOND = 1000;
-const ONE_MINUTE = ONE_SECOND * 60;
+import {DaikinCloudRepo, DaikinCloudController, DaikinCloudDevice, DaikinControllerConfig} from './api';
+import {
+    ONE_MINUTE_MS,
+    DEFAULT_UPDATE_INTERVAL_MINUTES,
+    DEFAULT_FORCE_UPDATE_DELAY_MS,
+    RATE_LIMIT_WARNING_THRESHOLD,
+    FAN_SPEED_TO_PERCENTAGE_MULTIPLIER,
+} from './constants';
 
 export type DaikinCloudAccessoryContext = {
     device: DaikinCloudDevice;
@@ -25,10 +29,11 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     public readonly storagePath: string = '';
     public controller: DaikinCloudController | undefined;
 
-    public readonly updateIntervalDelay = ONE_MINUTE * 15;
+    public readonly updateIntervalDelay = ONE_MINUTE_MS * DEFAULT_UPDATE_INTERVAL_MINUTES;
     public updateInterval: NodeJS.Timeout | undefined;
     public forceUpdateTimeout: NodeJS.Timeout | undefined;
     private readonly accessoryFactory: AccessoryFactory;
+    private readonly authMode: 'developer_portal' | 'mobile_app';
 
     constructor(
         public readonly log: Logger,
@@ -42,33 +47,58 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         this.Service = this.api.hap.Service;
         this.Characteristic = this.api.hap.Characteristic;
         this.storagePath = api.user.storagePath();
-        this.updateIntervalDelay = ONE_MINUTE * (this.config.updateIntervalInMinutes || 15);
+        this.updateIntervalDelay = ONE_MINUTE_MS * (this.config.updateIntervalInMinutes || DEFAULT_UPDATE_INTERVAL_MINUTES);
         this.accessoryFactory = new AccessoryFactory(this);
 
-        // Check if credentials are configured
-        if (!this.config.clientId || !this.config.clientSecret) {
-            this.log.warn('[Config] Client ID and/or Client Secret not configured.');
-            this.log.warn('[Config] Please configure the plugin using the Homebridge UI.');
-            this.log.info('--------------- End Daikin info for debugging reasons --------------------');
-            return;
+        // Determine authentication mode
+        this.authMode = this.config.authMode === 'mobile_app' ? 'mobile_app' : 'developer_portal';
+        this.log.info(`[Config] Authentication mode: ${this.authMode}`);
+
+        // Check if credentials are configured based on auth mode
+        if (this.authMode === 'mobile_app') {
+            if (!this.config.daikinEmail || !this.config.daikinPassword) {
+                this.log.warn('[Config] Daikin email and/or password not configured.');
+                this.log.warn('[Config] Please configure the plugin using the Homebridge UI.');
+                this.log.info('--------------- End Daikin info for debugging reasons --------------------');
+                return;
+            }
+        } else {
+            if (!this.config.clientId || !this.config.clientSecret) {
+                this.log.warn('[Config] Client ID and/or Client Secret not configured.');
+                this.log.warn('[Config] Please configure the plugin using the Homebridge UI.');
+                this.log.info('--------------- End Daikin info for debugging reasons --------------------');
+                return;
+            }
         }
 
-        const tokenFilePath = resolve(this.storagePath, '.daikin-controller-cloud-tokenset');
+        // Use different token file for mobile auth to avoid conflicts
+        const tokenFileName = this.authMode === 'mobile_app'
+            ? '.daikin-mobile-tokenset'
+            : '.daikin-controller-cloud-tokenset';
+        const tokenFilePath = resolve(this.storagePath, tokenFileName);
 
-        const daikinCloudControllerConfig: DaikinClientConfig = {
+        const daikinCloudControllerConfig: DaikinControllerConfig = {
+            authMode: this.authMode,
+            tokenFilePath,
+            // Developer Portal fields
             clientId: this.config.clientId,
             clientSecret: this.config.clientSecret,
             callbackServerExternalAddress: this.config.callbackServerExternalAddress,
             callbackServerPort: this.config.callbackServerPort || 8582,
             oidcCallbackServerBindAddr: this.config.oidcCallbackServerBindAddr,
-            tokenFilePath,
+            // Mobile App fields
+            email: this.config.daikinEmail,
+            password: this.config.daikinPassword,
         };
 
         this.log.debug('[Config] Homebridge config', this.getPrivacyFriendlyConfig(this.config));
 
         fs.stat(tokenFilePath, (err, stats) => {
             if (err) {
-                this.log.debug('[Config] Token file does NOT exist. Please authenticate via the Homebridge UI.');
+                this.log.debug('[Config] Token file does NOT exist.');
+                if (this.authMode === 'developer_portal') {
+                    this.log.debug('[Config] Please authenticate via the Homebridge UI.');
+                }
             } else {
                 this.log.debug(`[Config] Token file exists, last modified: ${stats.mtime}`);
             }
@@ -81,15 +111,28 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
                 return;
             }
 
-            // Check if authenticated
+            // Handle authentication based on mode
             if (!this.controller.isAuthenticated()) {
-                this.log.warn('[Auth] Not authenticated. Please use the Homebridge UI to authenticate with Daikin Cloud.');
-                this.log.info('--------------- End Daikin info for debugging reasons --------------------');
-                return;
+                if (this.authMode === 'mobile_app') {
+                    // For mobile auth, automatically authenticate using stored credentials
+                    this.log.info('[Auth] Authenticating with Daikin Cloud using mobile app credentials...');
+                    try {
+                        await this.controller.authenticateMobile();
+                        this.log.info('[Auth] Authentication successful!');
+                    } catch (error) {
+                        this.log.error(`[Auth] Authentication failed: ${(error as Error).message}`);
+                        this.log.info('--------------- End Daikin info for debugging reasons --------------------');
+                        return;
+                    }
+                } else {
+                    this.log.warn('[Auth] Not authenticated. Please use the Homebridge UI to authenticate with Daikin Cloud.');
+                    this.log.info('--------------- End Daikin info for debugging reasons --------------------');
+                    return;
+                }
             }
 
             this.controller.on('rate_limit_status', (rateLimitStatus) => {
-                if (rateLimitStatus.remainingDay && rateLimitStatus.remainingDay <= 20) {
+                if (rateLimitStatus.remainingDay && rateLimitStatus.remainingDay <= RATE_LIMIT_WARNING_THRESHOLD) {
                     this.log.warn(`[Rate Limit] Rate limit almost reached, you only have ${rateLimitStatus.remainingDay} calls left today`);
                 }
                 this.log.debug(`[Rate Limit] Remaining calls today: ${rateLimitStatus.remainingDay}/${rateLimitStatus.limitDay} -- this minute: ${rateLimitStatus.remainingMinute}/${rateLimitStatus.limitMinute}`);
@@ -99,12 +142,35 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
                 this.log.error(`[Error] ${error}`);
             });
 
+            // WebSocket event handlers
+            this.controller.on('websocket_connected', () => {
+                this.log.info('[WebSocket] Connected - receiving real-time updates');
+            });
+
+            this.controller.on('websocket_disconnected', (info?: { reconnecting: boolean }) => {
+                if (info?.reconnecting) {
+                    this.log.debug('[WebSocket] Disconnected, attempting to reconnect...');
+                } else {
+                    this.log.info('[WebSocket] Disconnected');
+                }
+            });
+
+            this.controller.on('websocket_device_update', (update) => {
+                this.log.debug(`[WebSocket] Device update: ${update.deviceId} - ${update.characteristicName}`, JSON.stringify(update.data));
+                this.handleWebSocketDeviceUpdate(update);
+            });
+
             const onInvalidGrantError = () => this.onInvalidGrantError(tokenFilePath);
             const devices: DaikinCloudDevice[] = await this.discoverDevices(this.controller, onInvalidGrantError);
 
             if (devices.length > 0) {
                 await this.createDevices(devices);
                 this.startUpdateDevicesInterval();
+
+                // Enable WebSocket for real-time updates (unless explicitly disabled)
+                if (this.config.enableWebSocket !== false) {
+                    await this.enableWebSocket();
+                }
             }
 
             this.log.info('--------------- End Daikin info for debugging reasons --------------------');
@@ -193,7 +259,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         }
     }
 
-    forceUpdateDevices(delay: number = this.config.forceUpdateDelay || ONE_SECOND * 60) {
+    forceUpdateDevices(delay: number = this.config.forceUpdateDelay || DEFAULT_FORCE_UPDATE_DELAY_MS) {
         this.log.debug(`[API Syncing] Force update devices data (delayed by ${delay}, update pending: ${this.forceUpdateTimeout || 'no update pending'})`);
 
         clearInterval(this.updateInterval);
@@ -206,10 +272,24 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     }
 
     private startUpdateDevicesInterval() {
-        this.log.debug(`[API Syncing] (Re)starting update devices interval every ${this.updateIntervalDelay / ONE_MINUTE} minutes`);
+        this.log.debug(`[API Syncing] (Re)starting update devices interval every ${this.updateIntervalDelay / ONE_MINUTE_MS} minutes`);
         this.updateInterval = setInterval(async () => {
             await this.updateDevices();
         }, this.updateIntervalDelay);
+    }
+
+    private async enableWebSocket() {
+        if (!this.controller) {
+            return;
+        }
+
+        try {
+            this.log.info('[WebSocket] Enabling real-time updates...');
+            await this.controller.enableWebSocket();
+        } catch (error) {
+            this.log.warn(`[WebSocket] Failed to enable: ${(error as Error).message}`);
+            this.log.warn('[WebSocket] Falling back to polling-only mode');
+        }
     }
 
     private isExcludedDevice(excludedDevicesByDeviceId: Array<string>, deviceId: string): boolean {
@@ -221,7 +301,9 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
             ...config,
             clientId: StringUtils.mask(config.clientId),
             clientSecret: StringUtils.mask(config.clientSecret),
-            excludedDevicesByDeviceId: config.excludedDevicesByDeviceId ? config.excludedDevicesByDeviceId.map(deviceId => StringUtils.mask(deviceId)) : [],
+            daikinEmail: StringUtils.mask(config.daikinEmail),
+            daikinPassword: config.daikinPassword ? '***' : undefined,
+            excludedDevicesByDeviceId: config.excludedDevicesByDeviceId ? config.excludedDevicesByDeviceId.map((deviceId: string) => StringUtils.mask(deviceId)) : [],
         };
     }
 
@@ -232,6 +314,185 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
             this.log.warn('[API Syncing] TokenSet file removed. Please re-authenticate via the Homebridge UI.');
         } catch (e) {
             this.log.error('[API Syncing] TokenSet file could not be removed. Location:', tokenFilePath, e);
+        }
+    }
+
+    /**
+     * Handle WebSocket device updates by pushing updated values to HomeKit
+     */
+    private handleWebSocketDeviceUpdate(update: {
+        deviceId: string;
+        embeddedId: string;
+        characteristicName: string;
+        data: { value: unknown };
+    }): void {
+        // Find the accessory for this device
+        const accessory = this.accessories.find(
+            a => a.context.device.getId() === update.deviceId,
+        );
+
+        if (!accessory) {
+            this.log.debug(`[WebSocket] No accessory found for device ${update.deviceId}`);
+            return;
+        }
+
+        // Determine which service type is being used
+        const heaterCoolerService = accessory.getService(this.Service.HeaterCooler);
+        const thermostatService = accessory.getService(this.Service.Thermostat);
+        const service = heaterCoolerService || thermostatService;
+
+        if (!service) {
+            return;
+        }
+
+        const isHeaterCooler = !!heaterCoolerService;
+
+        // Map WebSocket characteristic names to HomeKit characteristics for updates
+        const characteristicName = update.characteristicName;
+
+        switch (characteristicName) {
+            case 'onOffMode': {
+                const isOn = update.data.value === 'on';
+
+                if (isHeaterCooler) {
+                    // HeaterCooler uses Active characteristic
+                    service.updateCharacteristic(
+                        this.Characteristic.Active,
+                        isOn ? this.Characteristic.Active.ACTIVE : this.Characteristic.Active.INACTIVE,
+                    );
+                    this.log.debug(`[WebSocket] Updated Active to ${isOn ? 'ACTIVE' : 'INACTIVE'}`);
+
+                    // Also update CurrentHeaterCoolerState
+                    if (!isOn) {
+                        service.updateCharacteristic(
+                            this.Characteristic.CurrentHeaterCoolerState,
+                            this.Characteristic.CurrentHeaterCoolerState.INACTIVE,
+                        );
+                    }
+                } else {
+                    // Thermostat uses CurrentHeatingCoolingState
+                    const operationMode = accessory.context.device.getData(update.embeddedId, 'operationMode', undefined).value as string;
+                    let currentState: number;
+                    if (!isOn) {
+                        currentState = this.Characteristic.CurrentHeatingCoolingState.OFF;
+                    } else {
+                        switch (operationMode) {
+                            case 'cooling':
+                                currentState = this.Characteristic.CurrentHeatingCoolingState.COOL;
+                                break;
+                            case 'heating':
+                                currentState = this.Characteristic.CurrentHeatingCoolingState.HEAT;
+                                break;
+                            default:
+                                currentState = this.Characteristic.CurrentHeatingCoolingState.HEAT;
+                        }
+                    }
+                    service.updateCharacteristic(this.Characteristic.CurrentHeatingCoolingState, currentState);
+                    this.log.debug(`[WebSocket] Updated CurrentHeatingCoolingState to ${currentState}`);
+                }
+                break;
+            }
+
+            case 'operationMode': {
+                const isOn = accessory.context.device.getData(update.embeddedId, 'onOffMode', undefined).value === 'on';
+                if (!isOn) {
+                    return; // Don't update target state if device is off
+                }
+
+                if (isHeaterCooler) {
+                    // HeaterCooler uses TargetHeaterCoolerState and CurrentHeaterCoolerState
+                    let targetState: number;
+                    let currentState: number;
+                    switch (update.data.value) {
+                        case 'cooling':
+                            targetState = this.Characteristic.TargetHeaterCoolerState.COOL;
+                            currentState = this.Characteristic.CurrentHeaterCoolerState.COOLING;
+                            break;
+                        case 'heating':
+                            targetState = this.Characteristic.TargetHeaterCoolerState.HEAT;
+                            currentState = this.Characteristic.CurrentHeaterCoolerState.HEATING;
+                            break;
+                        case 'auto':
+                            targetState = this.Characteristic.TargetHeaterCoolerState.AUTO;
+                            currentState = this.Characteristic.CurrentHeaterCoolerState.IDLE;
+                            break;
+                        default:
+                            return;
+                    }
+                    service.updateCharacteristic(this.Characteristic.TargetHeaterCoolerState, targetState);
+                    service.updateCharacteristic(this.Characteristic.CurrentHeaterCoolerState, currentState);
+                    this.log.debug(`[WebSocket] Updated TargetHeaterCoolerState to ${targetState}, CurrentHeaterCoolerState to ${currentState}`);
+                } else {
+                    // Thermostat uses TargetHeatingCoolingState
+                    let targetState: number;
+                    switch (update.data.value) {
+                        case 'cooling':
+                            targetState = this.Characteristic.TargetHeatingCoolingState.COOL;
+                            break;
+                        case 'heating':
+                            targetState = this.Characteristic.TargetHeatingCoolingState.HEAT;
+                            break;
+                        case 'auto':
+                            targetState = this.Characteristic.TargetHeatingCoolingState.AUTO;
+                            break;
+                        default:
+                            return;
+                    }
+                    service.updateCharacteristic(this.Characteristic.TargetHeatingCoolingState, targetState);
+                    this.log.debug(`[WebSocket] Updated TargetHeatingCoolingState to ${targetState}`);
+                }
+                break;
+            }
+
+            case 'sensoryData': {
+                // Temperature sensor updates - same for both service types
+                const data = update.data.value as { roomTemperature?: { value: number }; outdoorTemperature?: { value: number } };
+                if (data.roomTemperature?.value !== undefined) {
+                    service.updateCharacteristic(
+                        this.Characteristic.CurrentTemperature,
+                        data.roomTemperature.value,
+                    );
+                    this.log.debug(`[WebSocket] Updated CurrentTemperature to ${data.roomTemperature.value}`);
+                }
+                break;
+            }
+
+            case 'temperatureControl': {
+                // Temperature setpoint updates - same for both service types
+                const data = update.data.value as {
+                    operationModes?: {
+                        heating?: { setpoints?: { roomTemperature?: { value: number } } };
+                        cooling?: { setpoints?: { roomTemperature?: { value: number } } };
+                    };
+                };
+                const heatingTemp = data.operationModes?.heating?.setpoints?.roomTemperature?.value;
+                const coolingTemp = data.operationModes?.cooling?.setpoints?.roomTemperature?.value;
+
+                if (heatingTemp !== undefined) {
+                    service.updateCharacteristic(this.Characteristic.HeatingThresholdTemperature, heatingTemp);
+                    this.log.debug(`[WebSocket] Updated HeatingThresholdTemperature to ${heatingTemp}`);
+                }
+                if (coolingTemp !== undefined) {
+                    service.updateCharacteristic(this.Characteristic.CoolingThresholdTemperature, coolingTemp);
+                    this.log.debug(`[WebSocket] Updated CoolingThresholdTemperature to ${coolingTemp}`);
+                }
+                break;
+            }
+
+            case 'fanControl': {
+                // Fan speed updates - same for both service types
+                const data = update.data.value as { operationModes?: { cooling?: { fanSpeed?: { currentMode?: { value: string }; modes?: { fixed?: { value: number } } } } } };
+                const fanMode = data.operationModes?.cooling?.fanSpeed?.currentMode?.value;
+                const fanSpeed = data.operationModes?.cooling?.fanSpeed?.modes?.fixed?.value;
+
+                if (fanMode === 'fixed' && fanSpeed !== undefined) {
+                    // Convert fan speed (1-5) to percentage (20-100)
+                    const rotationSpeed = fanSpeed * FAN_SPEED_TO_PERCENTAGE_MULTIPLIER;
+                    service.updateCharacteristic(this.Characteristic.RotationSpeed, rotationSpeed);
+                    this.log.debug(`[WebSocket] Updated RotationSpeed to ${rotationSpeed}`);
+                }
+                break;
+            }
         }
     }
 }

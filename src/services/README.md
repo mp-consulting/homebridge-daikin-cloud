@@ -24,3 +24,13 @@ Exposes a HomeKit Thermostat for hot water tanks with:
 - Current/target temperature
 - Heating state
 - Powerful mode switch (if supported)
+
+## Real-time Updates
+
+When WebSocket is enabled (Mobile App mode), services receive instant updates:
+- Temperature changes
+- Operation mode changes
+- On/off state changes
+- Fan speed changes
+
+The platform pushes these updates to HomeKit immediately via `updateCharacteristic()`.

@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/) and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-01-09
+
+### Added
+- **Mobile App Authentication**: New authentication method using Daikin Onecta mobile app credentials
+  - 5000 API calls/day (vs 200 for Developer Portal)
+  - No developer portal account required
+  - Uses same credentials as Daikin Onecta mobile app
+- **WebSocket Real-time Updates**: Instant device state changes without polling (Mobile App mode)
+  - Temperature updates pushed to HomeKit immediately
+  - Operation mode changes reflected instantly
+  - On/off state synchronization in real-time
+- **Dynamic Settings UI**: Settings automatically adjust based on authentication mode
+  - Recommended values shown for each mode
+  - WebSocket toggle (Mobile App only)
+  - Settings subtabs for better organization (Features, Polling, Network, Devices)
+- **Constants Module**: Centralized configuration constants for better maintainability
+
+### Changed
+- Settings page now uses tabbed layout for better organization
+- Update interval can now be as low as 1 minute (Mobile App mode)
+- Force update delay can now be as low as 5 seconds
+- Improved rate limit display in UI shows auth mode limits
+
+### Fixed
+- Temperature validation to prevent undefined value warnings
+- Default temperature values when sensors are unavailable
+- WebSocket updates now use correct HomeKit characteristics for HeaterCooler service
+
 ## [1.0.3] - 2026-01-09
 
 ### Added

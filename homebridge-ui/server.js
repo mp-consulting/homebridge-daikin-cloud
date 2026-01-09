@@ -10,6 +10,7 @@ const os = require('os');
 // Use path relative to this file, not cwd
 const distPath = join(__dirname, '..', 'dist', 'src', 'api');
 const { DaikinOAuth } = require(join(distPath, 'daikin-oauth'));
+const { DaikinMobileOAuth } = require(join(distPath, 'daikin-mobile-oauth'));
 const { DaikinApi } = require(join(distPath, 'daikin-api'));
 
 // =============================================================================
@@ -391,8 +392,22 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
         return resolve(this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '', '.daikin-controller-cloud-tokenset');
     }
 
+    getMobileTokenFilePath() {
+        return resolve(this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '', '.daikin-mobile-tokenset');
+    }
+
     getCertDir() {
         return resolve(this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '', 'daikin-cloud-certs');
+    }
+
+    getActiveTokenSet() {
+        // Check mobile token first (takes precedence)
+        const mobileTokenSet = TokenManager.load(this.getMobileTokenFilePath());
+        if (mobileTokenSet?.access_token) {
+            return mobileTokenSet;
+        }
+        // Fall back to developer portal token
+        return TokenManager.load(this.getTokenFilePath());
     }
 
     registerHandlers() {
@@ -403,6 +418,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
         this.onRequest('/auth/test', this.handleTestConnection.bind(this));
         this.onRequest('/auth/poll', this.handlePollAuthResult.bind(this));
         this.onRequest('/auth/stop-server', this.handleStopServer.bind(this));
+        this.onRequest('/auth/mobile-test', this.handleMobileAuthTest.bind(this));
         this.onRequest('/config/validate', this.handleValidateConfig.bind(this));
         this.onRequest('/devices/list', this.handleListDevices.bind(this));
         this.onRequest('/api/rate-limit', this.handleGetRateLimit.bind(this));
@@ -444,8 +460,23 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
 
     async handleGetAuthStatus() {
         try {
-            const tokenSet = TokenManager.load(this.getTokenFilePath());
-            return TokenManager.getStatus(tokenSet);
+            // Check both token files - mobile takes precedence if exists
+            const mobileTokenSet = TokenManager.load(this.getMobileTokenFilePath());
+            const devPortalTokenSet = TokenManager.load(this.getTokenFilePath());
+
+            if (mobileTokenSet?.access_token) {
+                const status = TokenManager.getStatus(mobileTokenSet);
+                status.authMode = 'mobile_app';
+                return status;
+            }
+
+            if (devPortalTokenSet?.access_token) {
+                const status = TokenManager.getStatus(devPortalTokenSet);
+                status.authMode = 'developer_portal';
+                return status;
+            }
+
+            return { authenticated: false, message: 'Not authenticated' };
         } catch (error) {
             return { authenticated: false, error: error.message, message: 'Error reading token status' };
         }
@@ -641,6 +672,60 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     }
 
     // -------------------------------------------------------------------------
+    // Mobile Auth Test Handler
+    // -------------------------------------------------------------------------
+
+    async handleMobileAuthTest(payload) {
+        const { email, password } = payload;
+
+        if (!email || !password) {
+            return { success: false, message: 'Email and password are required' };
+        }
+
+        const tokenFilePath = this.getMobileTokenFilePath();
+
+        try {
+            // Create a temporary mobile OAuth client
+            const mobileOAuth = new DaikinMobileOAuth({
+                email,
+                password,
+                tokenFilePath,
+            });
+
+            // Perform authentication
+            console.log('[DaikinCloud] Testing mobile app authentication...');
+            const tokenSet = await mobileOAuth.authenticate();
+            console.log('[DaikinCloud] Mobile authentication successful');
+
+            // Test API access and get device count
+            let deviceCount = 0;
+            let rateLimit = null;
+
+            try {
+                const result = await DaikinApi.requestStatic('/v1/gateway-devices', tokenSet.access_token);
+                deviceCount = Array.isArray(result.data) ? result.data.length : 0;
+                rateLimit = result.rateLimit;
+            } catch (apiError) {
+                console.warn('[DaikinCloud] API test failed:', apiError.message);
+            }
+
+            return {
+                success: true,
+                message: 'Authentication successful!',
+                deviceCount,
+                rateLimit,
+                expiresAt: tokenSet.expires_at ? new Date(tokenSet.expires_at * 1000).toISOString() : null,
+            };
+        } catch (error) {
+            console.error('[DaikinCloud] Mobile auth test failed:', error.message);
+            return {
+                success: false,
+                message: error.message || 'Authentication failed',
+            };
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Revoke Auth Handler
     // -------------------------------------------------------------------------
 
@@ -668,7 +753,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     // -------------------------------------------------------------------------
 
     async handleTestConnection() {
-        const tokenSet = TokenManager.load(this.getTokenFilePath());
+        const tokenSet = this.getActiveTokenSet();
         if (!tokenSet?.access_token) {
             return { success: false, message: 'Not authenticated. Please authenticate first.' };
         }
@@ -692,7 +777,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     // -------------------------------------------------------------------------
 
     async handleListDevices() {
-        const tokenSet = TokenManager.load(this.getTokenFilePath());
+        const tokenSet = this.getActiveTokenSet();
         if (!tokenSet?.access_token) {
             return { success: false, devices: [], message: 'Not authenticated. Please authenticate first.' };
         }
@@ -716,7 +801,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     // -------------------------------------------------------------------------
 
     async handleGetRateLimit() {
-        const tokenSet = TokenManager.load(this.getTokenFilePath());
+        const tokenSet = this.getActiveTokenSet();
         if (!tokenSet?.access_token) {
             return { success: false, message: 'Not authenticated' };
         }

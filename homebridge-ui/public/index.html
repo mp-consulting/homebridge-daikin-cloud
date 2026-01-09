@@ -71,8 +71,25 @@
                     <span id="settings-status" class="settings-status hidden"></span>
                 </div>
 
-                <div class="settings-grid">
-                    <div class="settings-section full-width">
+                <!-- Settings Sub-tabs -->
+                <div class="settings-subtabs">
+                    <button class="subtab-btn active" data-subtab="features" onclick="switchSettingsSubtab('features')">
+                        Features
+                    </button>
+                    <button class="subtab-btn" data-subtab="polling" onclick="switchSettingsSubtab('polling')">
+                        Polling
+                    </button>
+                    <button class="subtab-btn" data-subtab="network" onclick="switchSettingsSubtab('network')">
+                        Network
+                    </button>
+                    <button class="subtab-btn" data-subtab="devices" onclick="switchSettingsSubtab('devices')">
+                        Devices
+                    </button>
+                </div>
+
+                <!-- Features Subtab -->
+                <div class="settings-subtab-content active" id="subtab-features">
+                    <div class="settings-section">
                         <h3>Extra Features in HomeKit</h3>
                         <div class="form-hint" style="margin-bottom: 12px;">Enable switches for additional modes in HomeKit</div>
                         <div class="feature-toggles-list">
@@ -148,23 +165,45 @@
                             </div>
                         </div>
                     </div>
+                </div>
 
+                <!-- Polling Subtab -->
+                <div class="settings-subtab-content" id="subtab-polling">
                     <div class="settings-section">
-                        <h3>Polling</h3>
+                        <h3>Polling & Updates</h3>
                         <div class="form-group">
                             <label class="form-label">Update Interval (minutes)</label>
-                            <input type="number" class="form-input" id="updateIntervalInMinutes" min="1" max="60" value="15">
-                            <div class="form-hint">How often to poll for device updates (default: 15)</div>
+                            <input type="number" class="form-input" id="updateIntervalInMinutes" min="1" max="60" value="15"
+                                   placeholder="15 (recommended for Developer Portal)"
+                                   title="Developer Portal: 15+ min recommended (200 calls/day)">
+                            <div class="form-hint">Developer Portal: 15+ min | Mobile App: 1-5 min</div>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Force Update Delay (seconds)</label>
-                            <input type="number" class="form-input" id="forceUpdateDelay" min="1" max="300" value="60">
-                            <div class="form-hint">Delay before refreshing after a change (default: 60)</div>
+                            <input type="number" class="form-input" id="forceUpdateDelay" min="5" max="300" value="60"
+                                   placeholder="60 (recommended for Developer Portal)"
+                                   title="Developer Portal: 60s recommended">
+                            <div class="form-hint">Developer Portal: 60s | Mobile App: 10s</div>
+                        </div>
+                        <div class="form-group" id="websocket-setting-row" style="display: none;">
+                            <div class="feature-toggle-item" style="background: none; padding: 0;">
+                                <div class="feature-toggle-info">
+                                    <span class="feature-toggle-name">Enable WebSocket</span>
+                                    <span class="feature-toggle-desc">Real-time updates (Mobile App only)</span>
+                                </div>
+                                <label class="toggle-label" style="margin: 0;">
+                                    <input type="checkbox" id="enableWebSocket" class="toggle-input" checked>
+                                    <span class="toggle-switch"></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
+                </div>
 
+                <!-- Network Subtab -->
+                <div class="settings-subtab-content" id="subtab-network">
                     <div class="settings-section">
-                        <h3>Network</h3>
+                        <h3>Network Settings</h3>
                         <div class="form-group">
                             <label class="form-label">OIDC Callback Bind Address</label>
                             <input type="text" class="form-input" id="oidcCallbackServerBindAddr" placeholder="0.0.0.0" value="0.0.0.0"
@@ -172,8 +211,11 @@
                             <div class="form-hint">IPv4 address for OAuth callback server (use 0.0.0.0 for all interfaces)</div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="settings-section full-width">
+                <!-- Devices Subtab -->
+                <div class="settings-subtab-content" id="subtab-devices">
+                    <div class="settings-section">
                         <h3>Device Visibility in HomeKit</h3>
                         <div class="form-hint" style="margin-bottom: 12px;">Toggle devices to show or hide them in HomeKit</div>
                         <div id="device-toggles-loading" class="loading-state" style="padding: 20px;">
@@ -194,12 +236,30 @@
                     <h2>Authentication</h2>
                 </div>
 
+                <!-- Auth Mode Selector -->
+                <div class="auth-mode-selector" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label class="form-label">Authentication Method</label>
+                        <select class="form-input" id="authMode" onchange="onAuthModeChange()">
+                            <option value="developer_portal">Developer Portal (200 API calls/day)</option>
+                            <option value="mobile_app">Mobile App (5000 API calls/day + WebSocket)</option>
+                        </select>
+                        <div class="form-hint" id="auth-mode-hint">
+                            Requires API credentials from the Daikin Developer Portal
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Auth Status -->
                 <div class="auth-status-card" id="auth-status-card">
                     <div class="auth-status-header">
                         <div class="auth-status-info">
                             <span class="auth-status-label">Status</span>
                             <span class="auth-status-value" id="auth-status">Loading...</span>
+                        </div>
+                        <div class="auth-status-info" id="auth-mode-display">
+                            <span class="auth-status-label">Mode</span>
+                            <span class="auth-status-value" id="auth-mode-text">Developer Portal</span>
                         </div>
                         <div class="auth-status-info" id="expires-row" style="display: none;">
                             <span class="auth-status-label">Expires</span>
@@ -213,6 +273,9 @@
                         <button class="btn btn-primary" id="btn-authenticate" onclick="showWizard()">
                             Authenticate
                         </button>
+                        <button class="btn btn-primary" id="btn-authenticate-mobile" onclick="showMobileAuthForm()" style="display: none;">
+                            Configure Credentials
+                        </button>
                         <button class="btn btn-danger" id="btn-revoke" onclick="revokeAuth()" style="display: none;">
                             Revoke Access
                         </button>
@@ -220,7 +283,37 @@
                     <div id="test-result" class="alert hidden"></div>
                 </div>
 
-                <!-- Setup Wizard (hidden by default) -->
+                <!-- Mobile App Authentication Form (hidden by default) -->
+                <div class="mobile-auth-form hidden" id="mobile-auth-form">
+                    <div class="alert alert-info">
+                        <strong>Mobile App Authentication</strong><br>
+                        Use your Daikin Onecta account credentials (same as the mobile app).<br>
+                        <small>Benefits: 5000 API calls/day + real-time WebSocket updates</small>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Daikin Account Email *</label>
+                            <input type="email" class="form-input" id="daikinEmail" placeholder="your@email.com">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Daikin Account Password *</label>
+                            <input type="password" class="form-input" id="daikinPassword" placeholder="Enter your password">
+                        </div>
+                    </div>
+
+                    <div id="mobile-auth-errors" class="alert alert-danger hidden"></div>
+                    <div id="mobile-auth-success" class="alert alert-success hidden"></div>
+
+                    <div class="wizard-actions">
+                        <button class="btn btn-outline" onclick="hideMobileAuthForm()">Cancel</button>
+                        <button class="btn btn-primary" id="btn-test-mobile-auth" onclick="testMobileAuth()">
+                            Test & Save Credentials
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Setup Wizard for Developer Portal (hidden by default) -->
                 <div class="wizard hidden" id="wizard">
                     <div class="wizard-steps">
                         <div class="wizard-step active" id="step-1">

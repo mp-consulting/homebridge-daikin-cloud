@@ -98,6 +98,21 @@ function switchTab(tabName) {
 }
 
 /**
+ * Settings Subtab Navigation
+ */
+function switchSettingsSubtab(subtabName) {
+    // Update subtab buttons
+    document.querySelectorAll('.subtab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.subtab === subtabName);
+    });
+
+    // Update subtab content panels
+    document.querySelectorAll('.settings-subtab-content').forEach(panel => {
+        panel.classList.toggle('active', panel.id === `subtab-${subtabName}`);
+    });
+}
+
+/**
  * Authentication Module
  */
 const Auth = {
@@ -788,6 +803,12 @@ const Settings = {
             }
         });
 
+        // WebSocket toggle
+        const wsEl = document.getElementById('enableWebSocket');
+        if (wsEl) {
+            wsEl.addEventListener('change', () => this.autoSave());
+        }
+
         // Number and text inputs
         const inputs = ['updateIntervalInMinutes', 'forceUpdateDelay', 'oidcCallbackServerBindAddr'];
         inputs.forEach(id => {
@@ -903,6 +924,12 @@ const Settings = {
         if (bindAddr) {
             bindAddr.value = config.oidcCallbackServerBindAddr || '0.0.0.0';
         }
+
+        // WebSocket toggle
+        const enableWebSocket = document.getElementById('enableWebSocket');
+        if (enableWebSocket) {
+            enableWebSocket.checked = config.enableWebSocket !== false; // Default true
+        }
     },
 
     /**
@@ -1017,6 +1044,7 @@ const Settings = {
             forceUpdateDelay: delayMs,
             oidcCallbackServerBindAddr: document.getElementById('oidcCallbackServerBindAddr')?.value?.trim() || '0.0.0.0',
             excludedDevicesByDeviceId: this.excludedIds,
+            enableWebSocket: document.getElementById('enableWebSocket')?.checked ?? true,
         };
 
         // Add individual feature toggles
@@ -1225,9 +1253,16 @@ const RateLimit = {
             const result = await homebridge.request('/api/rate-limit');
 
             if (result.success && result.rateLimit) {
-                const { limit, remaining } = result.rateLimit;
-                if (remaining !== undefined && limit !== undefined) {
-                    display.textContent = `${remaining}/${limit} remaining`;
+                const { limitDay, remainingDay, limitMinute, remainingMinute } = result.rateLimit;
+
+                if (remainingDay !== undefined && limitDay !== undefined) {
+                    let text = `${remainingDay}/${limitDay} daily`;
+                    if (remainingMinute !== undefined && limitMinute !== undefined) {
+                        text += `, ${remainingMinute}/${limitMinute} per minute`;
+                    }
+                    display.textContent = text;
+                } else if (remainingMinute !== undefined && limitMinute !== undefined) {
+                    display.textContent = `${remainingMinute}/${limitMinute} per minute`;
                 } else {
                     display.textContent = 'No rate limit headers';
                 }
@@ -1294,6 +1329,324 @@ const Utils = {
     },
 };
 
+/**
+ * Mobile Auth Module
+ */
+const MobileAuth = {
+    /**
+     * Show mobile auth form
+     */
+    show() {
+        const form = document.getElementById('mobile-auth-form');
+        const statusCard = document.getElementById('auth-status-card');
+        if (form) form.classList.remove('hidden');
+        if (statusCard) statusCard.classList.add('hidden');
+
+        // Load saved credentials if any
+        this.loadSavedCredentials();
+    },
+
+    /**
+     * Hide mobile auth form
+     */
+    hide() {
+        const form = document.getElementById('mobile-auth-form');
+        const statusCard = document.getElementById('auth-status-card');
+        if (form) form.classList.add('hidden');
+        if (statusCard) statusCard.classList.remove('hidden');
+
+        // Clear errors/success
+        const errorsEl = document.getElementById('mobile-auth-errors');
+        const successEl = document.getElementById('mobile-auth-success');
+        if (errorsEl) errorsEl.classList.add('hidden');
+        if (successEl) successEl.classList.add('hidden');
+    },
+
+    /**
+     * Load saved credentials from config
+     */
+    async loadSavedCredentials() {
+        try {
+            const config = await homebridge.getPluginConfig();
+            if (config && config.length > 0) {
+                const platformConfig = config[0];
+                const emailEl = document.getElementById('daikinEmail');
+                const passwordEl = document.getElementById('daikinPassword');
+
+                if (emailEl && platformConfig.daikinEmail) {
+                    emailEl.value = platformConfig.daikinEmail;
+                }
+                if (passwordEl && platformConfig.daikinPassword) {
+                    passwordEl.value = platformConfig.daikinPassword;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load saved credentials:', error);
+        }
+    },
+
+    /**
+     * Test mobile auth and save credentials
+     */
+    async test() {
+        const emailEl = document.getElementById('daikinEmail');
+        const passwordEl = document.getElementById('daikinPassword');
+        const errorsEl = document.getElementById('mobile-auth-errors');
+        const successEl = document.getElementById('mobile-auth-success');
+        const btnTest = document.getElementById('btn-test-mobile-auth');
+
+        const email = emailEl?.value?.trim();
+        const password = passwordEl?.value;
+
+        // Clear previous messages
+        errorsEl?.classList.add('hidden');
+        successEl?.classList.add('hidden');
+
+        // Validate inputs
+        if (!email || !password) {
+            if (errorsEl) {
+                errorsEl.textContent = 'Please enter both email and password';
+                errorsEl.classList.remove('hidden');
+            }
+            return;
+        }
+
+        // Show loading state
+        if (btnTest) {
+            btnTest.disabled = true;
+            btnTest.innerHTML = '<span class="spinner"></span> Testing...';
+        }
+
+        try {
+            const result = await homebridge.request('/auth/mobile-test', {
+                email,
+                password,
+            });
+
+            if (result.success) {
+                // Save config
+                await this.saveCredentials(email, password);
+
+                if (successEl) {
+                    successEl.innerHTML = `
+                        <strong>Authentication successful!</strong><br>
+                        Found ${result.deviceCount || 0} device(s).<br>
+                        Rate limit: ${result.rateLimit?.remainingDay || '?'}/${result.rateLimit?.limitDay || '5000'} requests/day<br>
+                        <small>Configuration saved. Restart Homebridge to apply changes.</small>
+                    `;
+                    successEl.classList.remove('hidden');
+                }
+
+                // Update status after a delay
+                setTimeout(() => {
+                    this.hide();
+                    Auth.loadStatus();
+                    Devices.load();
+                }, 2000);
+            } else {
+                if (errorsEl) {
+                    errorsEl.textContent = result.message || 'Authentication failed';
+                    errorsEl.classList.remove('hidden');
+                }
+            }
+        } catch (error) {
+            if (errorsEl) {
+                errorsEl.textContent = 'Authentication failed: ' + error.message;
+                errorsEl.classList.remove('hidden');
+            }
+        }
+
+        // Reset button
+        if (btnTest) {
+            btnTest.disabled = false;
+            btnTest.innerHTML = 'Test & Save Credentials';
+        }
+    },
+
+    /**
+     * Save mobile credentials to config
+     */
+    async saveCredentials(email, password) {
+        try {
+            const config = await homebridge.getPluginConfig();
+            const platformConfig = config[0] || { platform: 'DaikinCloud' };
+
+            platformConfig.authMode = 'mobile_app';
+            platformConfig.daikinEmail = email;
+            platformConfig.daikinPassword = password;
+
+            await homebridge.updatePluginConfig([platformConfig]);
+            await homebridge.savePluginConfig();
+        } catch (error) {
+            console.error('Failed to save credentials:', error);
+            throw error;
+        }
+    },
+};
+
+/**
+ * Auth Mode Module
+ */
+const AuthMode = {
+    current: 'developer_portal',
+    previousMode: 'developer_portal',
+
+    // Recommended defaults for each auth mode
+    defaults: {
+        developer_portal: {
+            updateIntervalInMinutes: 15,
+            forceUpdateDelay: 60, // seconds in UI
+            enableWebSocket: false,
+        },
+        mobile_app: {
+            updateIntervalInMinutes: 5,
+            forceUpdateDelay: 10, // seconds in UI
+            enableWebSocket: true,
+        },
+    },
+
+    /**
+     * Initialize auth mode from saved config
+     */
+    async init() {
+        try {
+            const config = await homebridge.getPluginConfig();
+            if (config && config.length > 0) {
+                this.current = config[0].authMode || 'developer_portal';
+                this.previousMode = this.current;
+            }
+        } catch (error) {
+            console.error('Failed to load auth mode:', error);
+        }
+
+        this.updateUI();
+    },
+
+    /**
+     * Handle auth mode change
+     */
+    onChange() {
+        const selectEl = document.getElementById('authMode');
+        if (selectEl) {
+            this.previousMode = this.current;
+            this.current = selectEl.value;
+            this.updateUI();
+            this.updateSettingsDefaults();
+            this.saveToConfig();
+        }
+    },
+
+    /**
+     * Update UI based on current auth mode
+     */
+    updateUI() {
+        const selectEl = document.getElementById('authMode');
+        const hintEl = document.getElementById('auth-mode-hint');
+        const btnDevPortal = document.getElementById('btn-authenticate');
+        const btnMobile = document.getElementById('btn-authenticate-mobile');
+        const modeTextEl = document.getElementById('auth-mode-text');
+        const rateLimitDisplay = document.getElementById('rate-limit-display');
+        const wsSettingRow = document.getElementById('websocket-setting-row');
+
+        if (selectEl) {
+            selectEl.value = this.current;
+        }
+
+        if (this.current === 'mobile_app') {
+            if (hintEl) hintEl.textContent = 'Use your Daikin Onecta account (same as mobile app)';
+            if (btnDevPortal) btnDevPortal.style.display = 'none';
+            if (btnMobile) btnMobile.style.display = 'inline-flex';
+            if (modeTextEl) modeTextEl.textContent = 'Mobile App';
+            if (rateLimitDisplay) rateLimitDisplay.textContent = '5000 requests/day';
+            if (wsSettingRow) wsSettingRow.style.display = '';
+        } else {
+            if (hintEl) hintEl.textContent = 'Requires API credentials from the Daikin Developer Portal';
+            if (btnDevPortal) btnDevPortal.style.display = 'inline-flex';
+            if (btnMobile) btnMobile.style.display = 'none';
+            if (modeTextEl) modeTextEl.textContent = 'Developer Portal';
+            if (rateLimitDisplay) rateLimitDisplay.textContent = '200 requests/day';
+            if (wsSettingRow) wsSettingRow.style.display = 'none';
+        }
+
+        // Update settings hints
+        this.updateSettingsHints();
+    },
+
+    /**
+     * Update settings input hints based on auth mode
+     */
+    updateSettingsHints() {
+        const updateIntervalEl = document.getElementById('updateIntervalInMinutes');
+        const forceDelayEl = document.getElementById('forceUpdateDelay');
+
+        if (updateIntervalEl) {
+            if (this.current === 'mobile_app') {
+                updateIntervalEl.placeholder = '5 (recommended for Mobile App)';
+                updateIntervalEl.title = 'Mobile App: 1-5 min recommended (5000 calls/day)';
+            } else {
+                updateIntervalEl.placeholder = '15 (recommended for Developer Portal)';
+                updateIntervalEl.title = 'Developer Portal: 15+ min recommended (200 calls/day)';
+            }
+        }
+
+        if (forceDelayEl) {
+            if (this.current === 'mobile_app') {
+                forceDelayEl.placeholder = '10 (recommended for Mobile App)';
+                forceDelayEl.title = 'Mobile App: 10s recommended';
+            } else {
+                forceDelayEl.placeholder = '60 (recommended for Developer Portal)';
+                forceDelayEl.title = 'Developer Portal: 60s recommended';
+            }
+        }
+    },
+
+    /**
+     * Update settings to recommended defaults when switching modes
+     */
+    updateSettingsDefaults() {
+        // Only update if mode actually changed
+        if (this.current === this.previousMode) return;
+
+        const defaults = this.defaults[this.current];
+        const updateIntervalEl = document.getElementById('updateIntervalInMinutes');
+        const forceDelayEl = document.getElementById('forceUpdateDelay');
+        const enableWebSocketEl = document.getElementById('enableWebSocket');
+
+        // Update values to recommended defaults for the new mode
+        if (updateIntervalEl) {
+            updateIntervalEl.value = defaults.updateIntervalInMinutes;
+        }
+
+        if (forceDelayEl) {
+            forceDelayEl.value = defaults.forceUpdateDelay;
+        }
+
+        if (enableWebSocketEl) {
+            enableWebSocketEl.checked = defaults.enableWebSocket;
+        }
+
+        // Trigger auto-save in Settings module
+        Settings.autoSave();
+    },
+
+    /**
+     * Save auth mode to config
+     */
+    async saveToConfig() {
+        try {
+            const config = await homebridge.getPluginConfig();
+            const platformConfig = config[0] || { platform: 'DaikinCloud' };
+
+            platformConfig.authMode = this.current;
+
+            await homebridge.updatePluginConfig([platformConfig]);
+            await homebridge.savePluginConfig();
+        } catch (error) {
+            console.error('Failed to save auth mode:', error);
+        }
+    },
+};
+
 // Global function bindings for HTML onclick handlers
 function showWizard() { Wizard.show(); }
 function hideWizard() { Wizard.hide(); }
@@ -1307,6 +1660,10 @@ function testConnection() { Auth.testConnection(); }
 function revokeAuth() { Auth.revoke(); }
 function refreshDevices() { Devices.refresh(); }
 function checkRateLimit() { RateLimit.check(); }
+function showMobileAuthForm() { MobileAuth.show(); }
+function hideMobileAuthForm() { MobileAuth.hide(); }
+function testMobileAuth() { MobileAuth.test(); }
+function onAuthModeChange() { AuthMode.onChange(); }
 
 // Bind module methods to DaikinUI for easier access
 DaikinUI.loadStatus = () => Auth.loadStatus();
@@ -1315,4 +1672,7 @@ DaikinUI.loadDevices = () => Devices.load();
 DaikinUI.loadSettings = () => Settings.load();
 
 // Initialize on DOM ready
-document.addEventListener('DOMContentLoaded', () => DaikinUI.init());
+document.addEventListener('DOMContentLoaded', () => {
+    DaikinUI.init();
+    AuthMode.init();
+});

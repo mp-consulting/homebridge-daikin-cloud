@@ -12,6 +12,11 @@ import {
     DaikinTemperatureControlSetpoints,
 } from '../types';
 import {FeatureManager} from '../features';
+import {
+    DEFAULT_ROOM_TEMPERATURE,
+    HOMEKIT_TEMP_MIN,
+    COOLING_TEMP_CLAMP_MAX,
+} from '../constants';
 
 export class ClimateControlService {
     readonly platform: DaikinCloudPlatform;
@@ -62,7 +67,7 @@ export class ClimateControlService {
         if (roomTemperatureControlForCooling) {
             const coolingChar = this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature);
             // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-            const clampedCoolingValue = Math.max(10, Math.min(35, roomTemperatureControlForCooling.value as number));
+            const clampedCoolingValue = Math.max(HOMEKIT_TEMP_MIN, Math.min(COOLING_TEMP_CLAMP_MAX, roomTemperatureControlForCooling.value as number));
             coolingChar.updateValue(clampedCoolingValue);
             coolingChar
                 .setProps({
@@ -150,15 +155,16 @@ export class ClimateControlService {
     }
 
     async handleCurrentTemperatureGet(): Promise<CharacteristicValue> {
-        const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/' + this.getCurrentControlMode()).value as number;
+        const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/' + this.getCurrentControlMode()).value as number | undefined;
         this.platform.log.debug(`[${this.name}] GET CurrentTemperature, temperature: ${temperature}, last update: ${this.accessory.context.device.getLastUpdated()}`);
-        return temperature;
+        // Return a valid temperature value, defaulting to 20 if undefined
+        return typeof temperature === 'number' && isFinite(temperature) ? temperature : DEFAULT_ROOM_TEMPERATURE;
     }
 
     async handleCoolingThresholdTemperatureGet(): Promise<CharacteristicValue> {
-        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`).value as number;
+        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`).value as number | undefined;
         this.platform.log.debug(`[${this.name}] GET CoolingThresholdTemperature, temperature: ${temperature}, last update: ${this.accessory.context.device.getLastUpdated()}`);
-        return temperature;
+        return typeof temperature === 'number' && isFinite(temperature) ? temperature : 25;
     }
 
     async handleCoolingThresholdTemperatureSet(value: CharacteristicValue) {
@@ -175,9 +181,9 @@ export class ClimateControlService {
     }
 
     async handleRotationSpeedGet(): Promise<CharacteristicValue> {
-        const speed = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`).value as number;
+        const speed = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`).value as number | undefined;
         this.platform.log.debug(`[${this.name}] GET RotationSpeed, speed: ${speed}, last update: ${this.accessory.context.device.getLastUpdated()}`);
-        return speed;
+        return typeof speed === 'number' && isFinite(speed) ? speed : 1;
     }
 
     async handleRotationSpeedSet(value: CharacteristicValue) {
@@ -194,9 +200,9 @@ export class ClimateControlService {
     }
 
     async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {
-        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`).value as number;
+        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`).value as number | undefined;
         this.platform.log.debug(`[${this.name}] GET HeatingThresholdTemperature, temperature: ${temperature}, last update: ${this.accessory.context.device.getLastUpdated()}`);
-        return temperature;
+        return typeof temperature === 'number' && isFinite(temperature) ? temperature : DEFAULT_ROOM_TEMPERATURE;
     }
 
     async handleHeatingThresholdTemperatureSet(value: CharacteristicValue) {

@@ -2,6 +2,12 @@ import {CharacteristicProps, CharacteristicValue, PartialAllowingNull, PlatformA
 import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../platform';
 import {DaikinCloudRepo} from '../api/daikin-cloud.repository';
 import {DaikinOnOffModes, DaikinOperationModes, DaikinPowerfulModes} from '../types';
+import {
+    HOMEKIT_TEMP_MIN,
+    HOMEKIT_TEMP_MAX,
+    DEFAULT_HOT_WATER_TEMPERATURE,
+    DEFAULT_HOT_WATER_TARGET_TEMPERATURE,
+} from '../constants';
 
 export class HotWaterTankService {
     readonly platform: DaikinCloudPlatform;
@@ -46,7 +52,7 @@ export class HotWaterTankService {
         const temperatureControl = accessory.context.device.getData(this.managementPointId, 'temperatureControl', '/operationModes/heating/setpoints/domesticHotWaterTemperature');
         const targetTemperature = this.hotWaterTankService.getCharacteristic(this.platform.Characteristic.TargetTemperature);
         // Set value within default HomeKit range first to avoid warning when setProps expands the range
-        const clampedTempValue = Math.max(10, Math.min(38, temperatureControl.value as number));
+        const clampedTempValue = Math.max(HOMEKIT_TEMP_MIN, Math.min(HOMEKIT_TEMP_MAX, temperatureControl.value as number));
         targetTemperature.updateValue(clampedTempValue);
         targetTemperature.setProps({
             minStep: temperatureControl.stepValue,
@@ -98,15 +104,17 @@ export class HotWaterTankService {
     }
 
     async handleHotWaterTankCurrentTemperatureGet(): Promise<CharacteristicValue> {
-        const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/tankTemperature').value as number;
+        const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/tankTemperature').value as number | undefined;
         this.platform.log.debug(`[${this.name}] GET CurrentTemperature for hot water tank, temperature: ${temperature}`);
-        return temperature;
+        // Return a valid temperature value, defaulting to 40 if undefined (reasonable for hot water)
+        return typeof temperature === 'number' && isFinite(temperature) ? temperature : DEFAULT_HOT_WATER_TEMPERATURE;
     }
 
     async handleHotWaterTankHeatingTargetTemperatureGet(): Promise<CharacteristicValue> {
-        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', '/operationModes/heating/setpoints/domesticHotWaterTemperature').value as number;
+        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', '/operationModes/heating/setpoints/domesticHotWaterTemperature').value as number | undefined;
         this.platform.log.debug(`[${this.name}] GET HeatingThresholdTemperature domesticHotWaterTank, temperature: ${temperature}`);
-        return temperature;
+        // Return a valid temperature value, defaulting to 50 if undefined
+        return typeof temperature === 'number' && isFinite(temperature) ? temperature : DEFAULT_HOT_WATER_TARGET_TEMPERATURE;
     }
 
     async handleHotWaterTankHeatingTargetTemperatureSet(value: CharacteristicValue) {

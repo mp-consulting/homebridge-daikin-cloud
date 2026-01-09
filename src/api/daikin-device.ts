@@ -6,7 +6,7 @@
  */
 
 import {EventEmitter} from 'node:events';
-import {GatewayDevice, ManagementPoint} from './daikin-types';
+import {GatewayDevice, ManagementPoint, WebSocketDeviceUpdate} from './daikin-types';
 import {DaikinApi} from './daikin-api';
 
 export interface DeviceDataPoint {
@@ -136,6 +136,54 @@ export class DaikinCloudDevice extends EventEmitter {
         Object.assign(this.rawData, newData);
         (this as { desc: GatewayDevice }).desc = this.rawData;
         this.lastUpdated = new Date();
+    }
+
+    /**
+     * Apply a WebSocket update to the device's raw data
+     * This updates the in-memory data without making an API call
+     */
+    applyWebSocketUpdate(update: WebSocketDeviceUpdate): void {
+        const managementPoint = this.getManagementPoint(update.embeddedId);
+        if (!managementPoint) {
+            return;
+        }
+
+        const characteristicName = update.characteristicName;
+        const data = update.data;
+
+        // Get or create the characteristic object
+        let characteristic = managementPoint[characteristicName] as Record<string, unknown> | undefined;
+        if (!characteristic) {
+            characteristic = {};
+            managementPoint[characteristicName] = characteristic;
+        }
+
+        // Update the characteristic with new data
+        if (data.value !== undefined) {
+            characteristic.value = data.value;
+        }
+        if (data.values !== undefined) {
+            characteristic.values = data.values;
+        }
+        if (data.settable !== undefined) {
+            characteristic.settable = data.settable;
+        }
+        if (data.minValue !== undefined) {
+            characteristic.minValue = data.minValue;
+        }
+        if (data.maxValue !== undefined) {
+            characteristic.maxValue = data.maxValue;
+        }
+        if (data.stepValue !== undefined) {
+            characteristic.stepValue = data.stepValue;
+        }
+
+        // Emit an 'updated' event so accessories can react
+        this.emit('updated', {
+            characteristicName,
+            embeddedId: update.embeddedId,
+            data,
+        });
     }
 
     // Private helper methods

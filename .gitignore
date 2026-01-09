@@ -122,3 +122,8 @@ dist
 /.idea/
 .DS_Store
 test/hbConfig/
+
+# Test files with sensitive data
+test/mobile-tokens.json
+test/*.tokens.json
+*.tokenset

@@ -5,8 +5,8 @@
  */
 
 import * as https from 'node:https';
-import {DAIKIN_OIDC_CONFIG, RateLimitStatus, GatewayDevice} from './daikin-types';
-import {DaikinOAuth} from './daikin-oauth';
+import {DAIKIN_OIDC_CONFIG, RateLimitStatus, GatewayDevice, OAuthProvider} from './daikin-types';
+import {HTTP_STATUS, DEFAULT_RETRY_AFTER_SECONDS, MS_PER_SECOND, MAX_RATE_LIMIT_BLOCK_SECONDS} from '../constants';
 
 export class RateLimitedError extends Error {
     constructor(
@@ -22,7 +22,7 @@ export class DaikinApi {
     private blockedUntil = 0;
 
     constructor(
-        private readonly oauth: DaikinOAuth,
+        private readonly oauth: OAuthProvider,
         private readonly onRateLimitStatus?: (status: RateLimitStatus) => void,
     ) {}
 
@@ -48,10 +48,10 @@ export class DaikinApi {
             remainingDay: DaikinApi.parseHeaderStatic(response.headers['x-ratelimit-remaining-day']),
         };
 
-        if (response.statusCode === 401) {
+        if (response.statusCode === HTTP_STATUS.UNAUTHORIZED) {
             throw new Error('Token expired or invalid');
         }
-        if (response.statusCode === 429) {
+        if (response.statusCode === HTTP_STATUS.TOO_MANY_REQUESTS) {
             throw new Error('Rate limit exceeded');
         }
         if (response.statusCode >= 400) {
@@ -140,7 +140,7 @@ export class DaikinApi {
      * Get time until rate limit is lifted
      */
     getRateLimitRetryAfter(): number {
-        return Math.max(0, Math.ceil((this.blockedUntil - Date.now()) / 1000));
+        return Math.max(0, Math.ceil((this.blockedUntil - Date.now()) / MS_PER_SECOND));
     }
 
     /**
@@ -179,29 +179,29 @@ export class DaikinApi {
 
         // Handle response codes
         switch (response.statusCode) {
-            case 200:
-            case 204:
+            case HTTP_STATUS.OK:
+            case HTTP_STATUS.NO_CONTENT:
                 return response.body ? JSON.parse(response.body) : null;
 
-            case 400:
-                throw new Error(`Bad Request (400): ${response.body || 'No response body'}`);
+            case HTTP_STATUS.BAD_REQUEST:
+                throw new Error(`Bad Request (${HTTP_STATUS.BAD_REQUEST}): ${response.body || 'No response body'}`);
 
-            case 401:
-                throw new Error('Unauthorized (401): Token expired or invalid');
+            case HTTP_STATUS.UNAUTHORIZED:
+                throw new Error(`Unauthorized (${HTTP_STATUS.UNAUTHORIZED}): Token expired or invalid`);
 
-            case 404:
-                throw new Error(`Not Found (404): ${response.body || 'Resource not found'}`);
+            case HTTP_STATUS.NOT_FOUND:
+                throw new Error(`Not Found (${HTTP_STATUS.NOT_FOUND}): ${response.body || 'Resource not found'}`);
 
-            case 409:
-                throw new Error(`Conflict (409): ${response.body || 'Request conflict'}`);
+            case HTTP_STATUS.CONFLICT:
+                throw new Error(`Conflict (${HTTP_STATUS.CONFLICT}): ${response.body || 'Request conflict'}`);
 
-            case 422:
-                throw new Error(`Unprocessable Entity (422): ${response.body || 'Invalid request'}`);
+            case HTTP_STATUS.UNPROCESSABLE_ENTITY:
+                throw new Error(`Unprocessable Entity (${HTTP_STATUS.UNPROCESSABLE_ENTITY}): ${response.body || 'Invalid request'}`);
 
-            case 429: {
-                const retryAfter = this.parseHeader(response.headers['retry-after']) || 60;
-                const blockedFor = Math.min(retryAfter, 86400); // Max 24 hours
-                this.blockedUntil = Date.now() + blockedFor * 1000;
+            case HTTP_STATUS.TOO_MANY_REQUESTS: {
+                const retryAfter = this.parseHeader(response.headers['retry-after']) || DEFAULT_RETRY_AFTER_SECONDS;
+                const blockedFor = Math.min(retryAfter, MAX_RATE_LIMIT_BLOCK_SECONDS);
+                this.blockedUntil = Date.now() + blockedFor * MS_PER_SECOND;
                 throw new RateLimitedError(
                     `Rate limited. Retry after ${retryAfter} seconds.`,
                     blockedFor,

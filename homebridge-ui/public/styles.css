@@ -1003,6 +1003,48 @@ body {
     text-decoration: underline;
 }
 
+/* Settings Subtabs */
+.settings-subtabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    padding: 4px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+}
+
+.subtab-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.subtab-btn:hover {
+    color: var(--text-color);
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.subtab-btn.active {
+    background: var(--bg-color);
+    color: var(--primary-color);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.settings-subtab-content {
+    display: none;
+}
+
+.settings-subtab-content.active {
+    display: block;
+}
+
 /* Utilities */
 .hidden {
     display: none !important;
