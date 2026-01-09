@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/) and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.4] - 2026-01-09
+
+### Fixed
+- Input fields now clearly visible in dark mode with proper background color
+- Focus rings on input fields adapt to dark mode
+- Feature toggle items (WebSocket, etc.) have proper contrast in dark mode
+- Code blocks and URL boxes have correct dark mode styling
+
 ## [1.1.3] - 2026-01-09
 
 ### Fixed
