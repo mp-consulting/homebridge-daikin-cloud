@@ -135,7 +135,11 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
                 if (rateLimitStatus.remainingDay && rateLimitStatus.remainingDay <= RATE_LIMIT_WARNING_THRESHOLD) {
                     this.log.warn(`[Rate Limit] Rate limit almost reached, you only have ${rateLimitStatus.remainingDay} calls left today`);
                 }
-                this.log.debug(`[Rate Limit] Remaining calls today: ${rateLimitStatus.remainingDay}/${rateLimitStatus.limitDay} -- this minute: ${rateLimitStatus.remainingMinute}/${rateLimitStatus.limitMinute}`);
+                // Only show minute limits if available (Developer Portal mode)
+                const minuteInfo = rateLimitStatus.limitMinute !== undefined
+                    ? ` -- this minute: ${rateLimitStatus.remainingMinute}/${rateLimitStatus.limitMinute}`
+                    : '';
+                this.log.debug(`[Rate Limit] Remaining calls today: ${rateLimitStatus.remainingDay}/${rateLimitStatus.limitDay}${minuteInfo}`);
             });
 
             this.controller.on('error', (error) => {
