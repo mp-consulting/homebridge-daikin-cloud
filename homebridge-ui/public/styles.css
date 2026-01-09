@@ -10,12 +10,79 @@
 
     --bg-color: #fff;
     --bg-secondary: #f8f9fa;
+    --bg-tertiary: #e9ecef;
     --text-color: #333;
     --text-muted: #6c757d;
     --border-color: #dee2e6;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     --radius: 8px;
     --radius-lg: 12px;
+
+    --input-bg: #fff;
+    --card-bg: #fff;
+
+    /* Alert backgrounds */
+    --alert-success-bg: #d4edda;
+    --alert-success-text: #155724;
+    --alert-danger-bg: #f8d7da;
+    --alert-danger-text: #721c24;
+    --alert-warning-bg: #fff3cd;
+    --alert-warning-text: #856404;
+    --alert-info-bg: #d1ecf1;
+    --alert-info-text: #0c5460;
+
+    /* Status badge backgrounds */
+    --status-success-bg: #d4edda;
+    --status-danger-bg: #f8d7da;
+    --status-warning-bg: #fff3cd;
+
+    /* Overlay */
+    --overlay-bg: rgba(255, 255, 255, 0.8);
+    --hover-overlay: rgba(0, 0, 0, 0.05);
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --primary-color: #4dabf7;
+        --primary-hover: #74c0fc;
+        --success-color: #51cf66;
+        --success-hover: #69db7c;
+        --warning-color: #fcc419;
+        --danger-color: #ff6b6b;
+        --danger-hover: #fa5252;
+        --info-color: #22b8cf;
+
+        --bg-color: #1a1a1a;
+        --bg-secondary: #2d2d2d;
+        --bg-tertiary: #3d3d3d;
+        --text-color: #e1e1e1;
+        --text-muted: #a0a0a0;
+        --border-color: #404040;
+        --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+        --input-bg: #2d2d2d;
+        --card-bg: #242424;
+
+        /* Alert backgrounds - darker variants */
+        --alert-success-bg: #1e3a1e;
+        --alert-success-text: #a3d9a5;
+        --alert-danger-bg: #3d1f1f;
+        --alert-danger-text: #f5a5a5;
+        --alert-warning-bg: #3d3520;
+        --alert-warning-text: #ffd966;
+        --alert-info-bg: #1a3a4a;
+        --alert-info-text: #7ec8e3;
+
+        /* Status badge backgrounds */
+        --status-success-bg: #1e3a1e;
+        --status-danger-bg: #3d1f1f;
+        --status-warning-bg: #3d3520;
+
+        /* Overlay */
+        --overlay-bg: rgba(0, 0, 0, 0.8);
+        --hover-overlay: rgba(255, 255, 255, 0.05);
+    }
 }
 
 * {
@@ -84,18 +151,18 @@ body {
 }
 
 .status-badge.authenticated {
-    background: #d4edda;
-    color: #155724;
+    background: var(--status-success-bg);
+    color: var(--alert-success-text);
 }
 
 .status-badge.not-authenticated {
-    background: #f8d7da;
-    color: #721c24;
+    background: var(--status-danger-bg);
+    color: var(--alert-danger-text);
 }
 
 .status-badge.expired {
-    background: #fff3cd;
-    color: #856404;
+    background: var(--status-warning-bg);
+    color: var(--alert-warning-text);
 }
 
 .status-indicator {
@@ -138,7 +205,7 @@ body {
 
 .tab-btn:hover {
     color: var(--text-color);
-    background: rgba(0, 0, 0, 0.05);
+    background: var(--hover-overlay);
 }
 
 .tab-btn.active {
@@ -323,7 +390,7 @@ body {
     left: 2px;
     width: 20px;
     height: 20px;
-    background: white;
+    background: var(--bg-color);
     border-radius: 50%;
     box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     transition: transform 0.2s;
@@ -383,18 +450,18 @@ body {
 }
 
 .settings-status.saving {
-    background: #e3f2fd;
-    color: #1565c0;
+    background: var(--alert-info-bg);
+    color: var(--alert-info-text);
 }
 
 .settings-status.saved {
-    background: #e8f5e9;
-    color: #2e7d32;
+    background: var(--alert-success-bg);
+    color: var(--alert-success-text);
 }
 
 .settings-status.error {
-    background: #ffebee;
-    color: #c62828;
+    background: var(--alert-danger-bg);
+    color: var(--alert-danger-text);
 }
 
 /* Feature Toggles List */
@@ -497,7 +564,7 @@ body {
 }
 
 .device-item:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow);
 }
 
 .device-header {
@@ -526,13 +593,13 @@ body {
 }
 
 .device-power.power-on {
-    background: #d4edda;
-    color: #155724;
+    background: var(--status-success-bg);
+    color: var(--alert-success-text);
 }
 
 .device-power.power-off {
-    background: #e2e3e5;
-    color: #6c757d;
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
 }
 
 .device-status {
@@ -545,13 +612,13 @@ body {
 }
 
 .device-status.online {
-    background: #d4edda;
-    color: #155724;
+    background: var(--status-success-bg);
+    color: var(--alert-success-text);
 }
 
 .device-status.offline {
-    background: #f8d7da;
-    color: #721c24;
+    background: var(--status-danger-bg);
+    color: var(--alert-danger-text);
 }
 
 .device-info {
@@ -893,23 +960,23 @@ body {
 }
 
 .alert-info {
-    background: #d1ecf1;
-    color: #0c5460;
+    background: var(--alert-info-bg);
+    color: var(--alert-info-text);
 }
 
 .alert-success {
-    background: #d4edda;
-    color: #155724;
+    background: var(--alert-success-bg);
+    color: var(--alert-success-text);
 }
 
 .alert-warning {
-    background: #fff3cd;
-    color: #856404;
+    background: var(--alert-warning-bg);
+    color: var(--alert-warning-text);
 }
 
 .alert-danger {
-    background: #f8d7da;
-    color: #721c24;
+    background: var(--alert-danger-bg);
+    color: var(--alert-danger-text);
 }
 
 /* States */
@@ -971,7 +1038,7 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(255, 255, 255, 0.8);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1028,13 +1095,13 @@ body {
 
 .subtab-btn:hover {
     color: var(--text-color);
-    background: rgba(255, 255, 255, 0.5);
+    background: var(--hover-overlay);
 }
 
 .subtab-btn.active {
     background: var(--bg-color);
     color: var(--primary-color);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow);
 }
 
 .settings-subtab-content {
