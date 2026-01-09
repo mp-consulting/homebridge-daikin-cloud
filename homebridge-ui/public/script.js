@@ -768,6 +768,9 @@ const Devices = {
         const online = device.online;
         const powerOn = device.powerState === 'on';
         const mode = device.operationMode ? Utils.capitalize(device.operationMode) : '-';
+        const features = device.features?.length
+            ? `<div class="mt-2">${device.features.map(f => `<span class="badge bg-secondary me-1">${f}</span>`).join('')}</div>`
+            : '';
 
         return `
             <div class="list-group-item">
@@ -784,6 +787,7 @@ const Devices = {
                     <span><strong>Mode:</strong> ${Utils.escapeHtml(mode)}</span>
                     <span><strong>Model:</strong> ${Utils.escapeHtml(device.model)}</span>
                 </div>
+                ${features}
             </div>`;
     },
 
