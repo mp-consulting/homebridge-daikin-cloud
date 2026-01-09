@@ -119,13 +119,8 @@ export class DaikinCloudDevice extends EventEmitter {
             value = pathOrValue;
         }
 
-        // Build the characteristic path for the API
-        let characteristic = dataPoint;
-        if (path) {
-            characteristic = `${dataPoint}${path}`;
-        }
-
-        await this.api.updateDevice(this.rawData.id, managementPointId, characteristic, value);
+        // Call API with path in the body (not the URL) - matches mobile app format
+        await this.api.updateDevice(this.rawData.id, managementPointId, dataPoint, value, path);
         this.lastUpdated = new Date();
     }
 

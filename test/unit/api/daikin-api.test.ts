@@ -1,4 +1,4 @@
-import {DaikinApi, RateLimitedError} from '../../../src/api/daikin-api';
+import {DaikinApi, RateLimitedError, ApiTimeoutError} from '../../../src/api/daikin-api';
 import {OAuthProvider, TokenSet} from '../../../src/api/daikin-types';
 import {MAX_RETRY_ATTEMPTS} from '../../../src/constants';
 import * as https from 'node:https';
@@ -192,6 +192,193 @@ describe('DaikinApi', () => {
             await expect(api.getDevices()).rejects.toThrow(
                 'API request blocked due to rate limit',
             );
+        });
+    });
+
+    describe('gateway errors', () => {
+        it('should retry on 504 Gateway Timeout and succeed', async () => {
+            const devices = [{id: 'device-1', managementPoints: []}];
+            let callCount = 0;
+
+            const mockRequest = {
+                on: jest.fn().mockReturnThis(),
+                write: jest.fn(),
+                end: jest.fn(),
+            };
+
+            (https.request as jest.Mock).mockImplementation((options, callback) => {
+                callCount++;
+                // First call returns 504, second returns 200
+                const statusCode = callCount === 1 ? 504 : 200;
+                const body = callCount === 1 ? 'Gateway Timeout' : JSON.stringify(devices);
+
+                const mockResponse = {
+                    statusCode,
+                    headers: {},
+                    on: jest.fn((event, cb) => {
+                        if (event === 'data') {
+                            cb(body);
+                        }
+                        if (event === 'end') {
+                            cb();
+                        }
+                        return mockResponse;
+                    }),
+                };
+                callback(mockResponse);
+                return mockRequest;
+            });
+
+            const api = new DaikinApi(mockOAuth);
+            const result = await runWithTimers(api.getDevices());
+
+            expect(result).toEqual(devices);
+            expect(https.request).toHaveBeenCalledTimes(2);
+        });
+
+        it('should retry on 502 Bad Gateway and succeed', async () => {
+            const devices = [{id: 'device-1', managementPoints: []}];
+            let callCount = 0;
+
+            const mockRequest = {
+                on: jest.fn().mockReturnThis(),
+                write: jest.fn(),
+                end: jest.fn(),
+            };
+
+            (https.request as jest.Mock).mockImplementation((options, callback) => {
+                callCount++;
+                const statusCode = callCount === 1 ? 502 : 200;
+                const body = callCount === 1 ? 'Bad Gateway' : JSON.stringify(devices);
+
+                const mockResponse = {
+                    statusCode,
+                    headers: {},
+                    on: jest.fn((event, cb) => {
+                        if (event === 'data') {
+                            cb(body);
+                        }
+                        if (event === 'end') {
+                            cb();
+                        }
+                        return mockResponse;
+                    }),
+                };
+                callback(mockResponse);
+                return mockRequest;
+            });
+
+            const api = new DaikinApi(mockOAuth);
+            const result = await runWithTimers(api.getDevices());
+
+            expect(result).toEqual(devices);
+            expect(https.request).toHaveBeenCalledTimes(2);
+        });
+
+        it('should retry on 503 Service Unavailable and succeed', async () => {
+            const devices = [{id: 'device-1', managementPoints: []}];
+            let callCount = 0;
+
+            const mockRequest = {
+                on: jest.fn().mockReturnThis(),
+                write: jest.fn(),
+                end: jest.fn(),
+            };
+
+            (https.request as jest.Mock).mockImplementation((options, callback) => {
+                callCount++;
+                const statusCode = callCount === 1 ? 503 : 200;
+                const body = callCount === 1 ? 'Service Unavailable' : JSON.stringify(devices);
+
+                const mockResponse = {
+                    statusCode,
+                    headers: {},
+                    on: jest.fn((event, cb) => {
+                        if (event === 'data') {
+                            cb(body);
+                        }
+                        if (event === 'end') {
+                            cb();
+                        }
+                        return mockResponse;
+                    }),
+                };
+                callback(mockResponse);
+                return mockRequest;
+            });
+
+            const api = new DaikinApi(mockOAuth);
+            const result = await runWithTimers(api.getDevices());
+
+            expect(result).toEqual(devices);
+            expect(https.request).toHaveBeenCalledTimes(2);
+        });
+
+        it('should throw ApiTimeoutError after exhausting retries on 504', async () => {
+            // Always return 504
+            mockHttpsRequest(504, 'Gateway Timeout');
+
+            const api = new DaikinApi(mockOAuth);
+
+            // Temporarily override sleep to be instant for testing
+            (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
+
+            await expect(api.getDevices()).rejects.toThrow(ApiTimeoutError);
+            // Initial request + MAX_RETRY_ATTEMPTS retries
+            expect(https.request).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS + 1);
+        });
+
+        it('should include status code and attempts in ApiTimeoutError', async () => {
+            mockHttpsRequest(504, 'Gateway Timeout');
+
+            const api = new DaikinApi(mockOAuth);
+            (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
+
+            try {
+                await api.getDevices();
+                fail('Expected ApiTimeoutError to be thrown');
+            } catch (error) {
+                expect(error).toBeInstanceOf(ApiTimeoutError);
+                const timeoutError = error as ApiTimeoutError;
+                expect(timeoutError.statusCode).toBe(504);
+                expect(timeoutError.attemptsMade).toBe(MAX_RETRY_ATTEMPTS + 1);
+                expect(timeoutError.message).toContain('Gateway Timeout');
+                expect(timeoutError.message).toContain('504');
+            }
+        });
+
+        it('should throw ApiTimeoutError with correct name for 502', async () => {
+            mockHttpsRequest(502, 'Bad Gateway');
+
+            const api = new DaikinApi(mockOAuth);
+            (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
+
+            try {
+                await api.getDevices();
+                fail('Expected ApiTimeoutError to be thrown');
+            } catch (error) {
+                expect(error).toBeInstanceOf(ApiTimeoutError);
+                const timeoutError = error as ApiTimeoutError;
+                expect(timeoutError.statusCode).toBe(502);
+                expect(timeoutError.message).toContain('Bad Gateway');
+            }
+        });
+
+        it('should throw ApiTimeoutError with correct name for 503', async () => {
+            mockHttpsRequest(503, 'Service Unavailable');
+
+            const api = new DaikinApi(mockOAuth);
+            (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
+
+            try {
+                await api.getDevices();
+                fail('Expected ApiTimeoutError to be thrown');
+            } catch (error) {
+                expect(error).toBeInstanceOf(ApiTimeoutError);
+                const timeoutError = error as ApiTimeoutError;
+                expect(timeoutError.statusCode).toBe(503);
+                expect(timeoutError.message).toContain('Service Unavailable');
+            }
         });
     });
 });

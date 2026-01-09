@@ -26,6 +26,17 @@ export class RateLimitedError extends Error {
     }
 }
 
+export class ApiTimeoutError extends Error {
+    constructor(
+        message: string,
+        public readonly statusCode: number,
+        public readonly attemptsMade: number,
+    ) {
+        super(message);
+        this.name = 'ApiTimeoutError';
+    }
+}
+
 export class DaikinApi {
     private blockedUntil = 0;
     private isRefreshing = false;
@@ -127,15 +138,24 @@ export class DaikinApi {
 
     /**
      * Update device data (PATCH request)
+     *
+     * @param deviceId - The device ID
+     * @param embeddedId - The management point embedded ID (e.g., 'climateControl')
+     * @param dataPoint - The data point/characteristic name (e.g., 'temperatureControl')
+     * @param value - The value to set
+     * @param dataPath - Optional path within the data point (e.g., '/operationModes/heating/setpoints/roomTemperature')
      */
     async updateDevice(
         deviceId: string,
         embeddedId: string,
         dataPoint: string,
         value: unknown,
+        dataPath?: string,
     ): Promise<void> {
-        const path = `/v1/gateway-devices/${deviceId}/management-points/${embeddedId}/characteristics/${dataPoint}`;
-        await this.request(path, 'PATCH', {value});
+        const urlPath = `/v1/gateway-devices/${deviceId}/management-points/${embeddedId}/characteristics/${dataPoint}`;
+        // Include path in body if provided (matches mobile app format)
+        const body = dataPath ? {value, path: dataPath} : {value};
+        await this.request(urlPath, 'PATCH', body);
     }
 
     /**
@@ -166,6 +186,22 @@ export class DaikinApi {
      */
     private sleep(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Get human-readable name for gateway error status codes
+     */
+    private getGatewayErrorName(statusCode: number): string {
+        switch (statusCode) {
+            case HTTP_STATUS.BAD_GATEWAY:
+                return 'Bad Gateway';
+            case HTTP_STATUS.SERVICE_UNAVAILABLE:
+                return 'Service Unavailable';
+            case HTTP_STATUS.GATEWAY_TIMEOUT:
+                return 'Gateway Timeout';
+            default:
+                return 'Gateway Error';
+        }
     }
 
     /**
@@ -248,6 +284,24 @@ export class DaikinApi {
                     `Rate limited. Retry after ${retryAfter} seconds.`,
                     blockedFor,
                 );
+            }
+
+            case HTTP_STATUS.BAD_GATEWAY:
+            case HTTP_STATUS.SERVICE_UNAVAILABLE:
+            case HTTP_STATUS.GATEWAY_TIMEOUT: {
+                const errorName = this.getGatewayErrorName(response.statusCode);
+                // If we've exhausted retries, throw ApiTimeoutError
+                if (retryCount >= MAX_RETRY_ATTEMPTS) {
+                    throw new ApiTimeoutError(
+                        `${errorName} (${response.statusCode}): The Daikin API is temporarily unavailable after ${retryCount + 1} attempts.`,
+                        response.statusCode,
+                        retryCount + 1,
+                    );
+                }
+                // Retry with exponential backoff
+                const delay = this.getRetryDelay(retryCount);
+                await this.sleep(delay);
+                return this.request<T>(path, method, body, retryCount + 1);
             }
 
             default:

@@ -87,6 +87,9 @@ export const HTTP_STATUS = {
     CONFLICT: 409,
     UNPROCESSABLE_ENTITY: 422,
     TOO_MANY_REQUESTS: 429,
+    BAD_GATEWAY: 502,
+    SERVICE_UNAVAILABLE: 503,
+    GATEWAY_TIMEOUT: 504,
 } as const;
 
 /** Maximum rate limit block duration (24 hours in seconds) */
