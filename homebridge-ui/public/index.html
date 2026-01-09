@@ -5,508 +5,541 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
+    <div class="container-fluid p-3">
         <!-- Header with Status -->
-        <div class="header">
-            <div class="header-title">
-                <h1>Daikin Cloud</h1>
-                <span class="status-badge" id="status-badge">
-                    <span class="status-indicator" id="status-indicator"></span>
+        <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
+            <div class="d-flex align-items-center gap-3">
+                <h4 class="mb-0">Daikin Cloud</h4>
+                <span class="badge" id="status-badge">
+                    <span class="status-dot" id="status-indicator"></span>
                     <span id="status-text">Checking...</span>
                 </span>
             </div>
-            <div class="header-info" id="header-info">
-                <span id="token-expires-label" class="hidden">Token expires in: </span>
-                <span id="token-expires" class="token-countdown"></span>
+            <div class="text-muted small" id="header-info">
+                <span id="token-expires-label" class="d-none">Token expires in: </span>
+                <span id="token-expires" class="fw-medium"></span>
             </div>
         </div>
 
         <!-- Tab Navigation -->
-        <div class="tab-nav">
-            <button class="tab-btn active" data-tab="devices" onclick="switchTab('devices')">
-                <span class="tab-icon">📱</span>
-                <span class="tab-label">Devices</span>
-            </button>
-            <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
-                <span class="tab-icon">⚙️</span>
-                <span class="tab-label">Settings</span>
-            </button>
-            <button class="tab-btn" data-tab="auth" onclick="switchTab('auth')">
-                <span class="tab-icon">🔐</span>
-                <span class="tab-label">Authentication</span>
-            </button>
-            <button class="tab-btn" data-tab="help" onclick="switchTab('help')">
-                <span class="tab-icon">❓</span>
-                <span class="tab-label">Help</span>
-            </button>
-        </div>
+        <ul class="nav nav-pills mb-3" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" data-tab="devices" onclick="switchTab('devices')">
+                    Devices
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-tab="settings" onclick="switchTab('settings')">
+                    Settings
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-tab="auth" onclick="switchTab('auth')">
+                    Authentication
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-tab="help" onclick="switchTab('help')">
+                    Help
+                </button>
+            </li>
+        </ul>
 
         <!-- Tab Content -->
         <div class="tab-content">
             <!-- Devices Tab -->
-            <div class="tab-panel active" id="tab-devices">
-                <div class="panel-header">
-                    <h2>Discovered Devices</h2>
-                    <button class="btn btn-sm btn-outline" onclick="refreshDevices()" id="btn-refresh-devices">
+            <div class="tab-pane active" id="tab-devices">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Discovered Devices</h5>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="refreshDevices()" id="btn-refresh-devices">
                         Refresh
                     </button>
                 </div>
-                <div id="devices-loading" class="loading-state">
-                    <div class="spinner"></div>
-                    <p>Loading devices...</p>
+                <div id="devices-loading" class="text-center py-5 text-muted">
+                    <div class="spinner-border spinner-border-sm mb-2" role="status"></div>
+                    <p class="mb-0">Loading devices...</p>
                 </div>
-                <div id="devices-list" class="devices-grid"></div>
-                <div id="devices-empty" class="empty-state hidden">
-                    <div class="empty-icon">📱</div>
-                    <p>No devices found</p>
-                    <p class="text-muted">Make sure you're authenticated and your Daikin devices are set up in the Onecta app.</p>
+                <div id="devices-list" class="row g-3"></div>
+                <div id="devices-empty" class="text-center py-5 d-none">
+                    <div class="fs-1 mb-2 opacity-50">📱</div>
+                    <p class="mb-1">No devices found</p>
+                    <p class="text-muted small">Make sure you're authenticated and your Daikin devices are set up in the Onecta app.</p>
                 </div>
-                <div id="devices-error" class="alert alert-danger hidden"></div>
+                <div id="devices-error" class="alert alert-danger d-none"></div>
             </div>
 
             <!-- Settings Tab -->
-            <div class="tab-panel" id="tab-settings">
-                <div class="panel-header">
-                    <h2>Plugin Settings</h2>
-                    <span id="settings-status" class="settings-status hidden"></span>
+            <div class="tab-pane" id="tab-settings">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Plugin Settings</h5>
+                    <span id="settings-status" class="badge d-none"></span>
                 </div>
 
                 <!-- Settings Sub-tabs -->
-                <div class="settings-subtabs">
-                    <button class="subtab-btn active" data-subtab="features" onclick="switchSettingsSubtab('features')">
-                        Features
-                    </button>
-                    <button class="subtab-btn" data-subtab="polling" onclick="switchSettingsSubtab('polling')">
-                        Polling
-                    </button>
-                    <button class="subtab-btn" data-subtab="network" onclick="switchSettingsSubtab('network')">
-                        Network
-                    </button>
-                    <button class="subtab-btn" data-subtab="devices" onclick="switchSettingsSubtab('devices')">
-                        Devices
-                    </button>
-                </div>
+                <ul class="nav nav-tabs nav-fill mb-3">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-subtab="features" onclick="switchSettingsSubtab('features')">Features</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-subtab="polling" onclick="switchSettingsSubtab('polling')">Polling</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-subtab="network" onclick="switchSettingsSubtab('network')">Network</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-subtab="devices" onclick="switchSettingsSubtab('devices')">Devices</button>
+                    </li>
+                </ul>
 
                 <!-- Features Subtab -->
-                <div class="settings-subtab-content active" id="subtab-features">
-                    <div class="settings-section">
-                        <h3>Extra Features in HomeKit</h3>
-                        <div class="form-hint" style="margin-bottom: 12px;">Enable switches for additional modes in HomeKit</div>
-                        <div class="feature-toggles-list">
-                            <div class="feature-toggle-item">
-                                <div class="feature-toggle-info">
-                                    <span class="feature-toggle-name">Powerful Mode</span>
-                                    <span class="feature-toggle-desc">Boost heating/cooling performance</span>
+                <div class="settings-subtab-content" id="subtab-features">
+                    <div class="card">
+                        <div class="card-header">Extra Features in HomeKit</div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">Enable switches for additional modes in HomeKit</p>
+                            <div class="list-group list-group-flush">
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-medium">Powerful Mode</div>
+                                        <small class="text-muted">Boost heating/cooling performance</small>
+                                    </div>
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="showPowerfulMode">
+                                    </div>
                                 </div>
-                                <label class="toggle-label" style="margin: 0;">
-                                    <input type="checkbox" id="showPowerfulMode" class="toggle-input feature-toggle">
-                                    <span class="toggle-switch"></span>
-                                </label>
-                            </div>
-                            <div class="feature-toggle-item">
-                                <div class="feature-toggle-info">
-                                    <span class="feature-toggle-name">Econo Mode</span>
-                                    <span class="feature-toggle-desc">Energy-saving operation</span>
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-medium">Econo Mode</div>
+                                        <small class="text-muted">Energy-saving operation</small>
+                                    </div>
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="showEconoMode">
+                                    </div>
                                 </div>
-                                <label class="toggle-label" style="margin: 0;">
-                                    <input type="checkbox" id="showEconoMode" class="toggle-input feature-toggle">
-                                    <span class="toggle-switch"></span>
-                                </label>
-                            </div>
-                            <div class="feature-toggle-item">
-                                <div class="feature-toggle-info">
-                                    <span class="feature-toggle-name">Streamer Mode</span>
-                                    <span class="feature-toggle-desc">Air purification</span>
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-medium">Streamer Mode</div>
+                                        <small class="text-muted">Air purification</small>
+                                    </div>
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="showStreamerMode">
+                                    </div>
                                 </div>
-                                <label class="toggle-label" style="margin: 0;">
-                                    <input type="checkbox" id="showStreamerMode" class="toggle-input feature-toggle">
-                                    <span class="toggle-switch"></span>
-                                </label>
-                            </div>
-                            <div class="feature-toggle-item">
-                                <div class="feature-toggle-info">
-                                    <span class="feature-toggle-name">Outdoor Silent Mode</span>
-                                    <span class="feature-toggle-desc">Reduce outdoor unit noise</span>
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-medium">Outdoor Silent Mode</div>
+                                        <small class="text-muted">Reduce outdoor unit noise</small>
+                                    </div>
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="showOutdoorSilentMode">
+                                    </div>
                                 </div>
-                                <label class="toggle-label" style="margin: 0;">
-                                    <input type="checkbox" id="showOutdoorSilentMode" class="toggle-input feature-toggle">
-                                    <span class="toggle-switch"></span>
-                                </label>
-                            </div>
-                            <div class="feature-toggle-item">
-                                <div class="feature-toggle-info">
-                                    <span class="feature-toggle-name">Indoor Silent Mode</span>
-                                    <span class="feature-toggle-desc">Quiet fan operation</span>
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-medium">Indoor Silent Mode</div>
+                                        <small class="text-muted">Quiet fan operation</small>
+                                    </div>
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="showIndoorSilentMode">
+                                    </div>
                                 </div>
-                                <label class="toggle-label" style="margin: 0;">
-                                    <input type="checkbox" id="showIndoorSilentMode" class="toggle-input feature-toggle">
-                                    <span class="toggle-switch"></span>
-                                </label>
-                            </div>
-                            <div class="feature-toggle-item">
-                                <div class="feature-toggle-info">
-                                    <span class="feature-toggle-name">Dry Mode</span>
-                                    <span class="feature-toggle-desc">Dehumidification</span>
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-medium">Dry Mode</div>
+                                        <small class="text-muted">Dehumidification</small>
+                                    </div>
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="showDryMode">
+                                    </div>
                                 </div>
-                                <label class="toggle-label" style="margin: 0;">
-                                    <input type="checkbox" id="showDryMode" class="toggle-input feature-toggle">
-                                    <span class="toggle-switch"></span>
-                                </label>
-                            </div>
-                            <div class="feature-toggle-item">
-                                <div class="feature-toggle-info">
-                                    <span class="feature-toggle-name">Fan Only Mode</span>
-                                    <span class="feature-toggle-desc">Fan without heating/cooling</span>
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-medium">Fan Only Mode</div>
+                                        <small class="text-muted">Fan without heating/cooling</small>
+                                    </div>
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" id="showFanOnlyMode">
+                                    </div>
                                 </div>
-                                <label class="toggle-label" style="margin: 0;">
-                                    <input type="checkbox" id="showFanOnlyMode" class="toggle-input feature-toggle">
-                                    <span class="toggle-switch"></span>
-                                </label>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Polling Subtab -->
-                <div class="settings-subtab-content" id="subtab-polling">
-                    <div class="settings-section">
-                        <h3>Polling & Updates</h3>
-                        <div class="form-group">
-                            <label class="form-label">Update Interval (minutes)</label>
-                            <input type="number" class="form-input" id="updateIntervalInMinutes" min="1" max="60" value="15"
-                                   placeholder="15 (recommended for Developer Portal)"
-                                   title="Developer Portal: 15+ min recommended (200 calls/day)">
-                            <div class="form-hint">Developer Portal: 15+ min | Mobile App: 1-5 min</div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Force Update Delay (seconds)</label>
-                            <input type="number" class="form-input" id="forceUpdateDelay" min="5" max="300" value="60"
-                                   placeholder="60 (recommended for Developer Portal)"
-                                   title="Developer Portal: 60s recommended">
-                            <div class="form-hint">Developer Portal: 60s | Mobile App: 10s</div>
-                        </div>
-                        <div class="form-group" id="websocket-setting-row" style="display: none;">
-                            <div class="feature-toggle-item" style="background: none; padding: 0;">
-                                <div class="feature-toggle-info">
-                                    <span class="feature-toggle-name">Enable WebSocket</span>
-                                    <span class="feature-toggle-desc">Real-time updates (Mobile App only)</span>
+                <div class="settings-subtab-content d-none" id="subtab-polling">
+                    <div class="card">
+                        <div class="card-header">Polling & Updates</div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label" for="updateIntervalInMinutes">Update Interval (minutes)</label>
+                                <input type="number" class="form-control" id="updateIntervalInMinutes" min="1" max="60" value="15"
+                                       placeholder="15 (recommended for Developer Portal)">
+                                <div class="form-text">Developer Portal: 15+ min | Mobile App: 1-5 min</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="forceUpdateDelay">Force Update Delay (seconds)</label>
+                                <input type="number" class="form-control" id="forceUpdateDelay" min="5" max="300" value="60"
+                                       placeholder="60 (recommended for Developer Portal)">
+                                <div class="form-text">Developer Portal: 60s | Mobile App: 10s</div>
+                            </div>
+                            <div class="mb-0 d-none" id="websocket-setting-row">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="enableWebSocket" checked>
+                                    <label class="form-check-label" for="enableWebSocket">
+                                        <span class="fw-medium">Enable WebSocket</span>
+                                        <br><small class="text-muted">Real-time updates (Mobile App only)</small>
+                                    </label>
                                 </div>
-                                <label class="toggle-label" style="margin: 0;">
-                                    <input type="checkbox" id="enableWebSocket" class="toggle-input" checked>
-                                    <span class="toggle-switch"></span>
-                                </label>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Network Subtab -->
-                <div class="settings-subtab-content" id="subtab-network">
-                    <div class="settings-section">
-                        <h3>Network Settings</h3>
-                        <div class="form-group">
-                            <label class="form-label">OIDC Callback Bind Address</label>
-                            <input type="text" class="form-input" id="oidcCallbackServerBindAddr" placeholder="0.0.0.0" value="0.0.0.0"
-                                   pattern="^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$">
-                            <div class="form-hint">IPv4 address for OAuth callback server (use 0.0.0.0 for all interfaces)</div>
+                <div class="settings-subtab-content d-none" id="subtab-network">
+                    <div class="card">
+                        <div class="card-header">Network Settings</div>
+                        <div class="card-body">
+                            <div class="mb-0">
+                                <label class="form-label" for="oidcCallbackServerBindAddr">OIDC Callback Bind Address</label>
+                                <input type="text" class="form-control" id="oidcCallbackServerBindAddr" placeholder="0.0.0.0" value="0.0.0.0"
+                                       pattern="^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$">
+                                <div class="form-text">IPv4 address for OAuth callback server (use 0.0.0.0 for all interfaces)</div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Devices Subtab -->
-                <div class="settings-subtab-content" id="subtab-devices">
-                    <div class="settings-section">
-                        <h3>Device Visibility in HomeKit</h3>
-                        <div class="form-hint" style="margin-bottom: 12px;">Toggle devices to show or hide them in HomeKit</div>
-                        <div id="device-toggles-loading" class="loading-state" style="padding: 20px;">
-                            <div class="spinner"></div>
-                            <p>Loading devices...</p>
-                        </div>
-                        <div id="device-toggles-list" class="device-toggles-list"></div>
-                        <div id="device-toggles-empty" class="hidden" style="text-align: center; padding: 20px; color: var(--text-muted);">
-                            <p>No devices found. Authenticate first to see your devices.</p>
+                <div class="settings-subtab-content d-none" id="subtab-devices">
+                    <div class="card">
+                        <div class="card-header">Device Visibility in HomeKit</div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">Toggle devices to show or hide them in HomeKit</p>
+                            <div id="device-toggles-loading" class="text-center py-4">
+                                <div class="spinner-border spinner-border-sm mb-2" role="status"></div>
+                                <p class="mb-0 text-muted">Loading devices...</p>
+                            </div>
+                            <div id="device-toggles-list" class="list-group list-group-flush"></div>
+                            <div id="device-toggles-empty" class="text-center py-4 text-muted d-none">
+                                <p class="mb-0">No devices found. Authenticate first to see your devices.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Authentication Tab -->
-            <div class="tab-panel" id="tab-auth">
-                <div class="panel-header">
-                    <h2>Authentication</h2>
-                </div>
+            <div class="tab-pane" id="tab-auth">
+                <h5 class="mb-3">Authentication</h5>
 
                 <!-- Auth Mode Selector -->
-                <div class="auth-mode-selector" style="margin-bottom: 20px;">
-                    <div class="form-group">
-                        <label class="form-label">Authentication Method</label>
-                        <select class="form-input" id="authMode" onchange="onAuthModeChange()">
-                            <option value="developer_portal">Developer Portal (200 API calls/day)</option>
-                            <option value="mobile_app">Mobile App (5000 API calls/day + WebSocket)</option>
-                        </select>
-                        <div class="form-hint" id="auth-mode-hint">
-                            Requires API credentials from the Daikin Developer Portal
-                        </div>
+                <div class="mb-3">
+                    <label class="form-label" for="authMode">Authentication Method</label>
+                    <select class="form-select" id="authMode" onchange="onAuthModeChange()">
+                        <option value="developer_portal">Developer Portal (200 API calls/day)</option>
+                        <option value="mobile_app">Mobile App (5000 API calls/day + WebSocket)</option>
+                    </select>
+                    <div class="form-text" id="auth-mode-hint">
+                        Requires API credentials from the Daikin Developer Portal
                     </div>
                 </div>
 
                 <!-- Auth Status -->
-                <div class="auth-status-card" id="auth-status-card">
-                    <div class="auth-status-header">
-                        <div class="auth-status-info">
-                            <span class="auth-status-label">Status</span>
-                            <span class="auth-status-value" id="auth-status">Loading...</span>
-                        </div>
-                        <div class="auth-status-info" id="auth-mode-display">
-                            <span class="auth-status-label">Mode</span>
-                            <span class="auth-status-value" id="auth-mode-text">Developer Portal</span>
-                        </div>
-                        <div class="auth-status-info" id="expires-row" style="display: none;">
-                            <span class="auth-status-label">Expires</span>
-                            <span class="auth-status-value" id="auth-token-expires">-</span>
-                        </div>
-                    </div>
-                    <div class="auth-actions">
-                        <button class="btn btn-success" id="btn-test" onclick="testConnection()">
-                            Test Connection
-                        </button>
-                        <button class="btn btn-primary" id="btn-authenticate" onclick="showWizard()">
-                            Authenticate
-                        </button>
-                        <button class="btn btn-primary" id="btn-authenticate-mobile" onclick="showMobileAuthForm()" style="display: none;">
-                            Configure Credentials
-                        </button>
-                        <button class="btn btn-danger" id="btn-revoke" onclick="revokeAuth()" style="display: none;">
-                            Revoke Access
-                        </button>
-                    </div>
-                    <div id="test-result" class="alert hidden"></div>
-                </div>
-
-                <!-- Mobile App Authentication Form (hidden by default) -->
-                <div class="mobile-auth-form hidden" id="mobile-auth-form">
-                    <div class="alert alert-info">
-                        <strong>Mobile App Authentication</strong><br>
-                        Use your Daikin Onecta account credentials (same as the mobile app).<br>
-                        <small>Benefits: 5000 API calls/day + real-time WebSocket updates</small>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Daikin Account Email *</label>
-                            <input type="email" class="form-input" id="daikinEmail" placeholder="your@email.com">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Daikin Account Password *</label>
-                            <input type="password" class="form-input" id="daikinPassword" placeholder="Enter your password">
-                        </div>
-                    </div>
-
-                    <div id="mobile-auth-errors" class="alert alert-danger hidden"></div>
-                    <div id="mobile-auth-success" class="alert alert-success hidden"></div>
-
-                    <div class="wizard-actions">
-                        <button class="btn btn-outline" onclick="hideMobileAuthForm()">Cancel</button>
-                        <button class="btn btn-primary" id="btn-test-mobile-auth" onclick="testMobileAuth()">
-                            Test & Save Credentials
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Setup Wizard for Developer Portal (hidden by default) -->
-                <div class="wizard hidden" id="wizard">
-                    <div class="wizard-steps">
-                        <div class="wizard-step active" id="step-1">
-                            <span class="wizard-step-number">1</span>
-                            <span class="wizard-step-label">Configure</span>
-                        </div>
-                        <div class="wizard-step" id="step-2">
-                            <span class="wizard-step-number">2</span>
-                            <span class="wizard-step-label">Authorize</span>
-                        </div>
-                        <div class="wizard-step" id="step-3">
-                            <span class="wizard-step-number">3</span>
-                            <span class="wizard-step-label">Complete</span>
-                        </div>
-                    </div>
-
-                    <!-- Step 1: Configuration -->
-                    <div class="wizard-content active" id="content-1">
-                        <div class="alert alert-info">
-                            Get your credentials from the
-                            <a href="https://developer.cloud.daikineurope.com/" target="_blank" class="link">Daikin Developer Portal</a>.
-                            <br><small><strong>Redirect URI:</strong> <code>https://&lt;address&gt;:&lt;port&gt;</code> (e.g., <code>https://192.168.1.100:8582</code>)</small>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Client ID *</label>
-                                <input type="text" class="form-input" id="clientId" placeholder="Enter your Client ID">
+                <div class="card mb-3" id="auth-status-card">
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-auto">
+                                <div class="text-muted small text-uppercase">Status</div>
+                                <div class="fw-semibold" id="auth-status">Loading...</div>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Client Secret *</label>
-                                <input type="password" class="form-input" id="clientSecret" placeholder="Enter your Client Secret">
+                            <div class="col-auto" id="auth-mode-display">
+                                <div class="text-muted small text-uppercase">Mode</div>
+                                <div class="fw-semibold" id="auth-mode-text">Developer Portal</div>
+                            </div>
+                            <div class="col-auto d-none" id="expires-row">
+                                <div class="text-muted small text-uppercase">Expires</div>
+                                <div class="fw-semibold" id="auth-token-expires">-</div>
                             </div>
                         </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Callback Server Address *</label>
-                                <input type="text" class="form-input" id="callbackServerExternalAddress" placeholder="Auto-detecting...">
-                                <div class="form-hint">Your Homebridge server's IP (auto-detected, do not use .local domains)</div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Callback Server Port</label>
-                                <input type="number" class="form-input" id="callbackServerPort" placeholder="8582" value="8582" min="1" max="65535">
-                            </div>
-                        </div>
-
-                        <div id="validation-errors" class="alert alert-danger hidden"></div>
-
-                        <div class="wizard-actions">
-                            <button class="btn btn-outline" onclick="hideWizard()">Cancel</button>
-                            <button class="btn btn-primary" onclick="validateAndProceed()">Continue</button>
-                        </div>
-                    </div>
-
-                    <!-- Step 2: Authorize -->
-                    <div class="wizard-content" id="content-2">
-                        <div class="alert alert-info">
-                            Click the button below to open the Daikin login page and authenticate with your account.
-                        </div>
-
-                        <div id="auth-url-container" class="hidden">
-                            <label class="form-label">Authorization URL:</label>
-                            <div class="url-box" id="auth-url"></div>
-                            <div class="form-hint">If the button doesn't work, copy this URL manually.</div>
-                        </div>
-
-                        <div class="wizard-actions" style="margin-bottom: 20px;">
-                            <button class="btn btn-outline" onclick="goToStep(1)">Back</button>
-                            <button class="btn btn-primary" id="btn-open-auth" onclick="openAuthUrl()">
-                                Open Daikin Login
+                        <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-success" id="btn-test" onclick="testConnection()">
+                                Test Connection
+                            </button>
+                            <button class="btn btn-primary" id="btn-authenticate" onclick="showWizard()">
+                                Authenticate
+                            </button>
+                            <button class="btn btn-primary d-none" id="btn-authenticate-mobile" onclick="showMobileAuthForm()">
+                                Configure Credentials
+                            </button>
+                            <button class="btn btn-danger d-none" id="btn-revoke" onclick="revokeAuth()">
+                                Revoke Access
                             </button>
                         </div>
+                        <div id="test-result" class="alert mt-3 mb-0 d-none"></div>
+                    </div>
+                </div>
 
-                        <!-- Automatic callback status -->
-                        <div id="callback-server-status" class="hidden">
-                            <div class="alert alert-success">
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <div class="spinner" style="width: 16px; height: 16px;"></div>
-                                    <span><strong>Waiting for authentication...</strong></span>
-                                </div>
-                                <p style="margin: 10px 0 0 26px;">Complete the login in the new window. This page will update automatically.</p>
+                <!-- Mobile App Authentication Form -->
+                <div class="card d-none" id="mobile-auth-form">
+                    <div class="card-body">
+                        <div class="alert alert-info">
+                            <strong>Mobile App Authentication</strong><br>
+                            Use your Daikin Onecta account credentials (same as the mobile app).<br>
+                            <small>Benefits: 5000 API calls/day + real-time WebSocket updates</small>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="daikinEmail">Daikin Account Email *</label>
+                                <input type="email" class="form-control" id="daikinEmail" placeholder="your@email.com">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="daikinPassword">Daikin Account Password *</label>
+                                <input type="password" class="form-control" id="daikinPassword" placeholder="Enter your password">
                             </div>
                         </div>
 
-                        <!-- Manual fallback section -->
-                        <div id="manual-callback-section">
-                            <details id="manual-callback-details">
-                                <summary style="cursor: pointer; padding: 10px 0; color: var(--text-muted);">
-                                    <strong>Manual entry (if automatic redirect fails)</strong>
-                                </summary>
-                                <div style="padding-top: 10px;">
-                                    <div class="alert alert-warning">
-                                        If you see an error page after login, copy the <strong>full URL</strong> from your browser's address bar and paste it below.
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label">Callback URL</label>
-                                        <input type="text" class="form-input" id="callbackUrl" placeholder="Paste the full URL from your browser (https://...?code=...)">
-                                        <div class="form-hint">The URL should contain <code>?code=</code> parameter</div>
-                                    </div>
-                                    <div class="wizard-actions">
-                                        <button class="btn btn-success" onclick="submitCallbackUrl()">Complete Authentication</button>
-                                    </div>
-                                </div>
-                            </details>
+                        <div id="mobile-auth-errors" class="alert alert-danger d-none"></div>
+                        <div id="mobile-auth-success" class="alert alert-success d-none"></div>
+
+                        <div class="d-flex gap-2 justify-content-end">
+                            <button class="btn btn-outline-secondary" onclick="hideMobileAuthForm()">Cancel</button>
+                            <button class="btn btn-primary" id="btn-test-mobile-auth" onclick="testMobileAuth()">
+                                Test & Save Credentials
+                            </button>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Step 3: Complete -->
-                    <div class="wizard-content" id="content-3">
-                        <div class="success-state">
-                            <div class="success-icon">✓</div>
-                            <h3>Authentication Successful!</h3>
-                            <p id="success-message">Your Daikin Cloud account is now connected.</p>
+                <!-- Setup Wizard for Developer Portal -->
+                <div class="card d-none" id="wizard">
+                    <div class="card-body">
+                        <!-- Wizard Steps -->
+                        <div class="d-flex justify-content-between mb-4 position-relative wizard-steps">
+                            <div class="wizard-step active" id="step-1">
+                                <span class="wizard-step-number">1</span>
+                                <span class="wizard-step-label">Configure</span>
+                            </div>
+                            <div class="wizard-step" id="step-2">
+                                <span class="wizard-step-number">2</span>
+                                <span class="wizard-step-label">Authorize</span>
+                            </div>
+                            <div class="wizard-step" id="step-3">
+                                <span class="wizard-step-number">3</span>
+                                <span class="wizard-step-label">Complete</span>
+                            </div>
                         </div>
 
-                        <div class="alert alert-info">
-                            <strong>Next Steps:</strong>
-                            <ol>
-                                <li>Save your plugin configuration</li>
-                                <li>Restart Homebridge to apply changes</li>
-                                <li>Your Daikin devices will appear in HomeKit</li>
-                            </ol>
+                        <!-- Step 1: Configuration -->
+                        <div class="wizard-content" id="content-1">
+                            <div class="alert alert-info">
+                                Get your credentials from the
+                                <a href="https://developer.cloud.daikineurope.com/" target="_blank">Daikin Developer Portal</a>.
+                                <br><small><strong>Redirect URI:</strong> <code>https://&lt;address&gt;:&lt;port&gt;</code></small>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label" for="clientId">Client ID *</label>
+                                    <input type="text" class="form-control" id="clientId" placeholder="Enter your Client ID">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label" for="clientSecret">Client Secret *</label>
+                                    <input type="password" class="form-control" id="clientSecret" placeholder="Enter your Client Secret">
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label" for="callbackServerExternalAddress">Callback Server Address *</label>
+                                    <input type="text" class="form-control" id="callbackServerExternalAddress" placeholder="Auto-detecting...">
+                                    <div class="form-text">Your Homebridge server's IP (auto-detected)</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label" for="callbackServerPort">Callback Server Port</label>
+                                    <input type="number" class="form-control" id="callbackServerPort" placeholder="8582" value="8582" min="1" max="65535">
+                                </div>
+                            </div>
+
+                            <div id="validation-errors" class="alert alert-danger d-none"></div>
+
+                            <div class="d-flex gap-2 justify-content-end">
+                                <button class="btn btn-outline-secondary" onclick="hideWizard()">Cancel</button>
+                                <button class="btn btn-primary" onclick="validateAndProceed()">Continue</button>
+                            </div>
                         </div>
 
-                        <div class="wizard-actions">
-                            <button class="btn btn-primary" onclick="finishWizard()">Done</button>
+                        <!-- Step 2: Authorize -->
+                        <div class="wizard-content d-none" id="content-2">
+                            <div class="alert alert-info">
+                                Click the button below to open the Daikin login page and authenticate with your account.
+                            </div>
+
+                            <div id="auth-url-container" class="d-none mb-3">
+                                <label class="form-label">Authorization URL:</label>
+                                <div class="bg-light p-2 rounded border font-monospace small text-break" id="auth-url"></div>
+                                <div class="form-text">If the button doesn't work, copy this URL manually.</div>
+                            </div>
+
+                            <div class="d-flex gap-2 mb-3">
+                                <button class="btn btn-outline-secondary" onclick="goToStep(1)">Back</button>
+                                <button class="btn btn-primary" id="btn-open-auth" onclick="openAuthUrl()">
+                                    Open Daikin Login
+                                </button>
+                            </div>
+
+                            <!-- Automatic callback status -->
+                            <div id="callback-server-status" class="d-none">
+                                <div class="alert alert-success">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="spinner-border spinner-border-sm" role="status"></div>
+                                        <span><strong>Waiting for authentication...</strong></span>
+                                    </div>
+                                    <p class="mb-0 mt-2 ms-4">Complete the login in the new window. This page will update automatically.</p>
+                                </div>
+                            </div>
+
+                            <!-- Manual fallback section -->
+                            <div class="accordion" id="manual-callback-section">
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#manual-callback-collapse">
+                                            Manual entry (if automatic redirect fails)
+                                        </button>
+                                    </h2>
+                                    <div id="manual-callback-collapse" class="accordion-collapse collapse" id="manual-callback-details">
+                                        <div class="accordion-body">
+                                            <div class="alert alert-warning">
+                                                If you see an error page after login, copy the <strong>full URL</strong> from your browser's address bar and paste it below.
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label" for="callbackUrl">Callback URL</label>
+                                                <input type="text" class="form-control" id="callbackUrl" placeholder="Paste the full URL from your browser (https://...?code=...)">
+                                                <div class="form-text">The URL should contain <code>?code=</code> parameter</div>
+                                            </div>
+                                            <button class="btn btn-success" onclick="submitCallbackUrl()">Complete Authentication</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Complete -->
+                        <div class="wizard-content d-none" id="content-3">
+                            <div class="text-center py-4">
+                                <div class="bg-success text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 64px; height: 64px; font-size: 32px;">✓</div>
+                                <h5>Authentication Successful!</h5>
+                                <p id="success-message" class="text-muted">Your Daikin Cloud account is now connected.</p>
+                            </div>
+
+                            <div class="alert alert-info">
+                                <strong>Next Steps:</strong>
+                                <ol class="mb-0">
+                                    <li>Save your plugin configuration</li>
+                                    <li>Restart Homebridge to apply changes</li>
+                                    <li>Your Daikin devices will appear in HomeKit</li>
+                                </ol>
+                            </div>
+
+                            <div class="d-flex justify-content-end">
+                                <button class="btn btn-primary" onclick="finishWizard()">Done</button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Help Tab -->
-            <div class="tab-panel" id="tab-help">
-                <div class="panel-header">
-                    <h2>Help & Information</h2>
-                </div>
+            <div class="tab-pane" id="tab-help">
+                <h5 class="mb-3">Help & Information</h5>
 
-                <div class="help-grid">
-                    <div class="help-card">
-                        <h3>API Rate Limit</h3>
-                        <div class="rate-limit-display">
-                            <span id="rate-limit-display">200 requests/day</span>
-                            <button class="btn btn-sm btn-outline" onclick="checkRateLimit()">Check</button>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-header">API Rate Limit</div>
+                            <div class="card-body">
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    <span id="rate-limit-display" class="fs-5 fw-semibold">200 requests/day</span>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="checkRateLimit()">Check</button>
+                                </div>
+                                <p class="text-muted small mb-0" id="rate-limit-info">The Daikin API limits you to 200 requests per day.</p>
+                            </div>
                         </div>
-                        <p class="text-muted">The Daikin API limits you to 200 requests per day.</p>
                     </div>
 
-                    <div class="help-card">
-                        <h3>Useful Links</h3>
-                        <ul class="help-links">
-                            <li>
-                                <a href="https://developer.cloud.daikineurope.com/" target="_blank" class="link">
-                                    Daikin Developer Portal
-                                </a>
-                            </li>
-                            <li>
-                                <a href="https://github.com/mp-consulting/homebridge-daikin-cloud" target="_blank" class="link">
-                                    GitHub Repository
-                                </a>
-                            </li>
-                            <li>
-                                <a href="https://github.com/mp-consulting/homebridge-daikin-cloud/issues" target="_blank" class="link">
-                                    Report an Issue
-                                </a>
-                            </li>
-                        </ul>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-header">Useful Links</div>
+                            <div class="card-body">
+                                <ul class="list-unstyled mb-0">
+                                    <li class="mb-2">
+                                        <a href="https://developer.cloud.daikineurope.com/" target="_blank">Daikin Developer Portal</a>
+                                    </li>
+                                    <li class="mb-2">
+                                        <a href="https://github.com/mp-consulting/homebridge-daikin-cloud" target="_blank">GitHub Repository</a>
+                                    </li>
+                                    <li>
+                                        <a href="https://github.com/mp-consulting/homebridge-daikin-cloud/issues" target="_blank">Report an Issue</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="help-card">
-                        <h3>Troubleshooting</h3>
-                        <div class="accordion">
-                            <details>
-                                <summary>Token expired or invalid</summary>
-                                <p>Delete the token file and restart Homebridge:</p>
-                                <code>rm ~/.homebridge/.daikin-controller-cloud-tokenset</code>
-                            </details>
-                            <details>
-                                <summary>Authentication flow issues</summary>
-                                <ul>
-                                    <li>Ensure redirect URI matches exactly in Daikin Developer Portal</li>
-                                    <li>Try setting bind address to 0.0.0.0</li>
-                                    <li>Check firewall rules for the callback port</li>
-                                </ul>
-                            </details>
-                            <details>
-                                <summary>Device not appearing</summary>
-                                <ul>
-                                    <li>Check Homebridge logs for discovery errors</li>
-                                    <li>Verify device is in Daikin Onecta app</li>
-                                    <li>Check if device ID is excluded in settings</li>
-                                </ul>
-                            </details>
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-header">Troubleshooting</div>
+                            <div class="card-body">
+                                <div class="accordion accordion-flush" id="troubleshootingAccordion">
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header">
+                                            <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+                                                Token expired or invalid
+                                            </button>
+                                        </h2>
+                                        <div id="faq1" class="accordion-collapse collapse">
+                                            <div class="accordion-body small">
+                                                <p>Delete the token file and restart Homebridge:</p>
+                                                <code>rm ~/.homebridge/.daikin-controller-cloud-tokenset</code>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header">
+                                            <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                                                Authentication flow issues
+                                            </button>
+                                        </h2>
+                                        <div id="faq2" class="accordion-collapse collapse">
+                                            <div class="accordion-body small">
+                                                <ul class="mb-0">
+                                                    <li>Ensure redirect URI matches exactly</li>
+                                                    <li>Try bind address 0.0.0.0</li>
+                                                    <li>Check firewall rules</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header">
+                                            <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                                                Device not appearing
+                                            </button>
+                                        </h2>
+                                        <div id="faq3" class="accordion-collapse collapse">
+                                            <div class="accordion-body small">
+                                                <ul class="mb-0">
+                                                    <li>Check Homebridge logs</li>
+                                                    <li>Verify device in Onecta app</li>
+                                                    <li>Check device exclusions</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -514,11 +547,13 @@
         </div>
     </div>
 
-    <div class="loading-overlay hidden" id="loading">
-        <div class="spinner large"></div>
+    <div class="loading-overlay d-none" id="loading">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
     </div>
 
-    <div id="global-error" class="toast hidden"></div>
+    <div id="global-error" class="toast-container position-fixed top-0 start-50 translate-middle-x p-3 d-none"></div>
 
     <script src="script.js"></script>
 </body>

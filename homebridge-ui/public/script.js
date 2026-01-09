@@ -3,281 +3,273 @@
  * Main application script
  */
 
-const DaikinUI = {
-    // Application state
-    state: {
-        currentStep: 1,
-        currentTab: 'devices',
-        authState: null,
-        authUrl: null,
-        pollInterval: null,
-        countdownInterval: null,
-        statusRefreshInterval: null,
-        tokenExpiresAt: null,
-        isValidating: false,
+// ============================================================================
+// DOM & Utility Helpers
+// ============================================================================
+
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => document.querySelectorAll(selector);
+const $id = (id) => document.getElementById(id);
+
+const DOM = {
+    show: (el) => el?.classList.remove('d-none'),
+    hide: (el) => el?.classList.add('d-none'),
+    toggle: (el, show) => el?.classList.toggle('d-none', !show),
+    setValid: (el, valid) => el?.classList.toggle('is-invalid', !valid),
+};
+
+const Utils = {
+    capitalize: (str) => str ? str.charAt(0).toUpperCase() + str.slice(1) : '',
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     },
 
-    // DOM element cache
-    elements: {},
-
-    /**
-     * Initialize the application
-     */
-    init() {
-        this.cacheElements();
-        this.loadStatus();
-        this.loadSavedConfig();
-        this.loadSettings();
-        this.loadDevices();
+    isValidPort(port) {
+        const num = parseInt(port, 10);
+        return !isNaN(num) && num >= 1 && num <= 65535;
     },
 
-    /**
-     * Cache frequently used DOM elements
-     */
-    cacheElements() {
-        this.elements = {
-            // Header
-            statusBadge: document.getElementById('status-badge'),
-            statusIndicator: document.getElementById('status-indicator'),
-            statusText: document.getElementById('status-text'),
-            tokenExpiresLabel: document.getElementById('token-expires-label'),
-            tokenExpires: document.getElementById('token-expires'),
+    isValidNumber(value, min, max) {
+        const num = parseInt(value, 10);
+        return !isNaN(num) && num >= min && num <= max;
+    },
 
-            // Auth
-            authStatus: document.getElementById('auth-status'),
-            authTokenExpires: document.getElementById('auth-token-expires'),
-            expiresRow: document.getElementById('expires-row'),
-            btnAuthenticate: document.getElementById('btn-authenticate'),
-            btnRevoke: document.getElementById('btn-revoke'),
-            btnTest: document.getElementById('btn-test'),
-            testResult: document.getElementById('test-result'),
+    isValidIPv4(ip) {
+        if (!ip) return true;
+        return /^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.){3}(25[0-5]|(2[0-4]|1\d|[1-9]|)\d)$/.test(ip);
+    },
 
-            // Wizard
-            wizard: document.getElementById('wizard'),
-            authStatusCard: document.getElementById('auth-status-card'),
-            validationErrors: document.getElementById('validation-errors'),
-            authUrlContainer: document.getElementById('auth-url-container'),
-            authUrlDisplay: document.getElementById('auth-url'),
-            callbackServerStatus: document.getElementById('callback-server-status'),
-            successMessage: document.getElementById('success-message'),
+    formatTime(ms) {
+        const days = Math.floor(ms / 86400000);
+        const hours = Math.floor((ms % 86400000) / 3600000);
+        const minutes = Math.floor((ms % 3600000) / 60000);
+        const seconds = Math.floor((ms % 60000) / 1000);
 
-            // Devices
-            devicesLoading: document.getElementById('devices-loading'),
-            devicesList: document.getElementById('devices-list'),
-            devicesEmpty: document.getElementById('devices-empty'),
-            devicesError: document.getElementById('devices-error'),
-
-            // Settings
-            settingsStatus: document.getElementById('settings-status'),
-
-            // Help
-            rateLimitDisplay: document.getElementById('rate-limit-display'),
-
-            // Global
-            loading: document.getElementById('loading'),
-            globalError: document.getElementById('global-error'),
-        };
+        if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+        if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+        if (minutes > 0) return `${minutes}m ${seconds}s`;
+        return `${seconds}s`;
     },
 };
 
-/**
- * Tab Navigation
- */
+// ============================================================================
+// Application State
+// ============================================================================
+
+const State = {
+    currentTab: 'devices',
+    currentStep: 1,
+    authState: null,
+    authUrl: null,
+    tokenExpiresAt: null,
+    isValidating: false,
+    intervals: {
+        poll: null,
+        countdown: null,
+        statusRefresh: null,
+    },
+};
+
+// Element cache (populated on init)
+let El = {};
+
+// ============================================================================
+// UI Module
+// ============================================================================
+
+const UI = {
+    showLoading: () => DOM.show(El.loading),
+    hideLoading: () => DOM.hide(El.loading),
+
+    showError(message) {
+        if (El.globalError) {
+            El.globalError.innerHTML = `<div class="alert alert-danger">${Utils.escapeHtml(message)}</div>`;
+            DOM.show(El.globalError);
+            setTimeout(() => DOM.hide(El.globalError), 10000);
+        }
+    },
+
+    setButtonLoading(btn, loading, loadingText = 'Loading...', normalText = null) {
+        if (!btn) return;
+        btn.disabled = loading;
+        if (loading) {
+            btn.dataset.originalText = btn.innerHTML;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${loadingText}`;
+        } else {
+            btn.innerHTML = normalText || btn.dataset.originalText || btn.innerHTML;
+        }
+    },
+};
+
+// ============================================================================
+// Tab Navigation
+// ============================================================================
+
 function switchTab(tabName) {
-    DaikinUI.state.currentTab = tabName;
-
-    // Update tab buttons
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tab === tabName);
-    });
-
-    // Update tab panels
-    document.querySelectorAll('.tab-panel').forEach(panel => {
-        panel.classList.toggle('active', panel.id === `tab-${tabName}`);
-    });
+    State.currentTab = tabName;
+    $$('.nav-pills .nav-link').forEach(btn =>
+        btn.classList.toggle('active', btn.dataset.tab === tabName));
+    $$('.tab-pane').forEach(panel =>
+        panel.classList.toggle('active', panel.id === `tab-${tabName}`));
 }
 
-/**
- * Settings Subtab Navigation
- */
 function switchSettingsSubtab(subtabName) {
-    // Update subtab buttons
-    document.querySelectorAll('.subtab-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.subtab === subtabName);
-    });
-
-    // Update subtab content panels
-    document.querySelectorAll('.settings-subtab-content').forEach(panel => {
-        panel.classList.toggle('active', panel.id === `subtab-${subtabName}`);
-    });
+    $$('.nav-tabs .nav-link').forEach(btn =>
+        btn.classList.toggle('active', btn.dataset.subtab === subtabName));
+    $$('.settings-subtab-content').forEach(panel =>
+        DOM.toggle(panel, panel.id === `subtab-${subtabName}`));
 }
 
-/**
- * Authentication Module
- */
-const Auth = {
-    // Refresh status every 60 seconds to detect token renewal
-    STATUS_REFRESH_INTERVAL: 60 * 1000,
+// ============================================================================
+// Countdown Timer
+// ============================================================================
 
-    /**
-     * Load authentication status from server
-     */
+const Countdown = {
+    start() {
+        this.stop();
+        this.update();
+        State.intervals.countdown = setInterval(() => this.update(), 1000);
+    },
+
+    stop() {
+        if (State.intervals.countdown) {
+            clearInterval(State.intervals.countdown);
+            State.intervals.countdown = null;
+        }
+    },
+
+    update() {
+        if (!State.tokenExpiresAt) return;
+
+        const diff = State.tokenExpiresAt - Date.now();
+
+        if (diff <= 0) {
+            [El.tokenExpires, El.authTokenExpires].forEach(el => {
+                if (el) el.textContent = 'Expired';
+            });
+            this.stop();
+            Auth.loadStatus();
+            return;
+        }
+
+        const formatted = Utils.formatTime(diff);
+        const color = diff < 300000 ? 'var(--bs-danger)' : diff < 1800000 ? 'var(--bs-warning)' : '';
+
+        [El.tokenExpires, El.authTokenExpires].forEach(el => {
+            if (el) {
+                el.textContent = formatted;
+                el.style.color = color;
+            }
+        });
+    },
+};
+
+// ============================================================================
+// Authentication Module
+// ============================================================================
+
+const Auth = {
+    STATUS_REFRESH_INTERVAL: 60000,
+
     async loadStatus() {
         try {
             const response = await homebridge.request('/auth/status');
-            this.updateStatusUI(response);
+            this.updateUI(response);
         } catch (error) {
-            console.error('Failed to load status:', error);
-            this.updateStatusUI({ authenticated: false, error: error.message });
+            this.updateUI({ authenticated: false, error: error.message });
         }
     },
 
-    /**
-     * Start periodic status refresh to detect token renewal
-     */
     startStatusRefresh() {
         this.stopStatusRefresh();
-        DaikinUI.state.statusRefreshInterval = setInterval(() => {
-            this.checkForTokenRenewal();
-        }, this.STATUS_REFRESH_INTERVAL);
+        State.intervals.statusRefresh = setInterval(() => this.checkTokenRenewal(), this.STATUS_REFRESH_INTERVAL);
     },
 
-    /**
-     * Stop periodic status refresh
-     */
     stopStatusRefresh() {
-        if (DaikinUI.state.statusRefreshInterval) {
-            clearInterval(DaikinUI.state.statusRefreshInterval);
-            DaikinUI.state.statusRefreshInterval = null;
+        if (State.intervals.statusRefresh) {
+            clearInterval(State.intervals.statusRefresh);
+            State.intervals.statusRefresh = null;
         }
     },
 
-    /**
-     * Check if token has been renewed and update UI
-     */
-    async checkForTokenRenewal() {
+    async checkTokenRenewal() {
         try {
             const response = await homebridge.request('/auth/status');
-
             if (response.authenticated && response.expiresAt) {
-                const newExpiresAt = new Date(response.expiresAt);
-                const currentExpiresAt = DaikinUI.state.tokenExpiresAt;
-
-                // If expiration time changed, token was renewed
-                if (!currentExpiresAt || newExpiresAt.getTime() !== currentExpiresAt.getTime()) {
-                    console.log('Token renewed, updating countdown');
-                    this.updateStatusUI(response);
+                const newExpires = new Date(response.expiresAt).getTime();
+                if (!State.tokenExpiresAt || newExpires !== State.tokenExpiresAt.getTime()) {
+                    this.updateUI(response);
                 }
             }
         } catch (error) {
-            console.error('Failed to check token status:', error);
+            console.error('Token check failed:', error);
         }
     },
 
-    /**
-     * Update the status UI based on authentication state
-     */
-    updateStatusUI(status) {
-        const { elements } = DaikinUI;
-
+    updateUI(status) {
         if (status.authenticated) {
-            this.setAuthenticatedState(status);
+            this.setAuthenticated(status);
         } else {
-            this.setUnauthenticatedState(status);
+            this.setUnauthenticated(status);
         }
     },
 
-    /**
-     * Set UI for authenticated state
-     */
-    setAuthenticatedState(status) {
-        const { elements } = DaikinUI;
+    setAuthenticated(status) {
+        const isExpired = status.isExpired;
 
-        if (status.isExpired) {
-            elements.statusBadge.className = 'status-badge expired';
-            elements.statusIndicator.className = 'status-indicator yellow';
-            elements.statusText.textContent = 'Expired';
-            elements.authStatus.textContent = status.canRefresh
-                ? 'Token expired (will auto-refresh)'
-                : 'Token expired';
-        } else {
-            elements.statusBadge.className = 'status-badge authenticated';
-            elements.statusIndicator.className = 'status-indicator green';
-            elements.statusText.textContent = 'Connected';
-            elements.authStatus.textContent = 'Authenticated and ready';
-        }
+        El.statusBadge.className = `badge ${isExpired ? 'expired' : 'authenticated'}`;
+        El.statusIndicator.className = `status-dot ${isExpired ? 'yellow' : 'green'}`;
+        El.statusText.textContent = isExpired ? 'Expired' : 'Connected';
+        El.authStatus.textContent = isExpired
+            ? (status.canRefresh ? 'Token expired (will auto-refresh)' : 'Token expired')
+            : 'Authenticated and ready';
 
         if (status.expiresAt) {
-            DaikinUI.state.tokenExpiresAt = new Date(status.expiresAt);
-            elements.tokenExpiresLabel.classList.remove('hidden');
-            elements.expiresRow.style.display = 'flex';
+            State.tokenExpiresAt = new Date(status.expiresAt);
+            DOM.show(El.tokenExpiresLabel);
+            DOM.show(El.expiresRow);
             Countdown.start();
-        } else {
-            Countdown.stop();
         }
 
-        // Start periodic refresh to detect token renewal
         this.startStatusRefresh();
-
-        elements.btnAuthenticate.textContent = 'Re-authenticate';
-        elements.btnRevoke.style.display = 'inline-flex';
-        elements.btnTest.disabled = false;
+        El.btnAuthenticate.textContent = 'Re-authenticate';
+        DOM.show(El.btnRevoke);
+        El.btnTest.disabled = false;
     },
 
-    /**
-     * Set UI for unauthenticated state
-     */
-    setUnauthenticatedState(status) {
-        const { elements } = DaikinUI;
+    setUnauthenticated(status) {
+        El.statusBadge.className = 'badge not-authenticated';
+        El.statusIndicator.className = 'status-dot red';
+        El.statusText.textContent = 'Not Connected';
+        El.authStatus.textContent = status.error || 'Authentication required';
 
-        elements.statusBadge.className = 'status-badge not-authenticated';
-        elements.statusIndicator.className = 'status-indicator red';
-        elements.statusText.textContent = 'Not Connected';
-        elements.authStatus.textContent = status.error || 'Authentication required';
-        elements.tokenExpiresLabel.classList.add('hidden');
-        elements.tokenExpires.textContent = '';
-        elements.expiresRow.style.display = 'none';
-        elements.btnAuthenticate.textContent = 'Authenticate';
-        elements.btnRevoke.style.display = 'none';
-        elements.btnTest.disabled = true;
+        DOM.hide(El.tokenExpiresLabel);
+        DOM.hide(El.expiresRow);
+        El.tokenExpires.textContent = '';
+        El.btnAuthenticate.textContent = 'Authenticate';
+        DOM.hide(El.btnRevoke);
+        El.btnTest.disabled = true;
+
         Countdown.stop();
         this.stopStatusRefresh();
     },
 
-    /**
-     * Start the OAuth authentication flow
-     */
     async startAuth(config) {
         const result = await homebridge.request('/auth/start', config);
-        DaikinUI.state.authState = result.state;
-        DaikinUI.state.authUrl = result.authUrl;
+        State.authState = result.state;
+        State.authUrl = result.authUrl;
         return result;
     },
 
-    /**
-     * Submit authorization code manually
-     */
-    async submitCode(code) {
-        return await homebridge.request('/auth/callback', {
-            code,
-            state: DaikinUI.state.authState,
-        });
-    },
-
-    /**
-     * Revoke authentication
-     */
     async revoke() {
         UI.showLoading();
         try {
             const config = await homebridge.getPluginConfig();
-            const platformConfig = config[0] || {};
-
-            await homebridge.request('/auth/revoke', {
-                clientId: platformConfig.clientId,
-                clientSecret: platformConfig.clientSecret,
-            });
-
+            const { clientId, clientSecret } = config[0] || {};
+            await homebridge.request('/auth/revoke', { clientId, clientSecret });
             this.loadStatus();
         } catch (error) {
             UI.showError('Failed to revoke: ' + error.message);
@@ -285,273 +277,125 @@ const Auth = {
         UI.hideLoading();
     },
 
-    /**
-     * Test the connection to Daikin API
-     */
     async testConnection() {
-        const { elements } = DaikinUI;
-
-        elements.btnTest.disabled = true;
-        elements.btnTest.innerHTML = '<span class="spinner"></span> Testing...';
-        elements.testResult.classList.add('hidden');
+        UI.setButtonLoading(El.btnTest, true, 'Testing...');
+        DOM.hide(El.testResult);
 
         try {
             const result = await homebridge.request('/auth/test');
-            elements.testResult.classList.remove('hidden', 'alert-success', 'alert-danger');
-
-            if (result.success) {
-                elements.testResult.classList.add('alert-success');
-            } else {
-                elements.testResult.classList.add('alert-danger');
-            }
-            elements.testResult.textContent = result.message;
+            El.testResult.className = `alert ${result.success ? 'alert-success' : 'alert-danger'}`;
+            El.testResult.textContent = result.message;
+            DOM.show(El.testResult);
         } catch (error) {
-            elements.testResult.classList.remove('hidden', 'alert-success');
-            elements.testResult.classList.add('alert-danger');
-            elements.testResult.textContent = 'Test failed: ' + error.message;
+            El.testResult.className = 'alert alert-danger';
+            El.testResult.textContent = 'Test failed: ' + error.message;
+            DOM.show(El.testResult);
         }
 
-        elements.btnTest.disabled = false;
-        elements.btnTest.innerHTML = 'Test Connection';
+        UI.setButtonLoading(El.btnTest, false, null, 'Test Connection');
     },
 };
 
-/**
- * Countdown Timer Module
- */
-const Countdown = {
-    /**
-     * Start the countdown timer
-     */
-    start() {
-        this.stop();
-        this.update();
-        DaikinUI.state.countdownInterval = setInterval(() => this.update(), 1000);
-    },
+// ============================================================================
+// OAuth Wizard Module
+// ============================================================================
 
-    /**
-     * Stop the countdown timer
-     */
-    stop() {
-        if (DaikinUI.state.countdownInterval) {
-            clearInterval(DaikinUI.state.countdownInterval);
-            DaikinUI.state.countdownInterval = null;
-        }
-    },
-
-    /**
-     * Update the countdown display
-     */
-    update() {
-        const { tokenExpiresAt } = DaikinUI.state;
-        const { tokenExpires, authTokenExpires } = DaikinUI.elements;
-
-        if (!tokenExpiresAt) return;
-
-        const diff = tokenExpiresAt - new Date();
-
-        if (diff <= 0) {
-            if (tokenExpires) tokenExpires.textContent = 'Expired';
-            if (authTokenExpires) authTokenExpires.textContent = 'Expired';
-            this.stop();
-            Auth.loadStatus();
-            return;
-        }
-
-        const formatted = this.formatTime(diff);
-        const color = this.getColor(diff);
-
-        if (tokenExpires) {
-            tokenExpires.textContent = formatted;
-            tokenExpires.style.color = color;
-        }
-        if (authTokenExpires) {
-            authTokenExpires.textContent = formatted;
-            authTokenExpires.style.color = color;
-        }
-    },
-
-    /**
-     * Format milliseconds into readable time string
-     */
-    formatTime(ms) {
-        const days = Math.floor(ms / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((ms % (1000 * 60)) / 1000);
-
-        if (days > 0) return `${days}d ${hours}h ${minutes}m`;
-        if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-        if (minutes > 0) return `${minutes}m ${seconds}s`;
-        return `${seconds}s`;
-    },
-
-    /**
-     * Get color based on remaining time
-     */
-    getColor(ms) {
-        if (ms < 5 * 60 * 1000) return 'var(--danger-color)';
-        if (ms < 30 * 60 * 1000) return 'var(--warning-color)';
-        return '';
-    },
-};
-
-/**
- * Wizard Module
- */
 const Wizard = {
-    /**
-     * Show the setup wizard
-     */
     show() {
-        DaikinUI.elements.wizard.classList.remove('hidden');
-        DaikinUI.elements.authStatusCard.classList.add('hidden');
+        DOM.show(El.wizard);
+        DOM.hide(El.authStatusCard);
         this.goToStep(1);
     },
 
-    /**
-     * Hide the setup wizard
-     */
     hide() {
         Polling.stop();
         homebridge.request('/auth/stop-server').catch(() => {});
-        DaikinUI.elements.wizard.classList.add('hidden');
-        DaikinUI.elements.authStatusCard.classList.remove('hidden');
-        DaikinUI.elements.callbackServerStatus.classList.add('hidden');
+        DOM.hide(El.wizard);
+        DOM.show(El.authStatusCard);
+        DOM.hide(El.callbackServerStatus);
     },
 
-    /**
-     * Navigate to a specific step
-     */
     goToStep(step) {
-        DaikinUI.state.currentStep = step;
-
+        State.currentStep = step;
         for (let i = 1; i <= 3; i++) {
-            const stepEl = document.getElementById(`step-${i}`);
-            const contentEl = document.getElementById(`content-${i}`);
-
+            const stepEl = $id(`step-${i}`);
+            const contentEl = $id(`content-${i}`);
             stepEl.classList.remove('active', 'completed');
-            contentEl.classList.remove('active');
-
-            if (i < step) {
-                stepEl.classList.add('completed');
-            } else if (i === step) {
-                stepEl.classList.add('active');
-                contentEl.classList.add('active');
-            }
+            DOM.toggle(contentEl, i === step);
+            if (i < step) stepEl.classList.add('completed');
+            else if (i === step) stepEl.classList.add('active');
         }
     },
 
-    /**
-     * Validate configuration and proceed to authorization
-     */
     async validateAndProceed() {
-        if (DaikinUI.state.isValidating) return;
-        DaikinUI.state.isValidating = true;
+        if (State.isValidating) return;
+        State.isValidating = true;
 
         const config = this.getFormConfig();
-        const { elements } = DaikinUI;
+        const portInput = $id('callbackServerPort');
 
-        // Client-side port validation
-        const portInput = document.getElementById('callbackServerPort');
-        if (!this.isValidPort(config.callbackServerPort)) {
-            portInput?.classList.add('invalid');
-            elements.validationErrors.innerHTML = '<div>Port must be between 1 and 65535</div>';
-            elements.validationErrors.classList.remove('hidden');
-            DaikinUI.state.isValidating = false;
+        if (!Utils.isValidPort(config.callbackServerPort)) {
+            DOM.setValid(portInput, false);
+            El.validationErrors.innerHTML = '<div>Port must be between 1 and 65535</div>';
+            DOM.show(El.validationErrors);
+            State.isValidating = false;
             return;
         }
-        portInput?.classList.remove('invalid');
+        DOM.setValid(portInput, true);
 
         UI.showLoading();
-
         try {
             const validation = await homebridge.request('/config/validate', config);
-
             if (!validation.valid) {
-                elements.validationErrors.innerHTML = validation.errors
-                    .map(e => `<div>${e}</div>`)
-                    .join('');
-                elements.validationErrors.classList.remove('hidden');
+                El.validationErrors.innerHTML = validation.errors.map(e => `<div>${e}</div>`).join('');
+                DOM.show(El.validationErrors);
                 UI.hideLoading();
-                DaikinUI.state.isValidating = false;
+                State.isValidating = false;
                 return;
             }
 
-            elements.validationErrors.classList.add('hidden');
-
+            DOM.hide(El.validationErrors);
             const authResult = await Auth.startAuth(config);
 
-            elements.authUrlDisplay.textContent = authResult.authUrl;
-            elements.authUrlContainer.classList.remove('hidden');
+            El.authUrlDisplay.textContent = authResult.authUrl;
+            DOM.show(El.authUrlContainer);
 
-            const callbackStatusEl = document.getElementById('callback-server-status');
-            const manualDetailsEl = document.getElementById('manual-callback-details');
-
-            if (authResult.callbackServerRunning) {
-                // Show automatic status, collapse manual section
-                if (callbackStatusEl) callbackStatusEl.classList.remove('hidden');
-                if (manualDetailsEl) manualDetailsEl.open = false;
-            } else {
-                // Hide automatic status, expand manual section
-                if (callbackStatusEl) callbackStatusEl.classList.add('hidden');
-                if (manualDetailsEl) manualDetailsEl.open = true;
+            const manualCollapse = $id('manual-callback-collapse');
+            DOM.toggle(El.callbackServerStatus, authResult.callbackServerRunning);
+            if (manualCollapse) {
+                manualCollapse.classList.toggle('show', !authResult.callbackServerRunning);
             }
 
             Polling.start();
             this.goToStep(2);
         } catch (error) {
-            elements.validationErrors.innerHTML = `<div>${error.message}</div>`;
-            elements.validationErrors.classList.remove('hidden');
+            El.validationErrors.innerHTML = `<div>${error.message}</div>`;
+            DOM.show(El.validationErrors);
         }
 
         UI.hideLoading();
-        DaikinUI.state.isValidating = false;
+        State.isValidating = false;
     },
 
-    /**
-     * Get configuration from form inputs
-     */
     getFormConfig() {
         return {
-            clientId: document.getElementById('clientId').value.trim(),
-            clientSecret: document.getElementById('clientSecret').value.trim(),
-            callbackServerExternalAddress: document.getElementById('callbackServerExternalAddress').value.trim(),
-            callbackServerPort: document.getElementById('callbackServerPort').value.trim() || '8582',
+            clientId: $id('clientId')?.value.trim() || '',
+            clientSecret: $id('clientSecret')?.value.trim() || '',
+            callbackServerExternalAddress: $id('callbackServerExternalAddress')?.value.trim() || '',
+            callbackServerPort: $id('callbackServerPort')?.value.trim() || '8582',
         };
     },
 
-    /**
-     * Validate port number
-     */
-    isValidPort(port) {
-        const num = parseInt(port, 10);
-        return !isNaN(num) && num >= 1 && num <= 65535;
-    },
-
-    /**
-     * Submit callback URL (contains code and state)
-     */
     async submitCallbackUrl() {
-        const callbackUrl = document.getElementById('callbackUrl').value.trim();
-
-        if (!callbackUrl) {
-            UI.showError('Please paste the callback URL from your browser');
-            return;
-        }
-
-        if (!callbackUrl.includes('code=')) {
-            UI.showError('Invalid URL - must contain a code parameter');
-            return;
-        }
+        const url = $id('callbackUrl')?.value.trim();
+        if (!url) return UI.showError('Please paste the callback URL');
+        if (!url.includes('code=')) return UI.showError('Invalid URL - must contain code parameter');
 
         UI.showLoading();
-
         try {
-            const result = await homebridge.request('/auth/', { callbackUrl });
-
+            const result = await homebridge.request('/auth/', { callbackUrl: url });
             if (result.success) {
-                DaikinUI.elements.successMessage.textContent = result.message;
+                El.successMessage.textContent = result.message;
                 this.goToStep(3);
                 await Config.save();
             } else {
@@ -560,43 +404,9 @@ const Wizard = {
         } catch (error) {
             UI.showError('Authentication failed: ' + error.message);
         }
-
         UI.hideLoading();
     },
 
-    /**
-     * Submit authorization code manually (legacy)
-     */
-    async submitAuthCode() {
-        const code = document.getElementById('authCode')?.value?.trim();
-
-        if (!code) {
-            UI.showError('Please enter the authorization code');
-            return;
-        }
-
-        UI.showLoading();
-
-        try {
-            const result = await Auth.submitCode(code);
-
-            if (result.success) {
-                DaikinUI.elements.successMessage.textContent = result.message;
-                this.goToStep(3);
-                await Config.save();
-            } else {
-                UI.showError('Authentication failed: ' + (result.message || 'Unknown error'));
-            }
-        } catch (error) {
-            UI.showError('Authentication failed: ' + error.message);
-        }
-
-        UI.hideLoading();
-    },
-
-    /**
-     * Finish the wizard and return to status view
-     */
     finish() {
         Polling.stop();
         this.hide();
@@ -604,60 +414,41 @@ const Wizard = {
         Devices.load();
     },
 
-    /**
-     * Open the authorization URL in a new tab
-     */
     openAuthUrl() {
-        if (DaikinUI.state.authUrl) {
-            window.open(DaikinUI.state.authUrl, '_blank');
-        }
+        if (State.authUrl) window.open(State.authUrl, '_blank');
     },
 };
 
-/**
- * Polling Module
- */
+// ============================================================================
+// Polling Module
+// ============================================================================
+
 const Polling = {
     isPolling: false,
 
-    /**
-     * Start polling for authentication result
-     */
     start() {
         this.stop();
         this.isPolling = true;
         this.poll();
     },
 
-    /**
-     * Stop polling
-     */
     stop() {
         this.isPolling = false;
-        if (DaikinUI.state.pollInterval) {
-            if (typeof DaikinUI.state.pollInterval === 'number') {
-                clearTimeout(DaikinUI.state.pollInterval);
-            }
-            DaikinUI.state.pollInterval = null;
+        if (State.intervals.poll) {
+            clearTimeout(State.intervals.poll);
+            State.intervals.poll = null;
         }
     },
 
-    /**
-     * Poll for authentication result
-     */
     async poll() {
         if (!this.isPolling) return;
 
         try {
             const result = await homebridge.request('/auth/poll');
-
             if (!result.pending) {
-                this.isPolling = false;
-                DaikinUI.state.pollInterval = null;
-
+                this.stop();
                 if (result.success) {
-                    DaikinUI.elements.successMessage.textContent =
-                        result.message || 'Authentication successful!';
+                    El.successMessage.textContent = result.message || 'Authentication successful!';
                     Wizard.goToStep(3);
                     await Config.save();
                     Devices.load();
@@ -671,603 +462,359 @@ const Polling = {
         }
 
         if (this.isPolling) {
-            DaikinUI.state.pollInterval = setTimeout(() => this.poll(), 1500);
+            State.intervals.poll = setTimeout(() => this.poll(), 1500);
         }
     },
 };
 
-/**
- * Configuration Module
- */
+// ============================================================================
+// Configuration Module
+// ============================================================================
+
 const Config = {
-    /**
-     * Load saved configuration into form
-     */
     async load() {
         try {
             const config = await homebridge.getPluginConfig();
-            if (config && config.length > 0) {
-                const platformConfig = config[0];
-                this.populateForm(platformConfig);
+            if (config?.[0]) {
+                this.populateForm(config[0]);
             }
-
-            // Prefill callback server address with server IP if empty
             await this.prefillServerAddress();
         } catch (error) {
-            console.error('Failed to load config:', error);
+            console.error('Config load failed:', error);
         }
     },
 
-    /**
-     * Prefill callback server address with server's IP if not already set
-     */
     async prefillServerAddress() {
-        const addressField = document.getElementById('callbackServerExternalAddress');
-        if (!addressField || addressField.value.trim()) return; // Already has a value
+        const field = $id('callbackServerExternalAddress');
+        if (!field || field.value.trim()) return;
 
         try {
-            const serverInfo = await homebridge.request('/server/info');
-            if (serverInfo.primaryIp) {
-                addressField.value = serverInfo.primaryIp;
-                addressField.placeholder = serverInfo.primaryIp;
+            const { primaryIp } = await homebridge.request('/server/info');
+            if (primaryIp) {
+                field.value = primaryIp;
+                field.placeholder = primaryIp;
             }
         } catch (error) {
-            console.error('Failed to get server IP:', error);
+            console.error('Server IP fetch failed:', error);
         }
     },
 
-    /**
-     * Populate form fields with config values
-     */
     populateForm(config) {
-        const fields = ['clientId', 'clientSecret', 'callbackServerExternalAddress', 'callbackServerPort'];
-
-        fields.forEach(field => {
-            if (config[field]) {
-                const element = document.getElementById(field);
-                if (element) element.value = config[field];
-            }
+        ['clientId', 'clientSecret', 'callbackServerExternalAddress', 'callbackServerPort'].forEach(field => {
+            const el = $id(field);
+            if (el && config[field]) el.value = config[field];
         });
     },
 
-    /**
-     * Save configuration
-     */
     async save() {
         try {
             const config = await homebridge.getPluginConfig();
             const platformConfig = config[0] || { platform: 'DaikinCloud' };
-            const formConfig = Wizard.getFormConfig();
-
-            Object.assign(platformConfig, formConfig);
-
+            Object.assign(platformConfig, Wizard.getFormConfig());
             await homebridge.updatePluginConfig([platformConfig]);
             await homebridge.savePluginConfig();
         } catch (error) {
-            console.error('Failed to save config:', error);
+            console.error('Config save failed:', error);
         }
     },
 };
 
-/**
- * Settings Module
- */
+// ============================================================================
+// Settings Module
+// ============================================================================
+
 const Settings = {
-    // Cache for devices and exclusions
     devices: [],
     excludedIds: [],
-
-    // Auto-save debounce timer
     saveTimeout: null,
-    SAVE_DEBOUNCE_MS: 500,
 
-    // Feature config keys
-    featureKeys: [
-        'showPowerfulMode',
-        'showEconoMode',
-        'showStreamerMode',
-        'showOutdoorSilentMode',
-        'showIndoorSilentMode',
-        'showDryMode',
-        'showFanOnlyMode',
+    FEATURE_KEYS: [
+        'showPowerfulMode', 'showEconoMode', 'showStreamerMode',
+        'showOutdoorSilentMode', 'showIndoorSilentMode', 'showDryMode', 'showFanOnlyMode',
     ],
 
-    /**
-     * Load settings from plugin config
-     */
     async load() {
         try {
             const config = await homebridge.getPluginConfig();
-            if (config && config.length > 0) {
+            if (config?.[0]) {
                 this.populateForm(config[0]);
                 this.excludedIds = config[0].excludedDevicesByDeviceId || [];
             }
-            // Load device toggles
             await this.loadDeviceToggles();
-            // Setup auto-save listeners
             this.setupAutoSave();
         } catch (error) {
-            console.error('Failed to load settings:', error);
+            console.error('Settings load failed:', error);
         }
     },
 
-    /**
-     * Setup auto-save event listeners
-     */
     setupAutoSave() {
-        // Feature toggles
-        this.featureKeys.forEach(key => {
-            const el = document.getElementById(key);
-            if (el) {
-                el.addEventListener('change', () => this.autoSave());
-            }
+        const handler = () => this.autoSave();
+
+        // Feature toggles + WebSocket
+        [...this.FEATURE_KEYS, 'enableWebSocket'].forEach(id => {
+            $id(id)?.addEventListener('change', handler);
         });
 
-        // WebSocket toggle
-        const wsEl = document.getElementById('enableWebSocket');
-        if (wsEl) {
-            wsEl.addEventListener('change', () => this.autoSave());
-        }
-
-        // Number and text inputs
-        const inputs = ['updateIntervalInMinutes', 'forceUpdateDelay', 'oidcCallbackServerBindAddr'];
-        inputs.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.addEventListener('change', () => this.autoSave());
-                el.addEventListener('input', () => this.autoSave());
-            }
+        // Number/text inputs
+        ['updateIntervalInMinutes', 'forceUpdateDelay', 'oidcCallbackServerBindAddr'].forEach(id => {
+            const el = $id(id);
+            el?.addEventListener('change', handler);
+            el?.addEventListener('input', handler);
         });
     },
 
-    /**
-     * Auto-save with debounce
-     */
     autoSave() {
-        if (this.saveTimeout) {
-            clearTimeout(this.saveTimeout);
-        }
+        clearTimeout(this.saveTimeout);
         this.saveTimeout = setTimeout(() => {
-            if (this.validateInputs()) {
-                this.save();
-            }
-        }, this.SAVE_DEBOUNCE_MS);
+            if (this.validateInputs()) this.save();
+        }, 500);
     },
 
-    /**
-     * Validate inputs before saving
-     */
     validateInputs() {
-        let isValid = true;
+        const validators = [
+            ['oidcCallbackServerBindAddr', (v) => Utils.isValidIPv4(v.trim())],
+            ['updateIntervalInMinutes', (v) => Utils.isValidNumber(v, 1, 60)],
+            ['forceUpdateDelay', (v) => Utils.isValidNumber(v, 1, 300)],
+        ];
 
-        // Validate IP address
-        const bindAddr = document.getElementById('oidcCallbackServerBindAddr');
-        if (bindAddr && !this.isValidIPv4(bindAddr.value.trim())) {
-            bindAddr.classList.add('invalid');
-            isValid = false;
-        } else {
-            bindAddr?.classList.remove('invalid');
-        }
-
-        // Validate update interval (1-60 minutes)
-        const updateInterval = document.getElementById('updateIntervalInMinutes');
-        if (updateInterval && !this.isValidNumber(updateInterval.value, 1, 60)) {
-            updateInterval.classList.add('invalid');
-            isValid = false;
-        } else {
-            updateInterval?.classList.remove('invalid');
-        }
-
-        // Validate force update delay (1-300 seconds)
-        const forceDelay = document.getElementById('forceUpdateDelay');
-        if (forceDelay && !this.isValidNumber(forceDelay.value, 1, 300)) {
-            forceDelay.classList.add('invalid');
-            isValid = false;
-        } else {
-            forceDelay?.classList.remove('invalid');
-        }
-
-        return isValid;
+        return validators.every(([id, validate]) => {
+            const el = $id(id);
+            const valid = !el || validate(el.value);
+            DOM.setValid(el, valid);
+            return valid;
+        });
     },
 
-    /**
-     * Check if value is a valid number within range
-     */
-    isValidNumber(value, min, max) {
-        const num = parseInt(value, 10);
-        return !isNaN(num) && num >= min && num <= max;
-    },
-
-    /**
-     * Check if string is a valid IPv4 address
-     */
-    isValidIPv4(ip) {
-        if (!ip) return true; // Allow empty, will use default
-        const pattern = /^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.){3}(25[0-5]|(2[0-4]|1\d|[1-9]|)\d)$/;
-        return pattern.test(ip);
-    },
-
-    /**
-     * Populate settings form fields
-     */
     populateForm(config) {
-        // Feature toggles
         const showAllLegacy = config.showExtraFeatures === true;
 
-        this.featureKeys.forEach(key => {
-            const el = document.getElementById(key);
-            if (el) {
-                // If individual key exists, use it; otherwise fall back to legacy showExtraFeatures
-                if (key in config) {
-                    el.checked = config[key] === true;
-                } else {
-                    el.checked = showAllLegacy;
-                }
-            }
+        this.FEATURE_KEYS.forEach(key => {
+            const el = $id(key);
+            if (el) el.checked = key in config ? config[key] === true : showAllLegacy;
         });
 
-        // Number inputs
-        const updateInterval = document.getElementById('updateIntervalInMinutes');
-        if (updateInterval) {
-            updateInterval.value = config.updateIntervalInMinutes || 15;
-        }
+        const updateInterval = $id('updateIntervalInMinutes');
+        if (updateInterval) updateInterval.value = config.updateIntervalInMinutes || 15;
 
-        const forceDelay = document.getElementById('forceUpdateDelay');
-        if (forceDelay) {
-            // Convert ms to seconds for display
-            const delayMs = config.forceUpdateDelay || 60000;
-            forceDelay.value = Math.round(delayMs / 1000);
-        }
+        const forceDelay = $id('forceUpdateDelay');
+        if (forceDelay) forceDelay.value = Math.round((config.forceUpdateDelay || 60000) / 1000);
 
-        // Text input
-        const bindAddr = document.getElementById('oidcCallbackServerBindAddr');
-        if (bindAddr) {
-            bindAddr.value = config.oidcCallbackServerBindAddr || '0.0.0.0';
-        }
+        const bindAddr = $id('oidcCallbackServerBindAddr');
+        if (bindAddr) bindAddr.value = config.oidcCallbackServerBindAddr || '0.0.0.0';
 
-        // WebSocket toggle
-        const enableWebSocket = document.getElementById('enableWebSocket');
-        if (enableWebSocket) {
-            enableWebSocket.checked = config.enableWebSocket !== false; // Default true
-        }
+        const enableWS = $id('enableWebSocket');
+        if (enableWS) enableWS.checked = config.enableWebSocket !== false;
     },
 
-    /**
-     * Load devices and render toggles
-     */
     async loadDeviceToggles() {
-        const loadingEl = document.getElementById('device-toggles-loading');
-        const listEl = document.getElementById('device-toggles-list');
-        const emptyEl = document.getElementById('device-toggles-empty');
+        const loading = $id('device-toggles-loading');
+        const list = $id('device-toggles-list');
+        const empty = $id('device-toggles-empty');
 
-        loadingEl.classList.remove('hidden');
-        listEl.innerHTML = '';
-        emptyEl.classList.add('hidden');
+        DOM.show(loading);
+        list.innerHTML = '';
+        DOM.hide(empty);
 
         try {
             const result = await homebridge.request('/devices/list');
-            loadingEl.classList.add('hidden');
+            DOM.hide(loading);
 
-            if (!result.success || result.devices.length === 0) {
-                emptyEl.classList.remove('hidden');
+            if (!result.success || !result.devices.length) {
+                DOM.show(empty);
                 return;
             }
 
             this.devices = result.devices;
-            listEl.innerHTML = this.devices.map((device, index) => this.renderDeviceToggle(device, index)).join('');
+            list.innerHTML = this.devices.map((d, i) => this.renderDeviceToggle(d, i)).join('');
 
-            // Use event delegation for toggle changes (safer than inline onclick)
-            listEl.addEventListener('change', (e) => {
+            list.addEventListener('change', (e) => {
                 if (e.target.classList.contains('device-visibility-toggle')) {
-                    const index = parseInt(e.target.dataset.index, 10);
-                    const device = this.devices[index];
-                    if (device) {
-                        this.toggleDevice(device.id, e.target.checked, index);
-                    }
+                    const idx = parseInt(e.target.dataset.index, 10);
+                    const device = this.devices[idx];
+                    if (device) this.toggleDevice(device.id, e.target.checked, idx);
                 }
             });
         } catch (error) {
-            loadingEl.classList.add('hidden');
-            emptyEl.innerHTML = `<p>Failed to load devices: ${error.message}</p>`;
-            emptyEl.classList.remove('hidden');
+            DOM.hide(loading);
+            empty.innerHTML = `<p>Failed to load: ${error.message}</p>`;
+            DOM.show(empty);
         }
     },
 
-    /**
-     * Render a device toggle item
-     */
     renderDeviceToggle(device, index) {
-        const isExcluded = this.excludedIds.includes(device.id);
-        const isVisible = !isExcluded;
-        const labelClass = isVisible ? 'visible' : 'hidden-label';
-        const labelText = isVisible ? 'Visible' : 'Hidden';
-
+        const visible = !this.excludedIds.includes(device.id);
         return `
-            <div class="device-toggle-item">
-                <div class="device-toggle-info">
-                    <span class="device-toggle-name">${Utils.escapeHtml(device.name)}</span>
-                    <span class="device-toggle-id">${Utils.escapeHtml(device.id)}</span>
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="fw-medium">${Utils.escapeHtml(device.name)}</div>
+                    <small class="text-muted">${Utils.escapeHtml(device.id)}</small>
                 </div>
-                <div class="device-toggle-status">
-                    <span class="device-toggle-label ${labelClass}" data-label-index="${index}">${labelText}</span>
-                    <label class="toggle-label" style="margin: 0;">
-                        <input type="checkbox"
-                               class="toggle-input device-visibility-toggle"
-                               data-index="${index}"
-                               ${isVisible ? 'checked' : ''}>
-                        <span class="toggle-switch"></span>
-                    </label>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="device-toggle-label small ${visible ? 'visible' : 'hidden-label'}" data-label-index="${index}">${visible ? 'Visible' : 'Hidden'}</span>
+                    <div class="form-check form-switch mb-0">
+                        <input type="checkbox" class="form-check-input device-visibility-toggle" data-index="${index}" ${visible ? 'checked' : ''}>
+                    </div>
                 </div>
-            </div>
-        `;
+            </div>`;
     },
 
-    /**
-     * Toggle device visibility
-     */
-    toggleDevice(deviceId, isVisible, index) {
-        const labelEl = document.querySelector(`[data-label-index="${index}"]`);
+    toggleDevice(deviceId, visible, index) {
+        const label = $(`[data-label-index="${index}"]`);
 
-        if (isVisible) {
-            // Remove from excluded list
+        if (visible) {
             this.excludedIds = this.excludedIds.filter(id => id !== deviceId);
-            if (labelEl) {
-                labelEl.textContent = 'Visible';
-                labelEl.className = 'device-toggle-label visible';
-            }
-        } else {
-            // Add to excluded list
-            if (!this.excludedIds.includes(deviceId)) {
-                this.excludedIds.push(deviceId);
-            }
-            if (labelEl) {
-                labelEl.textContent = 'Hidden';
-                labelEl.className = 'device-toggle-label hidden-label';
-            }
+        } else if (!this.excludedIds.includes(deviceId)) {
+            this.excludedIds.push(deviceId);
         }
 
-        // Trigger auto-save
+        if (label) {
+            label.textContent = visible ? 'Visible' : 'Hidden';
+            label.className = `device-toggle-label small ${visible ? 'visible' : 'hidden-label'}`;
+        }
+
         this.autoSave();
     },
 
-    /**
-     * Get settings from form
-     */
     getFormSettings() {
-        // Convert seconds from UI to milliseconds for config
-        const delaySeconds = parseInt(document.getElementById('forceUpdateDelay')?.value, 10) || 60;
-        const delayMs = delaySeconds * 1000;
-
-        // Build settings object
         const settings = {
-            updateIntervalInMinutes: parseInt(document.getElementById('updateIntervalInMinutes')?.value, 10) || 15,
-            forceUpdateDelay: delayMs,
-            oidcCallbackServerBindAddr: document.getElementById('oidcCallbackServerBindAddr')?.value?.trim() || '0.0.0.0',
+            updateIntervalInMinutes: parseInt($id('updateIntervalInMinutes')?.value, 10) || 15,
+            forceUpdateDelay: (parseInt($id('forceUpdateDelay')?.value, 10) || 60) * 1000,
+            oidcCallbackServerBindAddr: $id('oidcCallbackServerBindAddr')?.value?.trim() || '0.0.0.0',
             excludedDevicesByDeviceId: this.excludedIds,
-            enableWebSocket: document.getElementById('enableWebSocket')?.checked ?? true,
+            enableWebSocket: $id('enableWebSocket')?.checked ?? true,
         };
 
-        // Add individual feature toggles
-        this.featureKeys.forEach(key => {
-            const el = document.getElementById(key);
-            if (el) {
-                settings[key] = el.checked;
-            }
+        this.FEATURE_KEYS.forEach(key => {
+            const el = $id(key);
+            if (el) settings[key] = el.checked;
         });
 
         return settings;
     },
 
-    /**
-     * Save settings to plugin config
-     */
     async save() {
-        const statusEl = document.getElementById('settings-status');
+        const status = $id('settings-status');
 
         try {
-            this.showStatus(statusEl, 'saving', 'Saving...');
-
+            this.showStatus(status, 'saving', 'Saving...');
             const config = await homebridge.getPluginConfig();
             const platformConfig = config[0] || { platform: 'DaikinCloud' };
-            const settings = this.getFormSettings();
-
-            Object.assign(platformConfig, settings);
-
+            Object.assign(platformConfig, this.getFormSettings());
             await homebridge.updatePluginConfig([platformConfig]);
             await homebridge.savePluginConfig();
-
-            this.showStatus(statusEl, 'saved', 'Saved');
+            this.showStatus(status, 'saved', 'Saved');
         } catch (error) {
-            this.showStatus(statusEl, 'error', 'Failed to save');
-            console.error('Failed to save settings:', error);
+            this.showStatus(status, 'error', 'Failed');
+            console.error('Settings save failed:', error);
         }
     },
 
-    /**
-     * Show save status indicator
-     */
     showStatus(el, type, message) {
         if (!el) return;
-        el.className = `settings-status ${type}`;
+        el.className = `badge ${type}`;
         el.textContent = message;
-        el.classList.remove('hidden');
-
-        // Auto-hide after success
-        if (type === 'saved') {
-            setTimeout(() => el.classList.add('hidden'), 2000);
-        }
+        DOM.show(el);
+        if (type === 'saved') setTimeout(() => DOM.hide(el), 2000);
     },
 };
 
-/**
- * Devices Module
- */
-const Devices = {
-    /**
-     * Load devices from API
-     */
-    async load() {
-        const { elements } = DaikinUI;
+// ============================================================================
+// Devices Module
+// ============================================================================
 
-        elements.devicesLoading.classList.remove('hidden');
-        elements.devicesList.innerHTML = '';
-        elements.devicesEmpty.classList.add('hidden');
-        elements.devicesError.classList.add('hidden');
+const Devices = {
+    async load() {
+        DOM.show(El.devicesLoading);
+        El.devicesList.innerHTML = '';
+        DOM.hide(El.devicesEmpty);
+        DOM.hide(El.devicesError);
 
         try {
             const result = await homebridge.request('/devices/list');
-            elements.devicesLoading.classList.add('hidden');
+            DOM.hide(El.devicesLoading);
 
             if (!result.success) {
-                this.handleLoadError(result);
+                this.handleError(result);
                 return;
             }
 
-            if (result.devices.length === 0) {
-                elements.devicesEmpty.classList.remove('hidden');
+            if (!result.devices.length) {
+                DOM.show(El.devicesEmpty);
                 return;
             }
 
-            elements.devicesList.innerHTML = result.devices
-                .map(device => this.render(device))
-                .join('');
+            El.devicesList.innerHTML = result.devices.map(d => this.render(d)).join('');
         } catch (error) {
-            elements.devicesLoading.classList.add('hidden');
-            elements.devicesError.textContent = 'Failed to load devices: ' + error.message;
-            elements.devicesError.classList.remove('hidden');
+            DOM.hide(El.devicesLoading);
+            El.devicesError.textContent = 'Failed to load: ' + error.message;
+            DOM.show(El.devicesError);
         }
     },
 
-    /**
-     * Handle device load error
-     */
-    handleLoadError(result) {
-        const { elements } = DaikinUI;
-
-        if (result.message.includes('Not authenticated')) {
-            elements.devicesEmpty.innerHTML = `
-                <div class="empty-icon">🔐</div>
-                <p>Please authenticate first</p>
-                <p class="text-muted">Go to the Authentication tab to connect your Daikin account.</p>
-            `;
-            elements.devicesEmpty.classList.remove('hidden');
+    handleError(result) {
+        if (result.message?.includes('Not authenticated')) {
+            El.devicesEmpty.innerHTML = `
+                <div class="fs-1 mb-2 opacity-50">🔐</div>
+                <p class="mb-1">Please authenticate first</p>
+                <p class="text-muted small">Go to Authentication tab to connect.</p>`;
+            DOM.show(El.devicesEmpty);
         } else {
-            elements.devicesError.textContent = result.message;
-            elements.devicesError.classList.remove('hidden');
+            El.devicesError.textContent = result.message;
+            DOM.show(El.devicesError);
         }
     },
 
-    /**
-     * Render a device card
-     */
     render(device) {
-        const statusClass = device.online ? 'online' : 'offline';
-        const statusText = device.online ? 'Online' : 'Offline';
-        const powerClass = device.powerState === 'on' ? 'power-on' : 'power-off';
-        const powerText = device.powerState === 'on' ? 'ON' : 'OFF';
-        const modeDisplay = device.operationMode ? Utils.capitalize(device.operationMode) : '-';
+        const online = device.online;
+        const powerOn = device.powerState === 'on';
+        const mode = device.operationMode ? Utils.capitalize(device.operationMode) : '-';
 
         return `
-            <div class="device-item">
-                <div class="device-header">
-                    <span class="device-name">${Utils.escapeHtml(device.name)}</span>
-                    <div class="device-badges">
-                        <span class="device-power ${powerClass}">${powerText}</span>
-                        <span class="device-status ${statusClass}">${statusText}</span>
+            <div class="col-md-6">
+                <div class="card device-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <h6 class="card-title mb-0">${Utils.escapeHtml(device.name)}</h6>
+                            <div class="d-flex gap-1">
+                                <span class="device-power ${powerOn ? 'power-on' : 'power-off'}">${powerOn ? 'ON' : 'OFF'}</span>
+                                <span class="device-status ${online ? 'online' : 'offline'}">${online ? 'Online' : 'Offline'}</span>
+                            </div>
+                        </div>
+                        <div class="row g-2 small">
+                            ${device.roomTemp ? `<div class="col-6"><div class="text-muted">Room Temp</div><div class="fw-medium">${Utils.escapeHtml(device.roomTemp)}</div></div>` : ''}
+                            ${device.outdoorTemp ? `<div class="col-6"><div class="text-muted">Outdoor</div><div class="fw-medium">${Utils.escapeHtml(device.outdoorTemp)}</div></div>` : ''}
+                            <div class="col-6"><div class="text-muted">Mode</div><div class="fw-medium">${Utils.escapeHtml(mode)}</div></div>
+                            <div class="col-6"><div class="text-muted">Model</div><div class="fw-medium">${Utils.escapeHtml(device.model)}</div></div>
+                        </div>
+                        ${device.features?.length ? `<div class="mt-2 d-flex flex-wrap gap-1">${device.features.map(f => `<span class="device-feature-tag">${f}</span>`).join('')}</div>` : ''}
                     </div>
                 </div>
-                <div class="device-info">
-                    ${this.renderTempInfo(device)}
-                    <div class="device-info-item">
-                        <span class="device-info-label">Mode</span>
-                        <span class="device-info-value">${Utils.escapeHtml(modeDisplay)}</span>
-                    </div>
-                    <div class="device-info-item">
-                        <span class="device-info-label">Model</span>
-                        <span class="device-info-value">${Utils.escapeHtml(device.model)}</span>
-                    </div>
-                </div>
-                ${this.renderFeatures(device.features)}
-            </div>
-        `;
+            </div>`;
     },
 
-    /**
-     * Render temperature info
-     */
-    renderTempInfo(device) {
-        let html = '';
-
-        if (device.roomTemp) {
-            html += `
-                <div class="device-info-item">
-                    <span class="device-info-label">Room Temp</span>
-                    <span class="device-info-value">${Utils.escapeHtml(device.roomTemp)}</span>
-                </div>`;
-        }
-
-        if (device.outdoorTemp) {
-            html += `
-                <div class="device-info-item">
-                    <span class="device-info-label">Outdoor</span>
-                    <span class="device-info-value">${Utils.escapeHtml(device.outdoorTemp)}</span>
-                </div>`;
-        }
-
-        return html;
-    },
-
-    /**
-     * Render feature tags
-     */
-    renderFeatures(features) {
-        if (!features || features.length === 0) return '';
-
-        return `
-            <div class="device-features">
-                ${features.map(f => `<span class="device-feature-tag">${f}</span>`).join('')}
-            </div>
-        `;
-    },
-
-    /**
-     * Refresh devices list
-     */
-    refresh() {
-        this.load();
-    },
+    refresh() { this.load(); },
 };
 
-/**
- * Rate Limit Module
- */
+// ============================================================================
+// Rate Limit Module
+// ============================================================================
+
 const RateLimit = {
-    /**
-     * Check rate limit from API
-     */
     async check() {
-        const display = DaikinUI.elements.rateLimitDisplay;
+        const display = El.rateLimitDisplay;
         display.textContent = 'Checking...';
 
         try {
             const result = await homebridge.request('/api/rate-limit');
-
             if (result.success && result.rateLimit) {
                 const { limitDay, remainingDay, limitMinute, remainingMinute } = result.rateLimit;
-
-                if (remainingDay !== undefined && limitDay !== undefined) {
-                    let text = `${remainingDay}/${limitDay} daily`;
-                    if (remainingMinute !== undefined && limitMinute !== undefined) {
-                        text += `, ${remainingMinute}/${limitMinute} per minute`;
-                    }
-                    display.textContent = text;
-                } else if (remainingMinute !== undefined && limitMinute !== undefined) {
-                    display.textContent = `${remainingMinute}/${limitMinute} per minute`;
-                } else {
-                    display.textContent = 'No rate limit headers';
+                let text = remainingDay !== undefined ? `${remainingDay}/${limitDay} daily` : '';
+                if (remainingMinute !== undefined) {
+                    text += text ? `, ${remainingMinute}/${limitMinute}/min` : `${remainingMinute}/${limitMinute}/min`;
                 }
+                display.textContent = text || 'No rate limit headers';
             } else {
-                display.textContent = result.message || 'No rate limit info';
+                display.textContent = result.message || 'No info';
             }
         } catch (error) {
             display.textContent = 'Error: ' + error.message;
@@ -1275,404 +822,248 @@ const RateLimit = {
     },
 };
 
-/**
- * UI Utilities
- */
-const UI = {
-    /**
-     * Show loading overlay
-     */
-    showLoading() {
-        DaikinUI.elements.loading.classList.remove('hidden');
-    },
+// ============================================================================
+// Mobile Auth Module
+// ============================================================================
 
-    /**
-     * Hide loading overlay
-     */
-    hideLoading() {
-        DaikinUI.elements.loading.classList.add('hidden');
-    },
-
-    /**
-     * Show error message
-     */
-    showError(message) {
-        const errorDiv = DaikinUI.elements.globalError;
-        if (errorDiv) {
-            errorDiv.textContent = message;
-            errorDiv.classList.remove('hidden');
-            setTimeout(() => errorDiv.classList.add('hidden'), 10000);
-        } else {
-            console.error(message);
-        }
-    },
-};
-
-/**
- * Utility Functions
- */
-const Utils = {
-    /**
-     * Capitalize first letter
-     */
-    capitalize(str) {
-        return str.charAt(0).toUpperCase() + str.slice(1);
-    },
-
-    /**
-     * Escape HTML to prevent XSS
-     */
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    },
-};
-
-/**
- * Mobile Auth Module
- */
 const MobileAuth = {
-    /**
-     * Show mobile auth form
-     */
     show() {
-        const form = document.getElementById('mobile-auth-form');
-        const statusCard = document.getElementById('auth-status-card');
-        if (form) form.classList.remove('hidden');
-        if (statusCard) statusCard.classList.add('hidden');
-
-        // Load saved credentials if any
-        this.loadSavedCredentials();
+        DOM.show($id('mobile-auth-form'));
+        DOM.hide($id('auth-status-card'));
+        this.loadCredentials();
     },
 
-    /**
-     * Hide mobile auth form
-     */
     hide() {
-        const form = document.getElementById('mobile-auth-form');
-        const statusCard = document.getElementById('auth-status-card');
-        if (form) form.classList.add('hidden');
-        if (statusCard) statusCard.classList.remove('hidden');
-
-        // Clear errors/success
-        const errorsEl = document.getElementById('mobile-auth-errors');
-        const successEl = document.getElementById('mobile-auth-success');
-        if (errorsEl) errorsEl.classList.add('hidden');
-        if (successEl) successEl.classList.add('hidden');
+        DOM.hide($id('mobile-auth-form'));
+        DOM.show($id('auth-status-card'));
+        DOM.hide($id('mobile-auth-errors'));
+        DOM.hide($id('mobile-auth-success'));
     },
 
-    /**
-     * Load saved credentials from config
-     */
-    async loadSavedCredentials() {
+    async loadCredentials() {
         try {
             const config = await homebridge.getPluginConfig();
-            if (config && config.length > 0) {
-                const platformConfig = config[0];
-                const emailEl = document.getElementById('daikinEmail');
-                const passwordEl = document.getElementById('daikinPassword');
-
-                if (emailEl && platformConfig.daikinEmail) {
-                    emailEl.value = platformConfig.daikinEmail;
-                }
-                if (passwordEl && platformConfig.daikinPassword) {
-                    passwordEl.value = platformConfig.daikinPassword;
-                }
+            if (config?.[0]) {
+                const email = $id('daikinEmail');
+                const pass = $id('daikinPassword');
+                if (email && config[0].daikinEmail) email.value = config[0].daikinEmail;
+                if (pass && config[0].daikinPassword) pass.value = config[0].daikinPassword;
             }
         } catch (error) {
-            console.error('Failed to load saved credentials:', error);
+            console.error('Credential load failed:', error);
         }
     },
 
-    /**
-     * Test mobile auth and save credentials
-     */
     async test() {
-        const emailEl = document.getElementById('daikinEmail');
-        const passwordEl = document.getElementById('daikinPassword');
-        const errorsEl = document.getElementById('mobile-auth-errors');
-        const successEl = document.getElementById('mobile-auth-success');
-        const btnTest = document.getElementById('btn-test-mobile-auth');
+        const email = $id('daikinEmail')?.value.trim();
+        const password = $id('daikinPassword')?.value;
+        const errors = $id('mobile-auth-errors');
+        const success = $id('mobile-auth-success');
+        const btn = $id('btn-test-mobile-auth');
 
-        const email = emailEl?.value?.trim();
-        const password = passwordEl?.value;
+        DOM.hide(errors);
+        DOM.hide(success);
 
-        // Clear previous messages
-        errorsEl?.classList.add('hidden');
-        successEl?.classList.add('hidden');
-
-        // Validate inputs
         if (!email || !password) {
-            if (errorsEl) {
-                errorsEl.textContent = 'Please enter both email and password';
-                errorsEl.classList.remove('hidden');
-            }
+            errors.textContent = 'Please enter email and password';
+            DOM.show(errors);
             return;
         }
 
-        // Show loading state
-        if (btnTest) {
-            btnTest.disabled = true;
-            btnTest.innerHTML = '<span class="spinner"></span> Testing...';
-        }
+        UI.setButtonLoading(btn, true, 'Testing...');
 
         try {
-            const result = await homebridge.request('/auth/mobile-test', {
-                email,
-                password,
-            });
+            const result = await homebridge.request('/auth/mobile-test', { email, password });
 
             if (result.success) {
-                // Save config
                 await this.saveCredentials(email, password);
-
-                if (successEl) {
-                    successEl.innerHTML = `
-                        <strong>Authentication successful!</strong><br>
-                        Found ${result.deviceCount || 0} device(s).<br>
-                        Rate limit: ${result.rateLimit?.remainingDay || '?'}/${result.rateLimit?.limitDay || '5000'} requests/day<br>
-                        <small>Configuration saved. Restart Homebridge to apply changes.</small>
-                    `;
-                    successEl.classList.remove('hidden');
-                }
-
-                // Update status after a delay
+                success.innerHTML = `
+                    <strong>Success!</strong> Found ${result.deviceCount || 0} device(s).<br>
+                    Rate limit: ${result.rateLimit?.remainingDay || '?'}/${result.rateLimit?.limitDay || '5000'}/day<br>
+                    <small>Restart Homebridge to apply.</small>`;
+                DOM.show(success);
                 setTimeout(() => {
                     this.hide();
                     Auth.loadStatus();
                     Devices.load();
                 }, 2000);
             } else {
-                if (errorsEl) {
-                    errorsEl.textContent = result.message || 'Authentication failed';
-                    errorsEl.classList.remove('hidden');
-                }
+                errors.textContent = result.message || 'Authentication failed';
+                DOM.show(errors);
             }
         } catch (error) {
-            if (errorsEl) {
-                errorsEl.textContent = 'Authentication failed: ' + error.message;
-                errorsEl.classList.remove('hidden');
-            }
+            errors.textContent = 'Failed: ' + error.message;
+            DOM.show(errors);
         }
 
-        // Reset button
-        if (btnTest) {
-            btnTest.disabled = false;
-            btnTest.innerHTML = 'Test & Save Credentials';
-        }
+        UI.setButtonLoading(btn, false, null, 'Test & Save Credentials');
     },
 
-    /**
-     * Save mobile credentials to config
-     */
     async saveCredentials(email, password) {
-        try {
-            const config = await homebridge.getPluginConfig();
-            const platformConfig = config[0] || { platform: 'DaikinCloud' };
-
-            platformConfig.authMode = 'mobile_app';
-            platformConfig.daikinEmail = email;
-            platformConfig.daikinPassword = password;
-
-            await homebridge.updatePluginConfig([platformConfig]);
-            await homebridge.savePluginConfig();
-        } catch (error) {
-            console.error('Failed to save credentials:', error);
-            throw error;
-        }
+        const config = await homebridge.getPluginConfig();
+        const platformConfig = config[0] || { platform: 'DaikinCloud' };
+        Object.assign(platformConfig, { authMode: 'mobile_app', daikinEmail: email, daikinPassword: password });
+        await homebridge.updatePluginConfig([platformConfig]);
+        await homebridge.savePluginConfig();
     },
 };
 
-/**
- * Auth Mode Module
- */
+// ============================================================================
+// Auth Mode Module
+// ============================================================================
+
 const AuthMode = {
     current: 'developer_portal',
-    previousMode: 'developer_portal',
+    previous: 'developer_portal',
 
-    // Recommended defaults for each auth mode
-    defaults: {
-        developer_portal: {
-            updateIntervalInMinutes: 15,
-            forceUpdateDelay: 60, // seconds in UI
-            enableWebSocket: false,
-        },
-        mobile_app: {
-            updateIntervalInMinutes: 5,
-            forceUpdateDelay: 10, // seconds in UI
-            enableWebSocket: true,
-        },
+    DEFAULTS: {
+        developer_portal: { updateIntervalInMinutes: 15, forceUpdateDelay: 60, enableWebSocket: false },
+        mobile_app: { updateIntervalInMinutes: 5, forceUpdateDelay: 10, enableWebSocket: true },
     },
 
-    /**
-     * Initialize auth mode from saved config
-     */
     async init() {
         try {
             const config = await homebridge.getPluginConfig();
-            if (config && config.length > 0) {
-                this.current = config[0].authMode || 'developer_portal';
-                this.previousMode = this.current;
+            if (config?.[0]?.authMode) {
+                this.current = this.previous = config[0].authMode;
             }
         } catch (error) {
-            console.error('Failed to load auth mode:', error);
+            console.error('AuthMode init failed:', error);
         }
-
         this.updateUI();
     },
 
-    /**
-     * Handle auth mode change
-     */
     onChange() {
-        const selectEl = document.getElementById('authMode');
-        if (selectEl) {
-            this.previousMode = this.current;
-            this.current = selectEl.value;
+        const select = $id('authMode');
+        if (select) {
+            this.previous = this.current;
+            this.current = select.value;
             this.updateUI();
-            this.updateSettingsDefaults();
-            this.saveToConfig();
+            this.updateDefaults();
+            this.save();
         }
     },
 
-    /**
-     * Update UI based on current auth mode
-     */
     updateUI() {
-        const selectEl = document.getElementById('authMode');
-        const hintEl = document.getElementById('auth-mode-hint');
-        const btnDevPortal = document.getElementById('btn-authenticate');
-        const btnMobile = document.getElementById('btn-authenticate-mobile');
-        const modeTextEl = document.getElementById('auth-mode-text');
-        const rateLimitDisplay = document.getElementById('rate-limit-display');
-        const wsSettingRow = document.getElementById('websocket-setting-row');
+        const isMobile = this.current === 'mobile_app';
 
-        if (selectEl) {
-            selectEl.value = this.current;
-        }
+        $id('authMode').value = this.current;
+        $id('auth-mode-hint').textContent = isMobile
+            ? 'Use your Daikin Onecta account (same as mobile app)'
+            : 'Requires API credentials from the Daikin Developer Portal';
 
-        if (this.current === 'mobile_app') {
-            if (hintEl) hintEl.textContent = 'Use your Daikin Onecta account (same as mobile app)';
-            if (btnDevPortal) btnDevPortal.style.display = 'none';
-            if (btnMobile) btnMobile.style.display = 'inline-flex';
-            if (modeTextEl) modeTextEl.textContent = 'Mobile App';
-            if (rateLimitDisplay) rateLimitDisplay.textContent = '5000 requests/day';
-            if (wsSettingRow) wsSettingRow.style.display = '';
-        } else {
-            if (hintEl) hintEl.textContent = 'Requires API credentials from the Daikin Developer Portal';
-            if (btnDevPortal) btnDevPortal.style.display = 'inline-flex';
-            if (btnMobile) btnMobile.style.display = 'none';
-            if (modeTextEl) modeTextEl.textContent = 'Developer Portal';
-            if (rateLimitDisplay) rateLimitDisplay.textContent = '200 requests/day';
-            if (wsSettingRow) wsSettingRow.style.display = 'none';
-        }
+        DOM.toggle($id('btn-authenticate'), !isMobile);
+        DOM.toggle($id('btn-authenticate-mobile'), isMobile);
 
-        // Update settings hints
-        this.updateSettingsHints();
+        $id('auth-mode-text').textContent = isMobile ? 'Mobile App' : 'Developer Portal';
+        $id('rate-limit-display').textContent = isMobile ? '5000 requests/day' : '200 requests/day';
+        $id('rate-limit-info').textContent = `The Daikin API limits you to ${isMobile ? '5000' : '200'} requests per day.`;
+
+        DOM.toggle($id('websocket-setting-row'), isMobile);
+
+        this.updateHints();
     },
 
-    /**
-     * Update settings input hints based on auth mode
-     */
-    updateSettingsHints() {
-        const updateIntervalEl = document.getElementById('updateIntervalInMinutes');
-        const forceDelayEl = document.getElementById('forceUpdateDelay');
+    updateHints() {
+        const isMobile = this.current === 'mobile_app';
+        const interval = $id('updateIntervalInMinutes');
+        const delay = $id('forceUpdateDelay');
 
-        if (updateIntervalEl) {
-            if (this.current === 'mobile_app') {
-                updateIntervalEl.placeholder = '5 (recommended for Mobile App)';
-                updateIntervalEl.title = 'Mobile App: 1-5 min recommended (5000 calls/day)';
-            } else {
-                updateIntervalEl.placeholder = '15 (recommended for Developer Portal)';
-                updateIntervalEl.title = 'Developer Portal: 15+ min recommended (200 calls/day)';
-            }
+        if (interval) {
+            interval.placeholder = isMobile ? '5 (recommended)' : '15 (recommended)';
+            interval.title = isMobile ? '1-5 min (5000 calls/day)' : '15+ min (200 calls/day)';
         }
-
-        if (forceDelayEl) {
-            if (this.current === 'mobile_app') {
-                forceDelayEl.placeholder = '10 (recommended for Mobile App)';
-                forceDelayEl.title = 'Mobile App: 10s recommended';
-            } else {
-                forceDelayEl.placeholder = '60 (recommended for Developer Portal)';
-                forceDelayEl.title = 'Developer Portal: 60s recommended';
-            }
+        if (delay) {
+            delay.placeholder = isMobile ? '10 (recommended)' : '60 (recommended)';
+            delay.title = isMobile ? '10s recommended' : '60s recommended';
         }
     },
 
-    /**
-     * Update settings to recommended defaults when switching modes
-     */
-    updateSettingsDefaults() {
-        // Only update if mode actually changed
-        if (this.current === this.previousMode) return;
+    updateDefaults() {
+        if (this.current === this.previous) return;
 
-        const defaults = this.defaults[this.current];
-        const updateIntervalEl = document.getElementById('updateIntervalInMinutes');
-        const forceDelayEl = document.getElementById('forceUpdateDelay');
-        const enableWebSocketEl = document.getElementById('enableWebSocket');
+        const defaults = this.DEFAULTS[this.current];
+        $id('updateIntervalInMinutes').value = defaults.updateIntervalInMinutes;
+        $id('forceUpdateDelay').value = defaults.forceUpdateDelay;
+        $id('enableWebSocket').checked = defaults.enableWebSocket;
 
-        // Update values to recommended defaults for the new mode
-        if (updateIntervalEl) {
-            updateIntervalEl.value = defaults.updateIntervalInMinutes;
-        }
-
-        if (forceDelayEl) {
-            forceDelayEl.value = defaults.forceUpdateDelay;
-        }
-
-        if (enableWebSocketEl) {
-            enableWebSocketEl.checked = defaults.enableWebSocket;
-        }
-
-        // Trigger auto-save in Settings module
         Settings.autoSave();
     },
 
-    /**
-     * Save auth mode to config
-     */
-    async saveToConfig() {
+    async save() {
         try {
             const config = await homebridge.getPluginConfig();
             const platformConfig = config[0] || { platform: 'DaikinCloud' };
-
             platformConfig.authMode = this.current;
-
             await homebridge.updatePluginConfig([platformConfig]);
             await homebridge.savePluginConfig();
         } catch (error) {
-            console.error('Failed to save auth mode:', error);
+            console.error('AuthMode save failed:', error);
         }
     },
 };
 
-// Global function bindings for HTML onclick handlers
-function showWizard() { Wizard.show(); }
-function hideWizard() { Wizard.hide(); }
-function goToStep(step) { Wizard.goToStep(step); }
-function validateAndProceed() { Wizard.validateAndProceed(); }
-function openAuthUrl() { Wizard.openAuthUrl(); }
-function submitAuthCode() { Wizard.submitAuthCode(); }
-function submitCallbackUrl() { Wizard.submitCallbackUrl(); }
-function finishWizard() { Wizard.finish(); }
-function testConnection() { Auth.testConnection(); }
-function revokeAuth() { Auth.revoke(); }
-function refreshDevices() { Devices.refresh(); }
-function checkRateLimit() { RateLimit.check(); }
-function showMobileAuthForm() { MobileAuth.show(); }
-function hideMobileAuthForm() { MobileAuth.hide(); }
-function testMobileAuth() { MobileAuth.test(); }
-function onAuthModeChange() { AuthMode.onChange(); }
+// ============================================================================
+// Global Event Handlers (for HTML onclick)
+// ============================================================================
 
-// Bind module methods to DaikinUI for easier access
-DaikinUI.loadStatus = () => Auth.loadStatus();
-DaikinUI.loadSavedConfig = () => Config.load();
-DaikinUI.loadDevices = () => Devices.load();
-DaikinUI.loadSettings = () => Settings.load();
+const showWizard = () => Wizard.show();
+const hideWizard = () => Wizard.hide();
+const goToStep = (step) => Wizard.goToStep(step);
+const validateAndProceed = () => Wizard.validateAndProceed();
+const openAuthUrl = () => Wizard.openAuthUrl();
+const submitCallbackUrl = () => Wizard.submitCallbackUrl();
+const finishWizard = () => Wizard.finish();
+const testConnection = () => Auth.testConnection();
+const revokeAuth = () => Auth.revoke();
+const refreshDevices = () => Devices.refresh();
+const checkRateLimit = () => RateLimit.check();
+const showMobileAuthForm = () => MobileAuth.show();
+const hideMobileAuthForm = () => MobileAuth.hide();
+const testMobileAuth = () => MobileAuth.test();
+const onAuthModeChange = () => AuthMode.onChange();
 
-// Initialize on DOM ready
+// ============================================================================
+// Initialization
+// ============================================================================
+
+function cacheElements() {
+    El = {
+        statusBadge: $id('status-badge'),
+        statusIndicator: $id('status-indicator'),
+        statusText: $id('status-text'),
+        tokenExpiresLabel: $id('token-expires-label'),
+        tokenExpires: $id('token-expires'),
+        authStatus: $id('auth-status'),
+        authTokenExpires: $id('auth-token-expires'),
+        expiresRow: $id('expires-row'),
+        btnAuthenticate: $id('btn-authenticate'),
+        btnRevoke: $id('btn-revoke'),
+        btnTest: $id('btn-test'),
+        testResult: $id('test-result'),
+        wizard: $id('wizard'),
+        authStatusCard: $id('auth-status-card'),
+        validationErrors: $id('validation-errors'),
+        authUrlContainer: $id('auth-url-container'),
+        authUrlDisplay: $id('auth-url'),
+        callbackServerStatus: $id('callback-server-status'),
+        successMessage: $id('success-message'),
+        devicesLoading: $id('devices-loading'),
+        devicesList: $id('devices-list'),
+        devicesEmpty: $id('devices-empty'),
+        devicesError: $id('devices-error'),
+        settingsStatus: $id('settings-status'),
+        rateLimitDisplay: $id('rate-limit-display'),
+        loading: $id('loading'),
+        globalError: $id('global-error'),
+    };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    DaikinUI.init();
+    cacheElements();
+    Auth.loadStatus();
+    Config.load();
+    Settings.load();
+    Devices.load();
     AuthMode.init();
 });
