@@ -62,7 +62,7 @@ export class ClimateControlService {
         if (roomTemperatureControlForCooling) {
             const coolingChar = this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature);
             // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-            const clampedCoolingValue = Math.max(10, Math.min(35, roomTemperatureControlForCooling.value));
+            const clampedCoolingValue = Math.max(10, Math.min(35, roomTemperatureControlForCooling.value as number));
             coolingChar.updateValue(clampedCoolingValue);
             coolingChar
                 .setProps({
@@ -80,7 +80,7 @@ export class ClimateControlService {
         if (roomTemperatureControlForHeating) {
             const heatingChar = this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature);
             // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-            const clampedHeatingValue = Math.max(0, Math.min(25, roomTemperatureControlForHeating.value));
+            const clampedHeatingValue = Math.max(0, Math.min(25, roomTemperatureControlForHeating.value as number));
             heatingChar.updateValue(clampedHeatingValue);
             heatingChar
                 .setProps({
@@ -117,7 +117,7 @@ export class ClimateControlService {
         if (fanControl) {
             const rotationChar = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
             // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-            const clampedRotationValue = Math.max(0, Math.min(100, fanControl.value));
+            const clampedRotationValue = Math.max(0, Math.min(100, fanControl.value as number));
             rotationChar.updateValue(clampedRotationValue);
             rotationChar
                 .setProps({
@@ -150,13 +150,13 @@ export class ClimateControlService {
     }
 
     async handleCurrentTemperatureGet(): Promise<CharacteristicValue> {
-        const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/' + this.getCurrentControlMode()).value;
+        const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/' + this.getCurrentControlMode()).value as number;
         this.platform.log.debug(`[${this.name}] GET CurrentTemperature, temperature: ${temperature}, last update: ${this.accessory.context.device.getLastUpdated()}`);
         return temperature;
     }
 
     async handleCoolingThresholdTemperatureGet(): Promise<CharacteristicValue> {
-        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`).value;
+        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`).value as number;
         this.platform.log.debug(`[${this.name}] GET CoolingThresholdTemperature, temperature: ${temperature}, last update: ${this.accessory.context.device.getLastUpdated()}`);
         return temperature;
     }
@@ -175,7 +175,7 @@ export class ClimateControlService {
     }
 
     async handleRotationSpeedGet(): Promise<CharacteristicValue> {
-        const speed = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`).value;
+        const speed = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`).value as number;
         this.platform.log.debug(`[${this.name}] GET RotationSpeed, speed: ${speed}, last update: ${this.accessory.context.device.getLastUpdated()}`);
         return speed;
     }
@@ -194,7 +194,7 @@ export class ClimateControlService {
     }
 
     async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {
-        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`).value;
+        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`).value as number;
         this.platform.log.debug(`[${this.name}] GET HeatingThresholdTemperature, temperature: ${temperature}, last update: ${this.accessory.context.device.getLastUpdated()}`);
         return temperature;
     }
@@ -289,7 +289,7 @@ export class ClimateControlService {
     }
 
     getCurrentOperationMode(): DaikinOperationModes {
-        return this.accessory.context.device.getData(this.managementPointId, 'operationMode', undefined).value;
+        return this.accessory.context.device.getData(this.managementPointId, 'operationMode', undefined).value as DaikinOperationModes;
     }
 
     getCurrentControlMode(): DaikinControlModes {
@@ -300,7 +300,7 @@ export class ClimateControlService {
             return DaikinControlModes.ROOM_TEMPERATURE;
         }
 
-        return controlMode.value;
+        return controlMode.value as DaikinControlModes;
     }
 
     getSetpointMode(): DaikinSetpointModes | null {
@@ -308,7 +308,7 @@ export class ClimateControlService {
         if (!setpointMode) {
             return null;
         }
-        return setpointMode.value;
+        return setpointMode.value as DaikinSetpointModes;
     }
 
     getSetpoint(operationMode: DaikinOperationModes): DaikinTemperatureControlSetpoints {
@@ -408,13 +408,13 @@ export class ClimateControlService {
         if (!currentModeFanControl) {
             return false;
         }
-        const fanSpeedValues: Array<string> = currentModeFanControl.values;
+        const fanSpeedValues: Array<string> = currentModeFanControl.values || [];
         this.platform.log.debug(`[${this.name}] hasIndoorSilentModeFeature, indoorSilentMode: ${fanSpeedValues.includes(DaikinFanSpeedModes.QUIET)}`);
         return fanSpeedValues.includes(DaikinFanSpeedModes.QUIET);
     }
 
     hasOperationMode(operationMode: DaikinOperationModes) {
-        const operationModeValues: Array<string> = this.accessory.context.device.getData(this.managementPointId, 'operationMode', undefined).values;
+        const operationModeValues: Array<string> = this.accessory.context.device.getData(this.managementPointId, 'operationMode', undefined).values || [];
         this.platform.log.debug(`[${this.name}] has ${operationMode}: ${operationModeValues.includes(operationMode)}`);
         return operationModeValues.includes(operationMode);
     }

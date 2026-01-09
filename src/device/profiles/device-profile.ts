@@ -5,7 +5,7 @@
  * Each profile contains information about how to handle the device.
  */
 
-import {DaikinCloudDevice} from 'daikin-controller-cloud/dist/device';
+import {DaikinCloudDevice} from '../../api';
 
 /**
  * Supported device types

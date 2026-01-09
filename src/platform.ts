@@ -3,15 +3,11 @@ import {API, Characteristic, DynamicPlatformPlugin, Logger, PlatformAccessory, P
 import {PLATFORM_NAME, PLUGIN_NAME} from './settings';
 import {AccessoryFactory} from './device';
 
-import {DaikinCloudController} from 'daikin-controller-cloud';
-
 import {resolve} from 'node:path';
-import {DaikinCloudDevice} from 'daikin-controller-cloud/dist/device';
 import {StringUtils} from './utils/strings';
-import {OnectaClientConfig} from 'daikin-controller-cloud/dist/onecta/oidc-utils';
 
 import fs from 'node:fs';
-import {DaikinCloudRepo} from './api/daikin-cloud.repository';
+import {DaikinCloudRepo, DaikinCloudController, DaikinCloudDevice, DaikinClientConfig} from './api';
 
 const ONE_SECOND = 1000;
 const ONE_MINUTE = ONE_SECOND * 60;
@@ -57,25 +53,24 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
             return;
         }
 
-        const daikinCloudControllerConfig: OnectaClientConfig = {
-            oidcClientId: this.config.clientId,
-            oidcClientSecret: this.config.clientSecret,
+        const tokenFilePath = resolve(this.storagePath, '.daikin-controller-cloud-tokenset');
+
+        const daikinCloudControllerConfig: DaikinClientConfig = {
+            clientId: this.config.clientId,
+            clientSecret: this.config.clientSecret,
+            callbackServerExternalAddress: this.config.callbackServerExternalAddress,
+            callbackServerPort: this.config.callbackServerPort || 8582,
             oidcCallbackServerBindAddr: this.config.oidcCallbackServerBindAddr,
-            oidcCallbackServerExternalAddress: this.config.callbackServerExternalAddress,
-            oidcCallbackServerPort: this.config.callbackServerPort,
-            oidcTokenSetFilePath: resolve(this.storagePath, '.daikin-controller-cloud-tokenset'),
-            oidcAuthorizationTimeoutS: 60 * 5,
+            tokenFilePath,
         };
 
         this.log.debug('[Config] Homebridge config', this.getPrivacyFriendlyConfig(this.config));
-        this.log.debug('[Config] DaikinCloudController config', this.getPrivacyFriendlyOnectaClientConfig(daikinCloudControllerConfig));
 
-
-        fs.stat(daikinCloudControllerConfig.oidcTokenSetFilePath!, (err, stats) => {
+        fs.stat(tokenFilePath, (err, stats) => {
             if (err) {
-                this.log.debug('[Config] DaikinCloudController config, oidcTokenSetFile does NOT YET exist, expect a message to start the authorisation flow');
+                this.log.debug('[Config] Token file does NOT exist. Please authenticate via the Homebridge UI.');
             } else {
-                this.log.debug(`[Config] DaikinCloudController config, oidcTokenSetFile does exist, last modified: ${stats.mtime}, created: ${stats.birthtime}`);
+                this.log.debug(`[Config] Token file exists, last modified: ${stats.mtime}`);
             }
         });
 
@@ -86,13 +81,12 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
                 return;
             }
 
-            this.controller.on('authorization_request', (url) => {
-                this.log.warn(`
-                    Please navigate to ${url} to start the authorisation flow. If it is the first time you open this url you will need to accept a security warning.
-
-                    Important: Make sure your Daikin app Redirect URI is set to ${url} in the Daikin Developer Portal.
-                `);
-            });
+            // Check if authenticated
+            if (!this.controller.isAuthenticated()) {
+                this.log.warn('[Auth] Not authenticated. Please use the Homebridge UI to authenticate with Daikin Cloud.');
+                this.log.info('--------------- End Daikin info for debugging reasons --------------------');
+                return;
+            }
 
             this.controller.on('rate_limit_status', (rateLimitStatus) => {
                 if (rateLimitStatus.remainingDay && rateLimitStatus.remainingDay <= 20) {
@@ -101,7 +95,11 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
                 this.log.debug(`[Rate Limit] Remaining calls today: ${rateLimitStatus.remainingDay}/${rateLimitStatus.limitDay} -- this minute: ${rateLimitStatus.remainingMinute}/${rateLimitStatus.limitMinute}`);
             });
 
-            const onInvalidGrantError = () => this.onInvalidGrantError(daikinCloudControllerConfig);
+            this.controller.on('error', (error) => {
+                this.log.error(`[Error] ${error}`);
+            });
+
+            const onInvalidGrantError = () => this.onInvalidGrantError(tokenFilePath);
             const devices: DaikinCloudDevice[] = await this.discoverDevices(this.controller, onInvalidGrantError);
 
             if (devices.length > 0) {
@@ -161,10 +159,11 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
                     this.log.debug(`[Platform] Created ${profile.displayName} accessory`);
 
                 } else {
-                    const climateControlEmbeddedId = device.desc.managementPoints.find(mp => mp.managementPointType === 'climateControl')?.embeddedId;
-                    const name: string = device.getData(climateControlEmbeddedId, 'name', undefined).value;
-                    this.log.info('[Platform] Adding new accessory, deviceModel:', StringUtils.isEmpty(name) ? deviceModel : name);
-                    const accessory = new this.api.platformAccessory<DaikinCloudAccessoryContext>(StringUtils.isEmpty(name) ? deviceModel : name, uuid);
+                    const climateControlEmbeddedId = device.desc.managementPoints.find(mp => mp.managementPointType === 'climateControl')?.embeddedId || 'climateControl';
+                    const nameData = device.getData(climateControlEmbeddedId, 'name', undefined).value as string | undefined;
+                    const displayName = StringUtils.isEmpty(nameData) ? deviceModel : nameData!;
+                    this.log.info('[Platform] Adding new accessory, deviceModel:', displayName);
+                    const accessory = new this.api.platformAccessory<DaikinCloudAccessoryContext>(displayName, uuid);
                     accessory.context.device = device;
 
                     const {profile} = this.accessoryFactory.createAccessory(accessory);
@@ -226,21 +225,13 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         };
     }
 
-    private getPrivacyFriendlyOnectaClientConfig(config: OnectaClientConfig): object {
-        return {
-            ...config,
-            oidcClientId: StringUtils.mask(config.oidcClientId),
-            oidcClientSecret: StringUtils.mask(config.oidcClientSecret),
-        };
-    }
-
-    private onInvalidGrantError(daikinCloudControllerConfig: OnectaClientConfig) {
+    private onInvalidGrantError(tokenFilePath: string) {
         this.log.warn('[API Syncing] TokenSet is invalid, removing TokenSet file');
         try {
-            fs.unlinkSync(daikinCloudControllerConfig.oidcTokenSetFilePath!);
-            this.log.warn('[API Syncing] TokenSet file is removed, restart Homebridge to restart the authorisation flow');
+            fs.unlinkSync(tokenFilePath);
+            this.log.warn('[API Syncing] TokenSet file removed. Please re-authenticate via the Homebridge UI.');
         } catch (e) {
-            this.log.error('[API Syncing] TokenSet file could not be removed, remove it manually. Location: ', daikinCloudControllerConfig.oidcTokenSetFilePath, e);
+            this.log.error('[API Syncing] TokenSet file could not be removed. Location:', tokenFilePath, e);
         }
     }
 }

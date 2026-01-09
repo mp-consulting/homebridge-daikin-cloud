@@ -1,221 +1,431 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Daikin Cloud Setup</title>
+    <title>Daikin Cloud</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
-        <!-- Authentication Status Card -->
-        <div class="card" id="status-card">
-            <div class="card-header">
-                <span>Authentication Status</span>
-                <span class="status-badge not-authenticated" id="status-badge">
-                    <span class="status-indicator red"></span>
+        <!-- Header with Status -->
+        <div class="header">
+            <div class="header-title">
+                <h1>Daikin Cloud</h1>
+                <span class="status-badge" id="status-badge">
+                    <span class="status-indicator" id="status-indicator"></span>
                     <span id="status-text">Checking...</span>
                 </span>
             </div>
-            <div class="card-body">
-                <div id="status-details">
-                    <div class="info-row">
-                        <span class="info-label">Status</span>
-                        <span class="info-value" id="auth-status">Loading...</span>
-                    </div>
-                    <div class="info-row" id="expires-row" style="display: none;">
-                        <span class="info-label">Token Expires</span>
-                        <span class="info-value" id="token-expires">-</span>
-                    </div>
-                </div>
-                <div class="btn-group" style="margin-top: 20px;">
-                    <button class="btn btn-success" id="btn-test" onclick="testConnection()">
-                        Test Connection
-                    </button>
-                    <button class="btn btn-primary" id="btn-authenticate" onclick="showWizard()">
-                        Authenticate
-                    </button>
-                    <button class="btn btn-danger" id="btn-revoke" onclick="revokeAuth()" style="display: none;">
-                        Revoke Access
-                    </button>
-                </div>
-                <div id="test-result" class="alert hidden" style="margin-top: 15px;"></div>
+            <div class="header-info" id="header-info">
+                <span id="token-expires-label" class="hidden">Token expires in: </span>
+                <span id="token-expires" class="token-countdown"></span>
             </div>
         </div>
 
-        <!-- Setup Wizard Card -->
-        <div class="card hidden" id="wizard-card">
-            <div class="card-header">
-                Setup Wizard
+        <!-- Tab Navigation -->
+        <div class="tab-nav">
+            <button class="tab-btn active" data-tab="devices" onclick="switchTab('devices')">
+                <span class="tab-icon">📱</span>
+                <span class="tab-label">Devices</span>
+            </button>
+            <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
+                <span class="tab-icon">⚙️</span>
+                <span class="tab-label">Settings</span>
+            </button>
+            <button class="tab-btn" data-tab="auth" onclick="switchTab('auth')">
+                <span class="tab-icon">🔐</span>
+                <span class="tab-label">Authentication</span>
+            </button>
+            <button class="tab-btn" data-tab="help" onclick="switchTab('help')">
+                <span class="tab-icon">❓</span>
+                <span class="tab-label">Help</span>
+            </button>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+            <!-- Devices Tab -->
+            <div class="tab-panel active" id="tab-devices">
+                <div class="panel-header">
+                    <h2>Discovered Devices</h2>
+                    <button class="btn btn-sm btn-outline" onclick="refreshDevices()" id="btn-refresh-devices">
+                        Refresh
+                    </button>
+                </div>
+                <div id="devices-loading" class="loading-state">
+                    <div class="spinner"></div>
+                    <p>Loading devices...</p>
+                </div>
+                <div id="devices-list" class="devices-grid"></div>
+                <div id="devices-empty" class="empty-state hidden">
+                    <div class="empty-icon">📱</div>
+                    <p>No devices found</p>
+                    <p class="text-muted">Make sure you're authenticated and your Daikin devices are set up in the Onecta app.</p>
+                </div>
+                <div id="devices-error" class="alert alert-danger hidden"></div>
             </div>
-            <div class="card-body">
-                <div class="steps">
-                    <div class="step active" id="step-1">
-                        <span class="step-number">1</span>
-                        <span class="step-label">Configuration</span>
-                    </div>
-                    <div class="step" id="step-2">
-                        <span class="step-number">2</span>
-                        <span class="step-label">Authorize</span>
-                    </div>
-                    <div class="step" id="step-3">
-                        <span class="step-number">3</span>
-                        <span class="step-label">Complete</span>
-                    </div>
+
+            <!-- Settings Tab -->
+            <div class="tab-panel" id="tab-settings">
+                <div class="panel-header">
+                    <h2>Plugin Settings</h2>
+                    <span id="settings-status" class="settings-status hidden"></span>
                 </div>
 
-                <!-- Step 1: Configuration -->
-                <div class="wizard-content active" id="content-1">
-                    <div class="alert alert-info">
-                        You need credentials from the
-                        <a href="https://developer.cloud.daikineurope.com/" target="_blank" class="link">Daikin Developer Portal</a>.
-                        <br>
-                        Create an application and copy the Client ID and Secret.
+                <div class="settings-grid">
+                    <div class="settings-section full-width">
+                        <h3>Extra Features in HomeKit</h3>
+                        <div class="form-hint" style="margin-bottom: 12px;">Enable switches for additional modes in HomeKit</div>
+                        <div class="feature-toggles-list">
+                            <div class="feature-toggle-item">
+                                <div class="feature-toggle-info">
+                                    <span class="feature-toggle-name">Powerful Mode</span>
+                                    <span class="feature-toggle-desc">Boost heating/cooling performance</span>
+                                </div>
+                                <label class="toggle-label" style="margin: 0;">
+                                    <input type="checkbox" id="showPowerfulMode" class="toggle-input feature-toggle">
+                                    <span class="toggle-switch"></span>
+                                </label>
+                            </div>
+                            <div class="feature-toggle-item">
+                                <div class="feature-toggle-info">
+                                    <span class="feature-toggle-name">Econo Mode</span>
+                                    <span class="feature-toggle-desc">Energy-saving operation</span>
+                                </div>
+                                <label class="toggle-label" style="margin: 0;">
+                                    <input type="checkbox" id="showEconoMode" class="toggle-input feature-toggle">
+                                    <span class="toggle-switch"></span>
+                                </label>
+                            </div>
+                            <div class="feature-toggle-item">
+                                <div class="feature-toggle-info">
+                                    <span class="feature-toggle-name">Streamer Mode</span>
+                                    <span class="feature-toggle-desc">Air purification</span>
+                                </div>
+                                <label class="toggle-label" style="margin: 0;">
+                                    <input type="checkbox" id="showStreamerMode" class="toggle-input feature-toggle">
+                                    <span class="toggle-switch"></span>
+                                </label>
+                            </div>
+                            <div class="feature-toggle-item">
+                                <div class="feature-toggle-info">
+                                    <span class="feature-toggle-name">Outdoor Silent Mode</span>
+                                    <span class="feature-toggle-desc">Reduce outdoor unit noise</span>
+                                </div>
+                                <label class="toggle-label" style="margin: 0;">
+                                    <input type="checkbox" id="showOutdoorSilentMode" class="toggle-input feature-toggle">
+                                    <span class="toggle-switch"></span>
+                                </label>
+                            </div>
+                            <div class="feature-toggle-item">
+                                <div class="feature-toggle-info">
+                                    <span class="feature-toggle-name">Indoor Silent Mode</span>
+                                    <span class="feature-toggle-desc">Quiet fan operation</span>
+                                </div>
+                                <label class="toggle-label" style="margin: 0;">
+                                    <input type="checkbox" id="showIndoorSilentMode" class="toggle-input feature-toggle">
+                                    <span class="toggle-switch"></span>
+                                </label>
+                            </div>
+                            <div class="feature-toggle-item">
+                                <div class="feature-toggle-info">
+                                    <span class="feature-toggle-name">Dry Mode</span>
+                                    <span class="feature-toggle-desc">Dehumidification</span>
+                                </div>
+                                <label class="toggle-label" style="margin: 0;">
+                                    <input type="checkbox" id="showDryMode" class="toggle-input feature-toggle">
+                                    <span class="toggle-switch"></span>
+                                </label>
+                            </div>
+                            <div class="feature-toggle-item">
+                                <div class="feature-toggle-info">
+                                    <span class="feature-toggle-name">Fan Only Mode</span>
+                                    <span class="feature-toggle-desc">Fan without heating/cooling</span>
+                                </div>
+                                <label class="toggle-label" style="margin: 0;">
+                                    <input type="checkbox" id="showFanOnlyMode" class="toggle-input feature-toggle">
+                                    <span class="toggle-switch"></span>
+                                </label>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">Client ID *</label>
-                        <input type="text" class="form-input" id="clientId" placeholder="Enter your Client ID">
-                        <div class="form-hint">From your Daikin Developer Portal application</div>
+                    <div class="settings-section">
+                        <h3>Polling</h3>
+                        <div class="form-group">
+                            <label class="form-label">Update Interval (minutes)</label>
+                            <input type="number" class="form-input" id="updateIntervalInMinutes" min="1" max="60" value="15">
+                            <div class="form-hint">How often to poll for device updates (default: 15)</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Force Update Delay (seconds)</label>
+                            <input type="number" class="form-input" id="forceUpdateDelay" min="1" max="300" value="60">
+                            <div class="form-hint">Delay before refreshing after a change (default: 60)</div>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">Client Secret *</label>
-                        <input type="password" class="form-input" id="clientSecret" placeholder="Enter your Client Secret">
-                        <div class="form-hint">Keep this secret and never share it</div>
+                    <div class="settings-section">
+                        <h3>Network</h3>
+                        <div class="form-group">
+                            <label class="form-label">OIDC Callback Bind Address</label>
+                            <input type="text" class="form-input" id="oidcCallbackServerBindAddr" placeholder="0.0.0.0" value="0.0.0.0"
+                                   pattern="^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$">
+                            <div class="form-hint">IPv4 address for OAuth callback server (use 0.0.0.0 for all interfaces)</div>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">Callback Server Address *</label>
-                        <input type="text" class="form-input" id="callbackServerExternalAddress" placeholder="e.g., 192.168.1.100 or your.domain.com">
-                        <div class="form-hint">Your Homebridge server's external IP or domain (not localhost)</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Callback Server Port</label>
-                        <input type="text" class="form-input" id="callbackServerPort" placeholder="8582" value="8582">
-                        <div class="form-hint">Port for the OAuth callback server (default: 8582)</div>
-                    </div>
-
-                    <div id="validation-errors" class="alert alert-danger hidden"></div>
-
-                    <div class="btn-group">
-                        <button class="btn btn-outline" onclick="hideWizard()">Cancel</button>
-                        <button class="btn btn-primary" onclick="validateAndProceed()">Continue</button>
+                    <div class="settings-section full-width">
+                        <h3>Device Visibility in HomeKit</h3>
+                        <div class="form-hint" style="margin-bottom: 12px;">Toggle devices to show or hide them in HomeKit</div>
+                        <div id="device-toggles-loading" class="loading-state" style="padding: 20px;">
+                            <div class="spinner"></div>
+                            <p>Loading devices...</p>
+                        </div>
+                        <div id="device-toggles-list" class="device-toggles-list"></div>
+                        <div id="device-toggles-empty" class="hidden" style="text-align: center; padding: 20px; color: var(--text-muted);">
+                            <p>No devices found. Authenticate first to see your devices.</p>
+                        </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Step 2: Authorize -->
-                <div class="wizard-content" id="content-2">
-                    <div class="alert alert-warning">
-                        Click the button below to open the Daikin login page in a new tab.
-                        After logging in, you'll be redirected automatically.
+            <!-- Authentication Tab -->
+            <div class="tab-panel" id="tab-auth">
+                <div class="panel-header">
+                    <h2>Authentication</h2>
+                </div>
+
+                <!-- Auth Status -->
+                <div class="auth-status-card" id="auth-status-card">
+                    <div class="auth-status-header">
+                        <div class="auth-status-info">
+                            <span class="auth-status-label">Status</span>
+                            <span class="auth-status-value" id="auth-status">Loading...</span>
+                        </div>
+                        <div class="auth-status-info" id="expires-row" style="display: none;">
+                            <span class="auth-status-label">Expires</span>
+                            <span class="auth-status-value" id="auth-token-expires">-</span>
+                        </div>
                     </div>
-
-                    <div id="callback-server-status" class="alert alert-info hidden">
-                        <strong>Callback server is running.</strong>
-                        Authentication will complete automatically after you log in.
-                        <br><br>
-                        <em>Note: Your browser may show a certificate warning. This is normal for the self-signed certificate. Click "Advanced" and proceed to continue.</em>
-                    </div>
-
-                    <div id="auth-url-container" class="hidden">
-                        <p><strong>Authorization URL:</strong></p>
-                        <div class="auth-url-box" id="auth-url"></div>
-                        <p class="form-hint">If the button doesn't work, copy this URL and open it in a new browser tab.</p>
-                    </div>
-
-                    <div class="btn-group">
-                        <button class="btn btn-outline" onclick="goToStep(1)">Back</button>
-                        <button class="btn btn-primary" id="btn-open-auth" onclick="openAuthUrl()">
-                            Open Daikin Login
+                    <div class="auth-actions">
+                        <button class="btn btn-success" id="btn-test" onclick="testConnection()">
+                            Test Connection
+                        </button>
+                        <button class="btn btn-primary" id="btn-authenticate" onclick="showWizard()">
+                            Authenticate
+                        </button>
+                        <button class="btn btn-danger" id="btn-revoke" onclick="revokeAuth()" style="display: none;">
+                            Revoke Access
                         </button>
                     </div>
+                    <div id="test-result" class="alert hidden"></div>
+                </div>
 
-                    <div style="margin-top: 30px;">
-                        <p><strong>Manual fallback: If automatic redirect doesn't work, enter the code from the URL:</strong></p>
-                        <div class="form-group">
-                            <label class="form-label">Authorization Code</label>
-                            <input type="text" class="form-input" id="authCode" placeholder="Paste the code from the URL">
-                            <div class="form-hint">Look for ?code=XXXXX in the URL after authorization</div>
+                <!-- Setup Wizard (hidden by default) -->
+                <div class="wizard hidden" id="wizard">
+                    <div class="wizard-steps">
+                        <div class="wizard-step active" id="step-1">
+                            <span class="wizard-step-number">1</span>
+                            <span class="wizard-step-label">Configure</span>
                         </div>
-                        <button class="btn btn-success" onclick="submitAuthCode()">Complete Authentication</button>
-                    </div>
-                </div>
-
-                <!-- Step 3: Complete -->
-                <div class="wizard-content" id="content-3">
-                    <div class="alert alert-success" id="success-message">
-                        Authentication successful! Your Daikin Cloud account is now connected.
-                    </div>
-
-                    <div class="alert alert-info">
-                        <strong>Next Steps:</strong>
-                        <ol style="margin: 10px 0 0 0; padding-left: 20px;">
-                            <li>Save your plugin configuration</li>
-                            <li>Restart Homebridge to apply changes</li>
-                            <li>Your Daikin devices will appear in HomeKit</li>
-                        </ol>
+                        <div class="wizard-step" id="step-2">
+                            <span class="wizard-step-number">2</span>
+                            <span class="wizard-step-label">Authorize</span>
+                        </div>
+                        <div class="wizard-step" id="step-3">
+                            <span class="wizard-step-number">3</span>
+                            <span class="wizard-step-label">Complete</span>
+                        </div>
                     </div>
 
-                    <div class="btn-group">
-                        <button class="btn btn-primary" onclick="finishWizard()">Done</button>
+                    <!-- Step 1: Configuration -->
+                    <div class="wizard-content active" id="content-1">
+                        <div class="alert alert-info">
+                            Get your credentials from the
+                            <a href="https://developer.cloud.daikineurope.com/" target="_blank" class="link">Daikin Developer Portal</a>.
+                            <br><small><strong>Redirect URI:</strong> <code>https://&lt;address&gt;:&lt;port&gt;</code> (e.g., <code>https://192.168.1.100:8582</code>)</small>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Client ID *</label>
+                                <input type="text" class="form-input" id="clientId" placeholder="Enter your Client ID">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Client Secret *</label>
+                                <input type="password" class="form-input" id="clientSecret" placeholder="Enter your Client Secret">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Callback Server Address *</label>
+                                <input type="text" class="form-input" id="callbackServerExternalAddress" placeholder="e.g., 192.168.1.100">
+                                <div class="form-hint">Your Homebridge server's IP or domain</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Callback Server Port</label>
+                                <input type="number" class="form-input" id="callbackServerPort" placeholder="8582" value="8582" min="1" max="65535">
+                            </div>
+                        </div>
+
+                        <div id="validation-errors" class="alert alert-danger hidden"></div>
+
+                        <div class="wizard-actions">
+                            <button class="btn btn-outline" onclick="hideWizard()">Cancel</button>
+                            <button class="btn btn-primary" onclick="validateAndProceed()">Continue</button>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Authorize -->
+                    <div class="wizard-content" id="content-2">
+                        <div class="alert alert-info">
+                            Click the button below to open the Daikin login page and authenticate with your account.
+                        </div>
+
+                        <div id="auth-url-container" class="hidden">
+                            <label class="form-label">Authorization URL:</label>
+                            <div class="url-box" id="auth-url"></div>
+                            <div class="form-hint">If the button doesn't work, copy this URL manually.</div>
+                        </div>
+
+                        <div class="wizard-actions" style="margin-bottom: 20px;">
+                            <button class="btn btn-outline" onclick="goToStep(1)">Back</button>
+                            <button class="btn btn-primary" id="btn-open-auth" onclick="openAuthUrl()">
+                                Open Daikin Login
+                            </button>
+                        </div>
+
+                        <!-- Automatic callback status -->
+                        <div id="callback-server-status" class="hidden">
+                            <div class="alert alert-success">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div class="spinner" style="width: 16px; height: 16px;"></div>
+                                    <span><strong>Waiting for authentication...</strong></span>
+                                </div>
+                                <p style="margin: 10px 0 0 26px;">Complete the login in the new window. This page will update automatically.</p>
+                            </div>
+                        </div>
+
+                        <!-- Manual fallback section -->
+                        <div id="manual-callback-section">
+                            <details id="manual-callback-details">
+                                <summary style="cursor: pointer; padding: 10px 0; color: var(--text-muted);">
+                                    <strong>Manual entry (if automatic redirect fails)</strong>
+                                </summary>
+                                <div style="padding-top: 10px;">
+                                    <div class="alert alert-warning">
+                                        If you see an error page after login, copy the <strong>full URL</strong> from your browser's address bar and paste it below.
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Callback URL</label>
+                                        <input type="text" class="form-input" id="callbackUrl" placeholder="Paste the full URL from your browser (https://...?code=...)">
+                                        <div class="form-hint">The URL should contain <code>?code=</code> parameter</div>
+                                    </div>
+                                    <div class="wizard-actions">
+                                        <button class="btn btn-success" onclick="submitCallbackUrl()">Complete Authentication</button>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Complete -->
+                    <div class="wizard-content" id="content-3">
+                        <div class="success-state">
+                            <div class="success-icon">✓</div>
+                            <h3>Authentication Successful!</h3>
+                            <p id="success-message">Your Daikin Cloud account is now connected.</p>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <strong>Next Steps:</strong>
+                            <ol>
+                                <li>Save your plugin configuration</li>
+                                <li>Restart Homebridge to apply changes</li>
+                                <li>Your Daikin devices will appear in HomeKit</li>
+                            </ol>
+                        </div>
+
+                        <div class="wizard-actions">
+                            <button class="btn btn-primary" onclick="finishWizard()">Done</button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Devices Card -->
-        <div class="card" id="devices-card">
-            <div class="card-header">
-                <span>Discovered Devices</span>
-                <button class="btn btn-sm btn-outline" onclick="refreshDevices()" id="btn-refresh-devices">
-                    Refresh
-                </button>
-            </div>
-            <div class="card-body">
-                <div id="devices-loading" class="hidden" style="text-align: center; padding: 20px;">
-                    <div class="spinner" style="width: 30px; height: 30px; margin: 0 auto;"></div>
-                    <p style="margin-top: 10px; color: #666;">Loading devices...</p>
+            <!-- Help Tab -->
+            <div class="tab-panel" id="tab-help">
+                <div class="panel-header">
+                    <h2>Help & Information</h2>
                 </div>
-                <div id="devices-list"></div>
-                <div id="devices-empty" class="hidden" style="text-align: center; padding: 20px; color: #666;">
-                    <p>No devices found. Make sure you're authenticated and your Daikin devices are set up.</p>
-                </div>
-                <div id="devices-error" class="alert alert-danger hidden" style="margin-top: 10px;"></div>
-            </div>
-        </div>
 
-        <!-- Help Card -->
-        <div class="card">
-            <div class="card-header">
-                Help & Information
-            </div>
-            <div class="card-body">
-                <div class="info-row">
-                    <span class="info-label">Developer Portal</span>
-                    <a href="https://developer.cloud.daikineurope.com/" target="_blank" class="link">
-                        developer.cloud.daikineurope.com
-                    </a>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">API Rate Limit</span>
-                    <span class="info-value" id="rate-limit-display">200 requests/day</span>
-                    <button class="btn btn-sm btn-outline" onclick="checkRateLimit()">Check</button>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Documentation</span>
-                    <a href="https://github.com/mp-consulting/homebridge-daikin-cloud" target="_blank" class="link">
-                        GitHub Repository
-                    </a>
+                <div class="help-grid">
+                    <div class="help-card">
+                        <h3>API Rate Limit</h3>
+                        <div class="rate-limit-display">
+                            <span id="rate-limit-display">200 requests/day</span>
+                            <button class="btn btn-sm btn-outline" onclick="checkRateLimit()">Check</button>
+                        </div>
+                        <p class="text-muted">The Daikin API limits you to 200 requests per day.</p>
+                    </div>
+
+                    <div class="help-card">
+                        <h3>Useful Links</h3>
+                        <ul class="help-links">
+                            <li>
+                                <a href="https://developer.cloud.daikineurope.com/" target="_blank" class="link">
+                                    Daikin Developer Portal
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://github.com/mp-consulting/homebridge-daikin-cloud" target="_blank" class="link">
+                                    GitHub Repository
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://github.com/mp-consulting/homebridge-daikin-cloud/issues" target="_blank" class="link">
+                                    Report an Issue
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="help-card">
+                        <h3>Troubleshooting</h3>
+                        <div class="accordion">
+                            <details>
+                                <summary>Token expired or invalid</summary>
+                                <p>Delete the token file and restart Homebridge:</p>
+                                <code>rm ~/.homebridge/.daikin-controller-cloud-tokenset</code>
+                            </details>
+                            <details>
+                                <summary>Authentication flow issues</summary>
+                                <ul>
+                                    <li>Ensure redirect URI matches exactly in Daikin Developer Portal</li>
+                                    <li>Try setting bind address to 0.0.0.0</li>
+                                    <li>Check firewall rules for the callback port</li>
+                                </ul>
+                            </details>
+                            <details>
+                                <summary>Device not appearing</summary>
+                                <ul>
+                                    <li>Check Homebridge logs for discovery errors</li>
+                                    <li>Verify device is in Daikin Onecta app</li>
+                                    <li>Check if device ID is excluded in settings</li>
+                                </ul>
+                            </details>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="loading-overlay hidden" id="loading">
-        <div class="spinner" style="width: 40px; height: 40px; border-width: 4px;"></div>
+        <div class="spinner large"></div>
     </div>
 
-    <div id="global-error" class="alert alert-danger hidden" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1001; max-width: 500px;"></div>
+    <div id="global-error" class="toast hidden"></div>
 
     <script src="script.js"></script>
 </body>

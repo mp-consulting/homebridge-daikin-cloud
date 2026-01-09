@@ -17,6 +17,10 @@ export class EconoModeFeature extends BaseFeature {
         return 'econo_mode';
     }
 
+    get configKey(): string {
+        return 'showEconoMode';
+    }
+
     isSupported(): boolean {
         const econoMode = this.getData('econoMode');
         this.log.debug(`[${this.name}] hasEconoModeFeature: ${Boolean(econoMode)}`);

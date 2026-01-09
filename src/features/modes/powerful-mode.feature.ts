@@ -17,6 +17,10 @@ export class PowerfulModeFeature extends BaseFeature {
         return 'powerful_mode';
     }
 
+    get configKey(): string {
+        return 'showPowerfulMode';
+    }
+
     isSupported(): boolean {
         const powerfulMode = this.getData('powerfulMode');
         this.log.debug(`[${this.name}] hasPowerfulModeFeature: ${Boolean(powerfulMode)}`);

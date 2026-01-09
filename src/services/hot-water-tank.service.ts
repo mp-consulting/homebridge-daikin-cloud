@@ -46,7 +46,7 @@ export class HotWaterTankService {
         const temperatureControl = accessory.context.device.getData(this.managementPointId, 'temperatureControl', '/operationModes/heating/setpoints/domesticHotWaterTemperature');
         const targetTemperature = this.hotWaterTankService.getCharacteristic(this.platform.Characteristic.TargetTemperature);
         // Set value within default HomeKit range first to avoid warning when setProps expands the range
-        const clampedTempValue = Math.max(10, Math.min(38, temperatureControl.value));
+        const clampedTempValue = Math.max(10, Math.min(38, temperatureControl.value as number));
         targetTemperature.updateValue(clampedTempValue);
         targetTemperature.setProps({
             minStep: temperatureControl.stepValue,
@@ -98,13 +98,13 @@ export class HotWaterTankService {
     }
 
     async handleHotWaterTankCurrentTemperatureGet(): Promise<CharacteristicValue> {
-        const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/tankTemperature').value;
+        const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/tankTemperature').value as number;
         this.platform.log.debug(`[${this.name}] GET CurrentTemperature for hot water tank, temperature: ${temperature}`);
         return temperature;
     }
 
     async handleHotWaterTankHeatingTargetTemperatureGet(): Promise<CharacteristicValue> {
-        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', '/operationModes/heating/setpoints/domesticHotWaterTemperature').value;
+        const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', '/operationModes/heating/setpoints/domesticHotWaterTemperature').value as number;
         this.platform.log.debug(`[${this.name}] GET HeatingThresholdTemperature domesticHotWaterTank, temperature: ${temperature}`);
         return temperature;
     }
@@ -126,7 +126,7 @@ export class HotWaterTankService {
     }
 
     async handleHotWaterTankTargetHeatingCoolingStateGet(): Promise<CharacteristicValue> {
-        const operationMode: DaikinOperationModes = this.accessory.context.device.getData(this.managementPointId, 'operationMode', undefined).value;
+        const operationMode = this.accessory.context.device.getData(this.managementPointId, 'operationMode', undefined).value as DaikinOperationModes;
         const state = this.accessory.context.device.getData(this.managementPointId, 'onOffMode', undefined).value;
         this.platform.log.debug(`[${this.name}] GET TankTargetHeatingCoolingState, operationMode: ${operationMode}, state: ${state}`);
 

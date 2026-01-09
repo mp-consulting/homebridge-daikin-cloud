@@ -5,7 +5,7 @@
  * This replaces the scattered hasXxxFeature() methods in service classes.
  */
 
-import {DaikinCloudDevice} from 'daikin-controller-cloud/dist/device';
+import {DaikinCloudDevice} from '../api';
 import {
     DeviceCapabilities,
     DeviceTemperatureCapabilities,
@@ -63,7 +63,7 @@ export class DeviceCapabilityDetector {
             'operationMode',
             undefined,
         );
-        const supportedModes: DaikinOperationModes[] = operationModeData?.values || [];
+        const supportedModes = (operationModeData?.values || []) as DaikinOperationModes[];
 
         return {
             // Management points
@@ -130,7 +130,7 @@ export class DeviceCapabilityDetector {
             return false;
         }
 
-        const fanSpeedValues: string[] = fanSpeedData.values || [];
+        const fanSpeedValues = (fanSpeedData.values || []) as string[];
         return fanSpeedValues.includes(DaikinFanSpeedModes.QUIET);
     }
 
@@ -151,7 +151,7 @@ export class DeviceCapabilityDetector {
             'operationMode',
             undefined,
         );
-        return operationModeData?.value || 'auto';
+        return (operationModeData?.value as string) || 'auto';
     }
 
     private detectTemperatureCapabilities(): DeviceTemperatureCapabilities {
@@ -166,12 +166,12 @@ export class DeviceCapabilityDetector {
                 `/operationModes/${mode}/setpoints/roomTemperature`,
             );
 
-            if (data) {
+            if (data && data.minValue !== undefined && data.maxValue !== undefined && data.stepValue !== undefined) {
                 capabilities[mode] = {
                     minValue: data.minValue,
                     maxValue: data.maxValue,
                     stepValue: data.stepValue,
-                } as TemperatureConstraints;
+                };
             }
         }
 
@@ -182,7 +182,7 @@ export class DeviceCapabilityDetector {
             '/operationModes/heating/setpoints/domesticHotWaterTemperature',
         );
 
-        if (hotWaterData) {
+        if (hotWaterData && hotWaterData.minValue !== undefined && hotWaterData.maxValue !== undefined && hotWaterData.stepValue !== undefined) {
             capabilities.domesticHotWater = {
                 minValue: hotWaterData.minValue,
                 maxValue: hotWaterData.maxValue,

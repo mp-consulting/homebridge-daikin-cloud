@@ -18,6 +18,10 @@ export class DryOperationModeFeature extends BaseFeature {
         return 'dry_operation_mode';
     }
 
+    get configKey(): string {
+        return 'showDryMode';
+    }
+
     isSupported(): boolean {
         const operationModeData = this.getData('operationMode') as { values?: string[] } | undefined;
         const operationModeValues = operationModeData?.values || [];

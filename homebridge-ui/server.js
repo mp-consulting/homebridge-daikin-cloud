@@ -1,21 +1,19 @@
 const { HomebridgePluginUiServer } = require('@homebridge/plugin-ui-utils');
-const { resolve } = require('path');
+const { resolve, join } = require('path');
 const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 
+// Import from compiled src/api modules (single source of truth)
+// Use path relative to this file, not cwd
+const distPath = join(__dirname, '..', 'dist', 'src', 'api');
+const { DaikinOAuth } = require(join(distPath, 'daikin-oauth'));
+const { DaikinApi } = require(join(distPath, 'daikin-api'));
+
 // =============================================================================
 // Configuration
 // =============================================================================
-
-const OIDC_CONFIG = {
-    authorizationEndpoint: 'https://idp.onecta.daikineurope.com/v1/oidc/authorize',
-    tokenEndpoint: 'https://idp.onecta.daikineurope.com/v1/oidc/token',
-    revokeEndpoint: 'https://idp.onecta.daikineurope.com/v1/oidc/revoke',
-    apiEndpoint: 'https://api.onecta.daikineurope.com',
-    scope: 'openid onecta:basic.integration',
-};
 
 const CLIMATE_CONTROL_IDS = ['climateControl', 'climateControlMainZone', 'climateControlSecondaryZone'];
 
@@ -24,18 +22,12 @@ const CLIMATE_CONTROL_IDS = ['climateControl', 'climateControlMainZone', 'climat
 // =============================================================================
 
 const SSLUtils = {
-    /**
-     * Check if a string is a valid IP address
-     */
     isIPAddress(str) {
         const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
         const ipv6Pattern = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
         return ipv4Pattern.test(str) || ipv6Pattern.test(str);
     },
 
-    /**
-     * Generate self-signed certificate for HTTPS callback server
-     */
     generateCert(hostname, certDir) {
         const keyPath = resolve(certDir, 'server.key');
         const certPath = resolve(certDir, 'server.crt');
@@ -44,7 +36,6 @@ const SSLUtils = {
             fs.mkdirSync(certDir, { recursive: true });
         }
 
-        // Return existing certs if valid
         if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
             try {
                 return {
@@ -56,7 +47,6 @@ const SSLUtils = {
             }
         }
 
-        // Generate new certificate
         try {
             execSync(`openssl genrsa -out "${keyPath}" 2048`, { stdio: 'pipe' });
 
@@ -74,7 +64,7 @@ const SSLUtils = {
                 cert: fs.readFileSync(certPath, 'utf8'),
             };
         } catch (error) {
-            throw new Error(`Failed to generate SSL certificate. Make sure openssl is installed. Error: ${error.message}`);
+            throw new Error(`Failed to generate SSL certificate: ${error.message}`);
         }
     },
 };
@@ -84,9 +74,6 @@ const SSLUtils = {
 // =============================================================================
 
 const TokenManager = {
-    /**
-     * Load token set from file
-     */
     load(filePath) {
         try {
             if (fs.existsSync(filePath)) {
@@ -98,16 +85,10 @@ const TokenManager = {
         return null;
     },
 
-    /**
-     * Save token set to file
-     */
     save(filePath, tokenSet) {
         fs.writeFileSync(filePath, JSON.stringify(tokenSet, null, 2), 'utf8');
     },
 
-    /**
-     * Delete token file
-     */
     delete(filePath) {
         try {
             fs.unlinkSync(filePath);
@@ -116,9 +97,6 @@ const TokenManager = {
         }
     },
 
-    /**
-     * Check token status
-     */
     getStatus(tokenSet) {
         if (!tokenSet || !tokenSet.access_token) {
             return { authenticated: false, message: 'Not authenticated' };
@@ -141,87 +119,14 @@ const TokenManager = {
 };
 
 // =============================================================================
-// HTTP Utilities
-// =============================================================================
-
-const HttpUtils = {
-    /**
-     * Make HTTPS POST request with form data
-     */
-    async post(url, formData, headers = {}) {
-        return new Promise((resolve, reject) => {
-            const postData = new URLSearchParams(formData).toString();
-            const urlObj = new URL(url);
-
-            const options = {
-                hostname: urlObj.hostname,
-                port: 443,
-                path: urlObj.pathname,
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Content-Length': Buffer.byteLength(postData),
-                    ...headers,
-                },
-            };
-
-            const req = https.request(options, (res) => {
-                let data = '';
-                res.on('data', (chunk) => data += chunk);
-                res.on('end', () => resolve({ statusCode: res.statusCode, data, headers: res.headers }));
-            });
-
-            req.on('error', reject);
-            req.write(postData);
-            req.end();
-        });
-    },
-
-    /**
-     * Make HTTPS GET request
-     */
-    async get(url, accessToken) {
-        return new Promise((resolve, reject) => {
-            const urlObj = new URL(url);
-
-            const options = {
-                hostname: urlObj.hostname,
-                port: 443,
-                path: urlObj.pathname + urlObj.search,
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Accept': 'application/json',
-                },
-            };
-
-            const req = https.request(options, (res) => {
-                let data = '';
-                res.on('data', (chunk) => data += chunk);
-                res.on('end', () => resolve({ statusCode: res.statusCode, data, headers: res.headers }));
-            });
-
-            req.on('error', reject);
-            req.end();
-        });
-    },
-};
-
-// =============================================================================
 // Device Data Extraction
 // =============================================================================
 
 const DeviceExtractor = {
-    /**
-     * Get management point by ID
-     */
     getManagementPoint(device, embeddedId) {
         return device.managementPoints?.find(mp => mp.embeddedId === embeddedId) || null;
     },
 
-    /**
-     * Get climate control management point
-     */
     getClimateControlPoint(device) {
         for (const id of CLIMATE_CONTROL_IDS) {
             const mp = this.getManagementPoint(device, id);
@@ -230,25 +135,16 @@ const DeviceExtractor = {
         return null;
     },
 
-    /**
-     * Extract device name
-     */
     extractName(device) {
         const climateControl = this.getClimateControlPoint(device);
         return climateControl?.name?.value || device.id || 'Unknown Device';
     },
 
-    /**
-     * Extract model info
-     */
     extractModel(device) {
         const gateway = this.getManagementPoint(device, 'gateway');
         return gateway?.modelInfo?.value || device.deviceModel || 'Unknown Model';
     },
 
-    /**
-     * Extract device type
-     */
     extractType(device) {
         if (!device.managementPoints) return device.type || 'Unknown Type';
 
@@ -259,50 +155,32 @@ const DeviceExtractor = {
         return device.type || 'Unknown Type';
     },
 
-    /**
-     * Check if device is online
-     */
     isOnline(device) {
         return device.isCloudConnectionUp?.value ?? false;
     },
 
-    /**
-     * Extract room temperature
-     */
     extractRoomTemp(device) {
         const climateControl = this.getClimateControlPoint(device);
         const roomTemp = climateControl?.sensoryData?.value?.roomTemperature;
         return roomTemp?.value !== undefined ? `${roomTemp.value}${roomTemp.unit || '°C'}` : null;
     },
 
-    /**
-     * Extract outdoor temperature
-     */
     extractOutdoorTemp(device) {
         const climateControl = this.getClimateControlPoint(device);
         const outdoorTemp = climateControl?.sensoryData?.value?.outdoorTemperature;
         return outdoorTemp?.value !== undefined ? `${outdoorTemp.value}${outdoorTemp.unit || '°C'}` : null;
     },
 
-    /**
-     * Extract operation mode
-     */
     extractOperationMode(device) {
         const climateControl = this.getClimateControlPoint(device);
         return climateControl?.operationMode?.value || null;
     },
 
-    /**
-     * Extract power state
-     */
     extractPowerState(device) {
         const climateControl = this.getClimateControlPoint(device);
         return climateControl?.onOffMode?.value || null;
     },
 
-    /**
-     * Extract device features
-     */
     extractFeatures(device) {
         const features = [];
         if (!device.managementPoints) return features;
@@ -323,9 +201,6 @@ const DeviceExtractor = {
         return features;
     },
 
-    /**
-     * Extract all device info
-     */
     extractAll(device) {
         return {
             id: device.id,
@@ -343,106 +218,6 @@ const DeviceExtractor = {
 };
 
 // =============================================================================
-// OAuth Service
-// =============================================================================
-
-class OAuthService {
-    /**
-     * Exchange authorization code for tokens
-     */
-    static async exchangeCode(code, clientId, clientSecret, redirectUri) {
-        const response = await HttpUtils.post(OIDC_CONFIG.tokenEndpoint, {
-            grant_type: 'authorization_code',
-            code,
-            redirect_uri: redirectUri,
-            client_id: clientId,
-            client_secret: clientSecret,
-        });
-
-        const tokenSet = JSON.parse(response.data);
-        if (tokenSet.error) {
-            throw new Error(tokenSet.error_description || tokenSet.error);
-        }
-
-        // Calculate expires_at from expires_in
-        if (tokenSet.expires_in && !tokenSet.expires_at) {
-            tokenSet.expires_at = Math.floor(Date.now() / 1000) + tokenSet.expires_in;
-        }
-
-        return tokenSet;
-    }
-
-    /**
-     * Revoke token at server
-     */
-    static async revokeToken(token, clientId, clientSecret) {
-        await HttpUtils.post(OIDC_CONFIG.revokeEndpoint, {
-            token,
-            token_type_hint: 'refresh_token',
-            client_id: clientId,
-            client_secret: clientSecret,
-        });
-    }
-
-    /**
-     * Build authorization URL
-     */
-    static buildAuthUrl(clientId, redirectUri, state) {
-        const url = new URL(OIDC_CONFIG.authorizationEndpoint);
-        url.searchParams.set('response_type', 'code');
-        url.searchParams.set('client_id', clientId);
-        url.searchParams.set('redirect_uri', redirectUri);
-        url.searchParams.set('scope', OIDC_CONFIG.scope);
-        url.searchParams.set('state', state);
-        return url.toString();
-    }
-}
-
-// =============================================================================
-// API Service
-// =============================================================================
-
-class ApiService {
-    /**
-     * Make authenticated API request
-     */
-    static async request(path, accessToken) {
-        const response = await HttpUtils.get(OIDC_CONFIG.apiEndpoint + path, accessToken);
-
-        if (response.statusCode === 401) throw new Error('Token expired or invalid');
-        if (response.statusCode === 429) throw new Error('Rate limit exceeded');
-        if (response.statusCode >= 400) throw new Error(`API error: ${response.statusCode}`);
-
-        try {
-            return JSON.parse(response.data);
-        } catch (e) {
-            throw new Error('Invalid API response');
-        }
-    }
-
-    /**
-     * Make request and return with headers
-     */
-    static async requestWithHeaders(path, accessToken) {
-        const response = await HttpUtils.get(OIDC_CONFIG.apiEndpoint + path, accessToken);
-
-        if (response.statusCode >= 400) throw new Error(`API error: ${response.statusCode}`);
-
-        const rateLimit = {
-            limit: response.headers['x-ratelimit-limit'] || response.headers['ratelimit-limit'],
-            remaining: response.headers['x-ratelimit-remaining'] || response.headers['ratelimit-remaining'],
-            reset: response.headers['x-ratelimit-reset'] || response.headers['ratelimit-reset'],
-        };
-
-        return {
-            data: JSON.parse(response.data),
-            headers: response.headers,
-            rateLimit,
-        };
-    }
-}
-
-// =============================================================================
 // Callback Server
 // =============================================================================
 
@@ -453,9 +228,6 @@ class CallbackServer {
         this.connections = new Set();
     }
 
-    /**
-     * Start HTTPS server
-     */
     async start(port, hostname, certDir, requestHandler) {
         await this.stop();
 
@@ -495,9 +267,6 @@ class CallbackServer {
         });
     }
 
-    /**
-     * Stop server
-     */
     async stop() {
         return new Promise((resolve) => {
             if (!this.server) {
@@ -505,7 +274,6 @@ class CallbackServer {
                 return;
             }
 
-            // Force close connections
             for (const conn of this.connections) {
                 conn.destroy();
             }
@@ -576,16 +344,11 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
 
         this.pendingAuth = null;
         this.authResult = null;
-        this.authStartInProgress = false;
         this.callbackServer = new CallbackServer();
 
         this.registerHandlers();
         this.ready();
     }
-
-    // -------------------------------------------------------------------------
-    // Path Helpers
-    // -------------------------------------------------------------------------
 
     getTokenFilePath() {
         return resolve(this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '', '.daikin-controller-cloud-tokenset');
@@ -594,10 +357,6 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     getCertDir() {
         return resolve(this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '', 'daikin-cloud-certs');
     }
-
-    // -------------------------------------------------------------------------
-    // Request Handler Registration
-    // -------------------------------------------------------------------------
 
     registerHandlers() {
         this.onRequest('/auth/status', this.handleGetAuthStatus.bind(this));
@@ -630,50 +389,51 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     // -------------------------------------------------------------------------
 
     async handleStartAuth(payload) {
-        if (this.authStartInProgress) {
-            if (this.pendingAuth && this.callbackServer.isRunning) {
-                return {
-                    authUrl: OAuthService.buildAuthUrl(this.pendingAuth.clientId, this.pendingAuth.redirectUri, this.pendingAuth.state),
-                    state: this.pendingAuth.state,
-                    redirectUri: this.pendingAuth.redirectUri,
-                    callbackServerRunning: true,
-                    message: 'Authorization already in progress.',
-                };
-            }
-            throw new Error('Authorization already in progress. Please wait.');
-        }
+        const { clientId, clientSecret, callbackServerExternalAddress, callbackServerPort } = payload;
 
-        this.authStartInProgress = true;
+        if (!clientId || !clientSecret) throw new Error('Client ID and Client Secret are required');
+        if (!callbackServerExternalAddress) throw new Error('Callback Server Address is required');
+
+        const port = parseInt(callbackServerPort || '8582', 10);
+        const redirectUri = `https://${callbackServerExternalAddress}:${port}`;
+        const state = crypto.randomBytes(32).toString('hex');
+
+        this.pendingAuth = { state, clientId, clientSecret, redirectUri, port, createdAt: Date.now() };
+        this.authResult = null;
+
+        // Use static method from compiled src/api
+        const authUrl = DaikinOAuth.buildAuthUrlStatic(clientId, redirectUri, state);
+        console.log('[DaikinCloud] Generated auth URL:', authUrl);
+        console.log('[DaikinCloud] Redirect URI:', redirectUri);
+
+        // Try to start callback server for automatic code capture
+        let callbackServerRunning = false;
+        let callbackServerError = null;
 
         try {
-            const { clientId, clientSecret, callbackServerExternalAddress, callbackServerPort } = payload;
-
-            if (!clientId || !clientSecret) throw new Error('Client ID and Client Secret are required');
-            if (!callbackServerExternalAddress) throw new Error('Callback Server Address is required');
-
-            const port = parseInt(callbackServerPort || '8582', 10);
-            const redirectUri = `https://${callbackServerExternalAddress}:${port}/callback`;
-            const state = crypto.randomBytes(32).toString('hex');
-
-            this.authResult = null;
-            this.pendingAuth = { state, clientId, clientSecret, redirectUri, port, createdAt: Date.now() };
-
-            await this.callbackServer.start(port, callbackServerExternalAddress, this.getCertDir(), (req, res) => {
-                this.handleHttpsCallback(req, res);
-            });
-
-            return {
-                authUrl: OAuthService.buildAuthUrl(clientId, redirectUri, state),
-                state,
-                redirectUri,
-                callbackServerRunning: true,
-                message: 'Authorization URL generated. Callback server is running.',
-            };
+            await this.callbackServer.start(
+                port,
+                callbackServerExternalAddress,
+                this.getCertDir(),
+                this.handleHttpsCallback.bind(this)
+            );
+            callbackServerRunning = true;
+            console.log('[DaikinCloud] Callback server started successfully');
         } catch (error) {
-            this.pendingAuth = null;
-            this.authStartInProgress = false;
-            throw error;
+            callbackServerError = error.message;
+            console.warn('[DaikinCloud] Failed to start callback server:', error.message);
         }
+
+        return {
+            authUrl,
+            state,
+            redirectUri,
+            callbackServerRunning,
+            callbackServerError,
+            message: callbackServerRunning
+                ? 'Callback server is running. Authentication will complete automatically.'
+                : 'Could not start callback server. After authenticating, copy the full callback URL and paste it below.',
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -682,12 +442,6 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
 
     handleHttpsCallback(req, res) {
         const url = new URL(req.url, `https://${req.headers.host}`);
-
-        if (url.pathname !== '/callback') {
-            res.writeHead(404);
-            res.end('Not found');
-            return;
-        }
 
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
@@ -714,7 +468,8 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
 
         const { clientId, clientSecret, redirectUri } = this.pendingAuth;
 
-        OAuthService.exchangeCode(code, clientId, clientSecret, redirectUri)
+        // Use static method from compiled src/api
+        DaikinOAuth.exchangeCodeStatic(code, clientId, clientSecret, redirectUri)
             .then((tokenSet) => {
                 TokenManager.save(this.getTokenFilePath(), tokenSet);
                 this.authResult = {
@@ -724,6 +479,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
                 };
                 this.pendingAuth = null;
                 this.sendCallbackResponse(res, true, 'Authentication successful! You can close this window.');
+                this.callbackServer.stop().catch(() => {});
             })
             .catch((err) => {
                 this.authResult = { success: false, error: err.message };
@@ -741,11 +497,22 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     // -------------------------------------------------------------------------
 
     async handleCallback(payload) {
-        const { code, state } = payload;
+        let { code, state, callbackUrl } = payload;
 
+        if (callbackUrl) {
+            try {
+                const url = new URL(callbackUrl);
+                code = url.searchParams.get('code');
+                state = url.searchParams.get('state');
+            } catch (e) {
+                throw new Error('Invalid callback URL format');
+            }
+        }
+
+        if (!code) throw new Error('Authorization code is required');
         if (!this.pendingAuth) throw new Error('No pending authorization. Please start the auth flow again.');
-        if (state !== this.pendingAuth.state) throw new Error('Invalid state parameter. Possible CSRF attack.');
-        if (Date.now() - this.pendingAuth.createdAt > 5 * 60 * 1000) {
+        if (state && state !== this.pendingAuth.state) throw new Error('Invalid state parameter. Please try again.');
+        if (Date.now() - this.pendingAuth.createdAt > 10 * 60 * 1000) {
             this.pendingAuth = null;
             throw new Error('Authorization request expired. Please try again.');
         }
@@ -753,17 +520,19 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
         const { clientId, clientSecret, redirectUri } = this.pendingAuth;
 
         try {
-            const tokenSet = await OAuthService.exchangeCode(code, clientId, clientSecret, redirectUri);
+            // Use static method from compiled src/api
+            const tokenSet = await DaikinOAuth.exchangeCodeStatic(code, clientId, clientSecret, redirectUri);
             TokenManager.save(this.getTokenFilePath(), tokenSet);
             this.pendingAuth = null;
 
+            await this.callbackServer.stop();
+
             return {
                 success: true,
-                message: 'Authentication successful! You can now close this window and restart Homebridge.',
+                message: 'Authentication successful! Restart Homebridge to apply.',
                 expiresAt: tokenSet.expires_at ? new Date(tokenSet.expires_at * 1000).toISOString() : null,
             };
         } catch (error) {
-            this.pendingAuth = null;
             throw new Error(`Token exchange failed: ${error.message}`);
         }
     }
@@ -774,10 +543,21 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
 
     async handlePollAuthResult() {
         if (this.authResult) {
-            const result = this.authResult;
-            this.authResult = null;
-            await this.handleStopServer();
+            const result = { ...this.authResult };
+            if (result.success) {
+                this.authResult = null;
+                await this.callbackServer.stop();
+            }
             return result;
+        }
+
+        const tokenSet = TokenManager.load(this.getTokenFilePath());
+        if (tokenSet && tokenSet.access_token) {
+            return {
+                success: true,
+                message: 'Authentication successful!',
+                expiresAt: tokenSet.expires_at ? new Date(tokenSet.expires_at * 1000).toISOString() : null,
+            };
         }
         return { pending: true };
     }
@@ -787,8 +567,10 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     // -------------------------------------------------------------------------
 
     async handleStopServer() {
-        this.authStartInProgress = false;
-        return await this.callbackServer.stop();
+        this.pendingAuth = null;
+        this.authResult = null;
+        await this.callbackServer.stop();
+        return { success: true };
     }
 
     // -------------------------------------------------------------------------
@@ -803,7 +585,8 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
 
         if (tokenSet.refresh_token && clientId && clientSecret) {
             try {
-                await OAuthService.revokeToken(tokenSet.refresh_token, clientId, clientSecret);
+                // Use static method from compiled src/api
+                await DaikinOAuth.revokeTokenStatic(tokenSet.refresh_token, clientId, clientSecret);
             } catch (error) {
                 console.warn('Failed to revoke token at server:', error.message);
             }
@@ -824,11 +607,13 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
         }
 
         try {
-            const result = await ApiService.request('/v1/gateway-devices', tokenSet.access_token);
+            // Use static method from compiled src/api
+            const result = await DaikinApi.requestStatic('/v1/gateway-devices', tokenSet.access_token);
+            const devices = result.data;
             return {
                 success: true,
-                message: `Connection successful! Found ${result.length || 0} device(s).`,
-                deviceCount: result.length || 0,
+                message: `Connection successful! Found ${Array.isArray(devices) ? devices.length : 0} device(s).`,
+                deviceCount: Array.isArray(devices) ? devices.length : 0,
             };
         } catch (error) {
             return { success: false, message: `Connection failed: ${error.message}`, error: error.message };
@@ -846,8 +631,12 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
         }
 
         try {
-            const gatewayDevices = await ApiService.request('/v1/gateway-devices', tokenSet.access_token);
-            const devices = gatewayDevices.map(device => DeviceExtractor.extractAll(device));
+            // Use static method from compiled src/api
+            const result = await DaikinApi.requestStatic('/v1/gateway-devices', tokenSet.access_token);
+            const gatewayDevices = result.data;
+            const devices = Array.isArray(gatewayDevices)
+                ? gatewayDevices.map(device => DeviceExtractor.extractAll(device))
+                : [];
 
             return { success: true, devices, message: `Found ${devices.length} device(s).` };
         } catch (error) {
@@ -866,8 +655,9 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
         }
 
         try {
-            const result = await ApiService.requestWithHeaders('/v1/gateway-devices', tokenSet.access_token);
-            return { success: true, headers: result.headers, rateLimit: result.rateLimit };
+            // Use static method from compiled src/api
+            const result = await DaikinApi.requestStatic('/v1/gateway-devices', tokenSet.access_token);
+            return { success: true, rateLimit: result.rateLimit };
         } catch (error) {
             return { success: false, message: error.message };
         }

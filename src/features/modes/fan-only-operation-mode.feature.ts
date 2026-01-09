@@ -18,6 +18,10 @@ export class FanOnlyOperationModeFeature extends BaseFeature {
         return 'fan_only_operation_mode';
     }
 
+    get configKey(): string {
+        return 'showFanOnlyMode';
+    }
+
     isSupported(): boolean {
         const operationModeData = this.getData('operationMode') as { values?: string[] } | undefined;
         const operationModeValues = operationModeData?.values || [];

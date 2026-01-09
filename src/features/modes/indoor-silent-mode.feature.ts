@@ -18,6 +18,10 @@ export class IndoorSilentModeFeature extends BaseFeature {
         return 'indoor_silent_mode';
     }
 
+    get configKey(): string {
+        return 'showIndoorSilentMode';
+    }
+
     isSupported(): boolean {
         const currentModeFanControl = this.getData(
             'fanControl',

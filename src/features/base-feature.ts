@@ -45,6 +45,12 @@ export abstract class BaseFeature {
     abstract get serviceSubtype(): string;
 
     /**
+     * The config key for this feature (e.g., 'showPowerfulMode').
+     * Used to enable/disable individual features.
+     */
+    abstract get configKey(): string;
+
+    /**
      * Check if this feature is supported by the device.
      */
     abstract isSupported(): boolean;
@@ -60,12 +66,26 @@ export abstract class BaseFeature {
     abstract handleSet(value: CharacteristicValue): Promise<void>;
 
     /**
+     * Check if this feature is enabled in config.
+     * Supports both legacy `showExtraFeatures` (all features) and individual feature toggles.
+     */
+    protected isEnabledInConfig(): boolean {
+        const config = this.platform.config;
+
+        // Check individual feature config first (e.g., showPowerfulMode)
+        if (this.configKey in config) {
+            return config[this.configKey] === true;
+        }
+
+        // Fall back to legacy showExtraFeatures (enables all features)
+        return config.showExtraFeatures === true;
+    }
+
+    /**
      * Set up the feature. Creates or removes the switch service based on support and config.
      */
     setup(): void {
-        const showExtraFeatures = this.platform.config.showExtraFeatures;
-
-        if (this.isSupported() && showExtraFeatures) {
+        if (this.isSupported() && this.isEnabledInConfig()) {
             this.log.debug(`[${this.name}] Device has ${this.featureName}, add Switch Service`);
             this.createOrUpdateSwitchService();
         } else {

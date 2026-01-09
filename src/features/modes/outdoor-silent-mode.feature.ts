@@ -17,6 +17,10 @@ export class OutdoorSilentModeFeature extends BaseFeature {
         return 'outdoor_silent_mode';
     }
 
+    get configKey(): string {
+        return 'showOutdoorSilentMode';
+    }
+
     isSupported(): boolean {
         const outdoorSilentMode = this.getData('outdoorSilentMode');
         this.log.debug(`[${this.name}] hasOutdoorSilentModeFeature: ${Boolean(outdoorSilentMode)}`);

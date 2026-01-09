@@ -17,6 +17,10 @@ export class StreamerModeFeature extends BaseFeature {
         return 'streamer_mode';
     }
 
+    get configKey(): string {
+        return 'showStreamerMode';
+    }
+
     isSupported(): boolean {
         const streamerMode = this.getData('streamerMode');
         this.log.debug(`[${this.name}] hasStreamerModeFeature: ${Boolean(streamerMode)}`);

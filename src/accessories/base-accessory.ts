@@ -17,10 +17,18 @@ export class BaseAccessory {
 
         this.printDeviceInfo();
 
+        const modelInfo = this.gatewayManagementPointId
+            ? (accessory.context.device.getData(this.gatewayManagementPointId, 'modelInfo', undefined).value as string) || 'Unknown'
+            : 'Unknown';
+        const serialData = this.gatewayManagementPointId
+            ? accessory.context.device.getData(this.gatewayManagementPointId, 'serialNumber', undefined)
+            : null;
+        const serialNumber = serialData ? (serialData.value as string) || 'NOT_AVAILABLE' : 'NOT_AVAILABLE';
+
         this.accessory.getService(this.platform.Service.AccessoryInformation)!
             .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Daikin')
-            .setCharacteristic(this.platform.Characteristic.Model, accessory.context.device.getData(this.gatewayManagementPointId, 'modelInfo', undefined).value)
-            .setCharacteristic(this.platform.Characteristic.SerialNumber, accessory.context.device.getData(this.gatewayManagementPointId, 'serialNumber', undefined) ? accessory.context.device.getData(this.gatewayManagementPointId, 'serialNumber', undefined).value : 'NOT_AVAILABLE');
+            .setCharacteristic(this.platform.Characteristic.Model, modelInfo)
+            .setCharacteristic(this.platform.Characteristic.SerialNumber, serialNumber);
 
         this.accessory.context.device.on('updated', () => {
             this.platform.log.debug(`[API Syncing] Updated ${this.accessory.displayName} (${this.accessory.UUID}), LastUpdated: ${this.accessory.context.device.getLastUpdated()}`);
@@ -32,7 +40,10 @@ export class BaseAccessory {
         this.platform.log.info('[Platform]     id: ' + this.accessory.UUID);
         this.platform.log.info('[Platform]     name: ' + this.accessory.displayName);
         this.platform.log.info('[Platform]     last updated: ' + this.accessory.context.device.getLastUpdated());
-        this.platform.log.info('[Platform]     modelInfo: ' + this.accessory.context.device.getData(this.gatewayManagementPointId, 'modelInfo', undefined).value);
+        const modelInfo = this.gatewayManagementPointId
+            ? this.accessory.context.device.getData(this.gatewayManagementPointId, 'modelInfo', undefined).value
+            : 'Unknown';
+        this.platform.log.info('[Platform]     modelInfo: ' + modelInfo);
         this.platform.log.info('[Platform]     deviceModel: ' + this.accessory.context.device.getDescription().deviceModel);
     }
 
