@@ -456,56 +456,43 @@
             <div class="tab-pane" id="tab-help">
                 <h5 class="mb-3">Help & Information</h5>
 
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <div class="card h-100">
-                            <div class="card-header">API Rate Limit</div>
-                            <div class="card-body">
-                                <div class="d-flex align-items-center gap-2 mb-2">
-                                    <span id="rate-limit-display" class="fs-5 fw-semibold">200 requests/day</span>
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="checkRateLimit()">Check</button>
-                                </div>
-                                <p class="text-muted small mb-0" id="rate-limit-info">The Daikin API limits you to 200 requests per day.</p>
-                            </div>
-                        </div>
+                <!-- API Rate Limit -->
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>API Rate Limit</span>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="checkRateLimit()">Check</button>
                     </div>
-
-                    <div class="col-md-4">
-                        <div class="card h-100">
-                            <div class="card-header">Useful Links</div>
-                            <div class="card-body">
-                                <ul class="list-unstyled mb-0">
-                                    <li class="mb-2">
-                                        <a href="https://developer.cloud.daikineurope.com/" target="_blank">Daikin Developer Portal</a>
-                                    </li>
-                                    <li class="mb-2">
-                                        <a href="https://github.com/mp-consulting/homebridge-daikin-cloud" target="_blank">GitHub Repository</a>
-                                    </li>
-                                    <li>
-                                        <a href="https://github.com/mp-consulting/homebridge-daikin-cloud/issues" target="_blank">Report an Issue</a>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
+                    <div class="card-body">
+                        <div id="rate-limit-display" class="fw-semibold mb-1">200 requests/day</div>
+                        <div class="text-muted small" id="rate-limit-info">The Daikin API limits you to 200 requests per day.</div>
                     </div>
+                </div>
 
-                    <div class="col-md-4">
-                        <div class="card h-100">
-                            <div class="card-header">Troubleshooting</div>
-                            <div class="card-body small">
-                                <div class="mb-3">
-                                    <div class="fw-semibold">Token expired or invalid</div>
-                                    <div class="text-muted">Delete token file and restart Homebridge</div>
-                                </div>
-                                <div class="mb-3">
-                                    <div class="fw-semibold">Authentication flow issues</div>
-                                    <div class="text-muted">Check redirect URI, bind to 0.0.0.0, verify firewall</div>
-                                </div>
-                                <div class="mb-0">
-                                    <div class="fw-semibold">Device not appearing</div>
-                                    <div class="text-muted">Check logs, verify in Onecta app, check exclusions</div>
-                                </div>
-                            </div>
+                <!-- Useful Links -->
+                <div class="card mb-3">
+                    <div class="card-header">Useful Links</div>
+                    <div class="list-group list-group-flush">
+                        <a href="https://developer.cloud.daikineurope.com/" target="_blank" class="list-group-item list-group-item-action">Daikin Developer Portal</a>
+                        <a href="https://github.com/mp-consulting/homebridge-daikin-cloud" target="_blank" class="list-group-item list-group-item-action">GitHub Repository</a>
+                        <a href="https://github.com/mp-consulting/homebridge-daikin-cloud/issues" target="_blank" class="list-group-item list-group-item-action">Report an Issue</a>
+                    </div>
+                </div>
+
+                <!-- Troubleshooting -->
+                <div class="card">
+                    <div class="card-header">Troubleshooting</div>
+                    <div class="list-group list-group-flush small">
+                        <div class="list-group-item">
+                            <div class="fw-semibold">Token expired or invalid</div>
+                            <div class="text-muted">Delete token file and restart Homebridge</div>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="fw-semibold">Authentication flow issues</div>
+                            <div class="text-muted">Check redirect URI, bind to 0.0.0.0, verify firewall</div>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="fw-semibold">Device not appearing</div>
+                            <div class="text-muted">Check logs, verify in Onecta app, check exclusions</div>
                         </div>
                     </div>
                 </div>
