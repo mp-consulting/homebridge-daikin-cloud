@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Daikin Cloud Setup</title>
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: transparent;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--bg-color, #fff);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .card-header {
+            background: var(--card-header-bg, #f8f9fa);
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color, #dee2e6);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-body {
+            padding: 20px;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            gap: 6px;
+        }
+
+        .status-badge.authenticated {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-badge.not-authenticated {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-badge.expired {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-indicator.green { background: var(--success-color); }
+        .status-indicator.red { background: var(--danger-color); }
+        .status-indicator.yellow { background: var(--warning-color); }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border-color, #eee);
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: var(--text-muted, #6c757d);
+            font-size: 14px;
+        }
+
+        .info-value {
+            font-weight: 500;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #0056b3;
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .btn-success:hover:not(:disabled) {
+            background: #1e7e34;
+        }
+
+        .btn-danger {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #bd2130;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border-color, #dee2e6);
+            color: var(--text-color, #333);
+        }
+
+        .btn-outline:hover:not(:disabled) {
+            background: var(--hover-bg, #f8f9fa);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color, #ced4da);
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+        }
+
+        .form-hint {
+            margin-top: 4px;
+            font-size: 12px;
+            color: var(--text-muted, #6c757d);
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .steps {
+            display: flex;
+            margin-bottom: 30px;
+        }
+
+        .step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .step::after {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            width: 100%;
+            height: 2px;
+            background: var(--border-color, #dee2e6);
+        }
+
+        .step:last-child::after {
+            display: none;
+        }
+
+        .step-number {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: var(--border-color, #dee2e6);
+            color: var(--text-muted, #6c757d);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .step.active .step-number {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .step.completed .step-number {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .step-label {
+            display: block;
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--text-muted, #6c757d);
+        }
+
+        .step.active .step-label {
+            color: var(--primary-color);
+            font-weight: 500;
+        }
+
+        .wizard-content {
+            display: none;
+        }
+
+        .wizard-content.active {
+            display: block;
+        }
+
+        .auth-url-box {
+            background: var(--code-bg, #f4f4f4);
+            padding: 15px;
+            border-radius: 6px;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 12px;
+            margin: 15px 0;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .link {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Authentication Status Card -->
+        <div class="card" id="status-card">
+            <div class="card-header">
+                <span>Authentication Status</span>
+                <span class="status-badge not-authenticated" id="status-badge">
+                    <span class="status-indicator red"></span>
+                    <span id="status-text">Checking...</span>
+                </span>
+            </div>
+            <div class="card-body">
+                <div id="status-details">
+                    <div class="info-row">
+                        <span class="info-label">Status</span>
+                        <span class="info-value" id="auth-status">Loading...</span>
+                    </div>
+                    <div class="info-row" id="expires-row" style="display: none;">
+                        <span class="info-label">Token Expires</span>
+                        <span class="info-value" id="token-expires">-</span>
+                    </div>
+                </div>
+                <div class="btn-group" style="margin-top: 20px;">
+                    <button class="btn btn-success" id="btn-test" onclick="testConnection()">
+                        Test Connection
+                    </button>
+                    <button class="btn btn-primary" id="btn-authenticate" onclick="showWizard()">
+                        Authenticate
+                    </button>
+                    <button class="btn btn-danger" id="btn-revoke" onclick="revokeAuth()" style="display: none;">
+                        Revoke Access
+                    </button>
+                </div>
+                <div id="test-result" class="alert hidden" style="margin-top: 15px;"></div>
+            </div>
+        </div>
+
+        <!-- Setup Wizard Card -->
+        <div class="card hidden" id="wizard-card">
+            <div class="card-header">
+                Setup Wizard
+            </div>
+            <div class="card-body">
+                <div class="steps">
+                    <div class="step active" id="step-1">
+                        <span class="step-number">1</span>
+                        <span class="step-label">Configuration</span>
+                    </div>
+                    <div class="step" id="step-2">
+                        <span class="step-number">2</span>
+                        <span class="step-label">Authorize</span>
+                    </div>
+                    <div class="step" id="step-3">
+                        <span class="step-number">3</span>
+                        <span class="step-label">Complete</span>
+                    </div>
+                </div>
+
+                <!-- Step 1: Configuration -->
+                <div class="wizard-content active" id="content-1">
+                    <div class="alert alert-info">
+                        You need credentials from the
+                        <a href="https://developer.cloud.daikineurope.com/" target="_blank" class="link">Daikin Developer Portal</a>.
+                        Create an application and copy the Client ID and Secret.
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Client ID *</label>
+                        <input type="text" class="form-input" id="clientId" placeholder="Enter your Client ID">
+                        <div class="form-hint">From your Daikin Developer Portal application</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Client Secret *</label>
+                        <input type="password" class="form-input" id="clientSecret" placeholder="Enter your Client Secret">
+                        <div class="form-hint">Keep this secret and never share it</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Callback Server Address *</label>
+                        <input type="text" class="form-input" id="callbackServerExternalAddress" placeholder="e.g., 192.168.1.100 or your.domain.com">
+                        <div class="form-hint">Your Homebridge server's external IP or domain (not localhost)</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Callback Server Port</label>
+                        <input type="text" class="form-input" id="callbackServerPort" placeholder="8582" value="8582">
+                        <div class="form-hint">Port for the OAuth callback server (default: 8582)</div>
+                    </div>
+
+                    <div id="validation-errors" class="alert alert-danger hidden"></div>
+
+                    <div class="btn-group">
+                        <button class="btn btn-outline" onclick="hideWizard()">Cancel</button>
+                        <button class="btn btn-primary" onclick="validateAndProceed()">Continue</button>
+                    </div>
+                </div>
+
+                <!-- Step 2: Authorize -->
+                <div class="wizard-content" id="content-2">
+                    <div class="alert alert-warning">
+                        Click the button below to open the Daikin login page in a new tab.
+                        After logging in, you'll be redirected back.
+                    </div>
+
+                    <div id="auth-url-container" class="hidden">
+                        <p><strong>Authorization URL:</strong></p>
+                        <div class="auth-url-box" id="auth-url"></div>
+                        <p class="form-hint">If the button doesn't work, copy this URL and open it in a new browser tab.</p>
+                    </div>
+
+                    <div class="btn-group">
+                        <button class="btn btn-outline" onclick="goToStep(1)">Back</button>
+                        <button class="btn btn-primary" id="btn-open-auth" onclick="openAuthUrl()">
+                            Open Daikin Login
+                        </button>
+                    </div>
+
+                    <div style="margin-top: 30px;">
+                        <p><strong>After you've authorized, enter the code from the callback URL:</strong></p>
+                        <div class="form-group">
+                            <label class="form-label">Authorization Code</label>
+                            <input type="text" class="form-input" id="authCode" placeholder="Paste the code from the URL">
+                            <div class="form-hint">Look for ?code=XXXXX in the URL after authorization</div>
+                        </div>
+                        <button class="btn btn-success" onclick="submitAuthCode()">Complete Authentication</button>
+                    </div>
+                </div>
+
+                <!-- Step 3: Complete -->
+                <div class="wizard-content" id="content-3">
+                    <div class="alert alert-success" id="success-message">
+                        Authentication successful! Your Daikin Cloud account is now connected.
+                    </div>
+
+                    <div class="alert alert-info">
+                        <strong>Next Steps:</strong>
+                        <ol style="margin: 10px 0 0 0; padding-left: 20px;">
+                            <li>Save your plugin configuration</li>
+                            <li>Restart Homebridge to apply changes</li>
+                            <li>Your Daikin devices will appear in HomeKit</li>
+                        </ol>
+                    </div>
+
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="finishWizard()">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help Card -->
+        <div class="card">
+            <div class="card-header">
+                Help & Information
+            </div>
+            <div class="card-body">
+                <div class="info-row">
+                    <span class="info-label">Developer Portal</span>
+                    <a href="https://developer.cloud.daikineurope.com/" target="_blank" class="link">
+                        developer.cloud.daikineurope.com
+                    </a>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">API Rate Limit</span>
+                    <span class="info-value">200 requests/day</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Documentation</span>
+                    <a href="https://github.com/mp-consulting/homebridge-daikin-cloud" target="_blank" class="link">
+                        GitHub Repository
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay hidden" id="loading">
+        <div class="spinner" style="width: 40px; height: 40px; border-width: 4px;"></div>
+    </div>
+
+    <script>
+        // State
+        let currentStep = 1;
+        let authState = null;
+        let authUrl = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStatus();
+            loadSavedConfig();
+        });
+
+        // Load authentication status
+        async function loadStatus() {
+            try {
+                const response = await homebridge.request('/auth/status');
+                updateStatusUI(response);
+            } catch (error) {
+                console.error('Failed to load status:', error);
+                updateStatusUI({ authenticated: false, error: error.message });
+            }
+        }
+
+        // Update status UI
+        function updateStatusUI(status) {
+            const badge = document.getElementById('status-badge');
+            const indicator = badge.querySelector('.status-indicator');
+            const statusText = document.getElementById('status-text');
+            const authStatus = document.getElementById('auth-status');
+            const expiresRow = document.getElementById('expires-row');
+            const tokenExpires = document.getElementById('token-expires');
+            const btnAuthenticate = document.getElementById('btn-authenticate');
+            const btnRevoke = document.getElementById('btn-revoke');
+            const btnTest = document.getElementById('btn-test');
+
+            if (status.authenticated) {
+                if (status.isExpired) {
+                    badge.className = 'status-badge expired';
+                    indicator.className = 'status-indicator yellow';
+                    statusText.textContent = 'Expired';
+                    authStatus.textContent = status.canRefresh ? 'Token expired (will auto-refresh)' : 'Token expired';
+                } else {
+                    badge.className = 'status-badge authenticated';
+                    indicator.className = 'status-indicator green';
+                    statusText.textContent = 'Connected';
+                    authStatus.textContent = 'Authenticated and ready';
+                }
+
+                if (status.expiresAt) {
+                    expiresRow.style.display = 'flex';
+                    const date = new Date(status.expiresAt);
+                    tokenExpires.textContent = date.toLocaleString();
+                }
+
+                btnAuthenticate.textContent = 'Re-authenticate';
+                btnRevoke.style.display = 'inline-flex';
+                btnTest.disabled = false;
+            } else {
+                badge.className = 'status-badge not-authenticated';
+                indicator.className = 'status-indicator red';
+                statusText.textContent = 'Not Connected';
+                authStatus.textContent = status.error || 'Authentication required';
+                expiresRow.style.display = 'none';
+                btnAuthenticate.textContent = 'Authenticate';
+                btnRevoke.style.display = 'none';
+                btnTest.disabled = true;
+            }
+        }
+
+        // Load saved config into form
+        async function loadSavedConfig() {
+            try {
+                const config = await homebridge.getPluginConfig();
+                if (config && config.length > 0) {
+                    const platformConfig = config[0];
+                    if (platformConfig.clientId) {
+                        document.getElementById('clientId').value = platformConfig.clientId;
+                    }
+                    if (platformConfig.clientSecret) {
+                        document.getElementById('clientSecret').value = platformConfig.clientSecret;
+                    }
+                    if (platformConfig.callbackServerExternalAddress) {
+                        document.getElementById('callbackServerExternalAddress').value = platformConfig.callbackServerExternalAddress;
+                    }
+                    if (platformConfig.callbackServerPort) {
+                        document.getElementById('callbackServerPort').value = platformConfig.callbackServerPort;
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load config:', error);
+            }
+        }
+
+        // Show wizard
+        function showWizard() {
+            document.getElementById('wizard-card').classList.remove('hidden');
+            document.getElementById('status-card').classList.add('hidden');
+            goToStep(1);
+        }
+
+        // Hide wizard
+        function hideWizard() {
+            document.getElementById('wizard-card').classList.add('hidden');
+            document.getElementById('status-card').classList.remove('hidden');
+        }
+
+        // Go to step
+        function goToStep(step) {
+            currentStep = step;
+
+            // Update step indicators
+            for (let i = 1; i <= 3; i++) {
+                const stepEl = document.getElementById(`step-${i}`);
+                const contentEl = document.getElementById(`content-${i}`);
+
+                stepEl.classList.remove('active', 'completed');
+                contentEl.classList.remove('active');
+
+                if (i < step) {
+                    stepEl.classList.add('completed');
+                } else if (i === step) {
+                    stepEl.classList.add('active');
+                    contentEl.classList.add('active');
+                }
+            }
+        }
+
+        // Validate config and proceed
+        async function validateAndProceed() {
+            const clientId = document.getElementById('clientId').value.trim();
+            const clientSecret = document.getElementById('clientSecret').value.trim();
+            const callbackServerExternalAddress = document.getElementById('callbackServerExternalAddress').value.trim();
+            const callbackServerPort = document.getElementById('callbackServerPort').value.trim() || '8582';
+
+            const errorsDiv = document.getElementById('validation-errors');
+
+            showLoading();
+
+            try {
+                const result = await homebridge.request('/config/validate', {
+                    clientId,
+                    clientSecret,
+                    callbackServerExternalAddress,
+                    callbackServerPort,
+                });
+
+                if (!result.valid) {
+                    errorsDiv.innerHTML = result.errors.map(e => `<div>${e}</div>`).join('');
+                    errorsDiv.classList.remove('hidden');
+                    hideLoading();
+                    return;
+                }
+
+                errorsDiv.classList.add('hidden');
+
+                // Start auth flow
+                const authResult = await homebridge.request('/auth/start', {
+                    clientId,
+                    clientSecret,
+                    callbackServerExternalAddress,
+                    callbackServerPort,
+                });
+
+                authState = authResult.state;
+                authUrl = authResult.authUrl;
+
+                document.getElementById('auth-url').textContent = authUrl;
+                document.getElementById('auth-url-container').classList.remove('hidden');
+
+                goToStep(2);
+            } catch (error) {
+                errorsDiv.innerHTML = `<div>${error.message}</div>`;
+                errorsDiv.classList.remove('hidden');
+            }
+
+            hideLoading();
+        }
+
+        // Open auth URL
+        function openAuthUrl() {
+            if (authUrl) {
+                window.open(authUrl, '_blank');
+            }
+        }
+
+        // Submit auth code
+        async function submitAuthCode() {
+            const code = document.getElementById('authCode').value.trim();
+
+            if (!code) {
+                alert('Please enter the authorization code');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                const result = await homebridge.request('/auth/callback', {
+                    code,
+                    state: authState,
+                });
+
+                if (result.success) {
+                    document.getElementById('success-message').textContent = result.message;
+                    goToStep(3);
+
+                    // Save config
+                    await saveConfig();
+                } else {
+                    alert('Authentication failed: ' + (result.message || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Authentication failed: ' + error.message);
+            }
+
+            hideLoading();
+        }
+
+        // Save config
+        async function saveConfig() {
+            try {
+                const config = await homebridge.getPluginConfig();
+                const platformConfig = config[0] || { platform: 'DaikinCloud' };
+
+                platformConfig.clientId = document.getElementById('clientId').value.trim();
+                platformConfig.clientSecret = document.getElementById('clientSecret').value.trim();
+                platformConfig.callbackServerExternalAddress = document.getElementById('callbackServerExternalAddress').value.trim();
+                platformConfig.callbackServerPort = document.getElementById('callbackServerPort').value.trim() || '8582';
+
+                await homebridge.updatePluginConfig([platformConfig]);
+                await homebridge.savePluginConfig();
+            } catch (error) {
+                console.error('Failed to save config:', error);
+            }
+        }
+
+        // Finish wizard
+        function finishWizard() {
+            hideWizard();
+            loadStatus();
+        }
+
+        // Test connection
+        async function testConnection() {
+            const resultDiv = document.getElementById('test-result');
+            const btn = document.getElementById('btn-test');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Testing...';
+            resultDiv.classList.add('hidden');
+
+            try {
+                const result = await homebridge.request('/auth/test');
+
+                resultDiv.classList.remove('hidden', 'alert-success', 'alert-danger');
+
+                if (result.success) {
+                    resultDiv.classList.add('alert-success');
+                    resultDiv.textContent = result.message;
+                } else {
+                    resultDiv.classList.add('alert-danger');
+                    resultDiv.textContent = result.message;
+                }
+            } catch (error) {
+                resultDiv.classList.remove('hidden', 'alert-success');
+                resultDiv.classList.add('alert-danger');
+                resultDiv.textContent = 'Test failed: ' + error.message;
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = 'Test Connection';
+        }
+
+        // Revoke authentication
+        async function revokeAuth() {
+            if (!confirm('Are you sure you want to revoke access? You will need to re-authenticate.')) {
+                return;
+            }
+
+            showLoading();
+
+            try {
+                const config = await homebridge.getPluginConfig();
+                const platformConfig = config[0] || {};
+
+                await homebridge.request('/auth/revoke', {
+                    clientId: platformConfig.clientId,
+                    clientSecret: platformConfig.clientSecret,
+                });
+
+                loadStatus();
+            } catch (error) {
+                alert('Failed to revoke: ' + error.message);
+            }
+
+            hideLoading();
+        }
+
+        // Show loading overlay
+        function showLoading() {
+            document.getElementById('loading').classList.remove('hidden');
+        }
+
+        // Hide loading overlay
+        function hideLoading() {
+            document.getElementById('loading').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
