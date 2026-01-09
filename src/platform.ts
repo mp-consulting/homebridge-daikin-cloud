@@ -27,7 +27,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     public readonly accessories: PlatformAccessory<DaikinCloudAccessoryContext>[] = [];
 
     public readonly storagePath: string = '';
-    public controller: DaikinCloudController;
+    public controller: DaikinCloudController | undefined;
 
     public readonly updateIntervalDelay = ONE_MINUTE * 15;
     public updateInterval: NodeJS.Timeout | undefined;
@@ -47,6 +47,16 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         this.Characteristic = this.api.hap.Characteristic;
         this.storagePath = api.user.storagePath();
         this.updateIntervalDelay = ONE_MINUTE * (this.config.updateIntervalInMinutes || 15);
+        this.accessoryFactory = new AccessoryFactory(this);
+
+        // Check if credentials are configured
+        if (!this.config.clientId || !this.config.clientSecret) {
+            this.log.warn('[Config] Client ID and/or Client Secret not configured.');
+            this.log.warn('[Config] Please configure the plugin using the Homebridge UI.');
+            this.log.info('--------------- End Daikin info for debugging reasons --------------------');
+            return;
+        }
+
         const daikinCloudControllerConfig: OnectaClientConfig = {
             oidcClientId: this.config.clientId,
             oidcClientSecret: this.config.clientSecret,
@@ -70,13 +80,16 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         });
 
         this.controller = new DaikinCloudController(daikinCloudControllerConfig);
-        this.accessoryFactory = new AccessoryFactory(this);
 
         this.api.on('didFinishLaunching', async () => {
+            if (!this.controller) {
+                return;
+            }
+
             this.controller.on('authorization_request', (url) => {
                 this.log.warn(`
                     Please navigate to ${url} to start the authorisation flow. If it is the first time you open this url you will need to accept a security warning.
-                    
+
                     Important: Make sure your Daikin app Redirect URI is set to ${url} in the Daikin Developer Portal.
                 `);
             });
@@ -171,6 +184,9 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     }
 
     private async updateDevices() {
+        if (!this.controller) {
+            return;
+        }
         try {
             await this.controller.updateAllDeviceData();
         } catch (error) {

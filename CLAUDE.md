@@ -1,5 +1,9 @@
 # Claude Code Settings
 
+## Git Settings
+
+- `coAuthoredBy`: false
+
 ## Git Commit Convention
 
 Use conventional commits format for all commit messages:
