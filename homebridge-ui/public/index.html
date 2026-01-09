@@ -491,53 +491,18 @@
                     <div class="col-md-4">
                         <div class="card h-100">
                             <div class="card-header">Troubleshooting</div>
-                            <div class="card-body">
-                                <div class="accordion accordion-flush" id="troubleshootingAccordion">
-                                    <div class="accordion-item">
-                                        <h2 class="accordion-header">
-                                            <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
-                                                Token expired or invalid
-                                            </button>
-                                        </h2>
-                                        <div id="faq1" class="accordion-collapse collapse">
-                                            <div class="accordion-body small">
-                                                <p>Delete the token file and restart Homebridge:</p>
-                                                <code>rm ~/.homebridge/.daikin-controller-cloud-tokenset</code>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="accordion-item">
-                                        <h2 class="accordion-header">
-                                            <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
-                                                Authentication flow issues
-                                            </button>
-                                        </h2>
-                                        <div id="faq2" class="accordion-collapse collapse">
-                                            <div class="accordion-body small">
-                                                <ul class="mb-0">
-                                                    <li>Ensure redirect URI matches exactly</li>
-                                                    <li>Try bind address 0.0.0.0</li>
-                                                    <li>Check firewall rules</li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="accordion-item">
-                                        <h2 class="accordion-header">
-                                            <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
-                                                Device not appearing
-                                            </button>
-                                        </h2>
-                                        <div id="faq3" class="accordion-collapse collapse">
-                                            <div class="accordion-body small">
-                                                <ul class="mb-0">
-                                                    <li>Check Homebridge logs</li>
-                                                    <li>Verify device in Onecta app</li>
-                                                    <li>Check device exclusions</li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </div>
+                            <div class="card-body small">
+                                <div class="mb-3">
+                                    <div class="fw-semibold">Token expired or invalid</div>
+                                    <div class="text-muted">Delete token file and restart Homebridge</div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="fw-semibold">Authentication flow issues</div>
+                                    <div class="text-muted">Check redirect URI, bind to 0.0.0.0, verify firewall</div>
+                                </div>
+                                <div class="mb-0">
+                                    <div class="fw-semibold">Device not appearing</div>
+                                    <div class="text-muted">Check logs, verify in Onecta app, check exclusions</div>
                                 </div>
                             </div>
                         </div>
