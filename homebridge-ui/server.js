@@ -800,8 +800,19 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     // Get Rate Limit Handler
     // -------------------------------------------------------------------------
 
-    async handleGetRateLimit() {
-        const tokenSet = this.getActiveTokenSet();
+    async handleGetRateLimit(payload) {
+        const mode = payload?.mode;
+
+        // Get token based on mode parameter, or fall back to active token
+        let tokenSet;
+        if (mode === 'mobile_app') {
+            tokenSet = TokenManager.load(this.getMobileTokenFilePath());
+        } else if (mode === 'developer_portal') {
+            tokenSet = TokenManager.load(this.getTokenFilePath());
+        } else {
+            tokenSet = this.getActiveTokenSet();
+        }
+
         if (!tokenSet?.access_token) {
             return { success: false, message: 'Not authenticated' };
         }

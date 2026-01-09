@@ -805,7 +805,7 @@ const RateLimit = {
         display.textContent = 'Checking...';
 
         try {
-            const result = await homebridge.request('/api/rate-limit');
+            const result = await homebridge.request('/api/rate-limit', { mode: AuthMode.current });
             if (result.success && result.rateLimit) {
                 const { limitDay, remainingDay, limitMinute, remainingMinute } = result.rateLimit;
                 let text = remainingDay !== undefined ? `${remainingDay}/${limitDay} daily` : '';
