@@ -652,7 +652,7 @@ const Settings = {
                 <div class="d-flex align-items-center gap-2">
                     <span class="device-toggle-label small ${visible ? 'visible' : 'hidden-label'}" data-label-index="${index}">${visible ? 'Visible' : 'Hidden'}</span>
                     <div class="form-check form-switch mb-0">
-                        <input type="checkbox" class="form-check-input device-visibility-toggle" data-index="${index}" ${visible ? 'checked' : ''}>
+                        <input type="checkbox" class="form-check-input device-visibility-toggle" role="switch" data-index="${index}" ${visible ? 'checked' : ''}>
                     </div>
                 </div>
             </div>`;
