@@ -181,6 +181,13 @@ rm ~/.homebridge/.daikin-controller-cloud-tokenset
 - Check Homebridge logs for WebSocket connection errors
 - Verify your credentials are valid by testing the connection in the UI
 
+### API Gateway Timeout Errors (502, 503, 504)
+
+These errors indicate temporary issues with the Daikin Cloud servers:
+- The plugin automatically retries failed requests up to 3 times with exponential backoff
+- If errors persist, the Daikin API may be experiencing extended downtime
+- Check [Daikin's status page](https://www.daikin.eu/) or try again later
+
 ## Supported Devices
 
 Any device compatible with the [Daikin Onecta app](https://www.daikin.eu/en_us/product-group/control-systems/onecta/connectable-units.html), including:
