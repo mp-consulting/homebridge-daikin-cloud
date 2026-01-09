@@ -8,13 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/) and this 
 
 ### Changed
 - **UI Redesign**: Migrated to Bootstrap 5 components for cleaner, more consistent design
-  - Reduced custom CSS from ~1130 lines to ~245 lines
+  - Added Bootstrap 5 CDN for proper styling
+  - Reduced custom CSS from ~1130 lines to ~200 lines
   - Improved dark mode support using Bootstrap's color system
-  - Device cards now use Bootstrap card component with responsive grid
   - Form controls use native Bootstrap form styling
-  - Toggle switches use Bootstrap form-switch
-  - Accordion components use Bootstrap accordion
+  - Toggle switches use Bootstrap form-switch with `role="switch"`
+  - Devices displayed as list instead of card grid
+  - Help tab redesigned with stacked cards for narrow screens
+  - Simplified troubleshooting section
 - Rate limit info text now dynamically updates based on authentication mode
+- Rate limit API now checks based on selected authentication mode
+- Refactored script.js with DOM helpers and centralized state management
 
 ## [1.1.3] - 2026-01-09
 
