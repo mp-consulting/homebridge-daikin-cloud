@@ -302,7 +302,7 @@ export class ClimateControlService {
         const controlMode = this.accessory.context.device.getData(this.managementPointId, 'controlMode', undefined);
 
         // Only Altherma devices have a controlMode, others have a fixed controlMode of ROOM_TEMPERATURE AFAIK
-        if (!controlMode) {
+        if (!controlMode.value) {
             return DaikinControlModes.ROOM_TEMPERATURE;
         }
 
@@ -311,7 +311,7 @@ export class ClimateControlService {
 
     getSetpointMode(): DaikinSetpointModes | null {
         const setpointMode = this.accessory.context.device.getData(this.managementPointId, 'setpointMode', undefined);
-        if (!setpointMode) {
+        if (!setpointMode.value) {
             return null;
         }
         return setpointMode.value as DaikinSetpointModes;
