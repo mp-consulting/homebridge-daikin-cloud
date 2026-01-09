@@ -9,13 +9,22 @@ import {althermaHeatPump} from '../../fixtures/altherma-heat-pump';
 import {HomebridgeAPI} from 'homebridge/lib/api.js';
 import {Logger} from 'homebridge/lib/logger.js';
 
-// TODO: Refactor tests to use new API structure (managementPoints is now an array, not a dictionary)
 // Helper to get management point data from the device
 const getManagementPoint = (device: DaikinCloudDevice, embeddedId: string): any => {
     return (device as any).rawData.managementPoints.find((mp: any) => mp.embeddedId === embeddedId);
 };
 
-describe.skip('HotWaterTankService', () => {
+// Use fake timers to prevent tests from hanging due to setInterval/setTimeout in platform
+beforeEach(() => {
+    jest.useFakeTimers();
+});
+
+afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+});
+
+describe('HotWaterTankService', () => {
     let accessory: PlatformAccessory<DaikinCloudAccessoryContext>;
     let service: HotWaterTankService;
 
@@ -24,7 +33,8 @@ describe.skip('HotWaterTankService', () => {
     beforeEach(() => {
         const mockApi = {} as DaikinApi;
         accessory = new PlatformAccessory<DaikinCloudAccessoryContext>('ACCESSORY_NAME', uuid.generate('ACCESSORY_UUID'));
-        accessory.context['device'] = new DaikinCloudDevice(althermaHeatPump as any, mockApi);
+        // Use a deep copy of the fixture to isolate test mutations
+        accessory.context['device'] = new DaikinCloudDevice(JSON.parse(JSON.stringify(althermaHeatPump)) as any, mockApi);
         accessory.context.device.getLastUpdated = jest.fn().mockReturnValue(new Date(1987, 0, 19, 0, 0, 0, 0));
 
         const platform = new DaikinCloudPlatform(new Logger(), new MockPlatformConfig(true), new HomebridgeAPI());

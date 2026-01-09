@@ -10,7 +10,14 @@ jest.mock('homebridge');
 jest.mock('../../src/accessories/air-conditioning-accessory');
 jest.mock('../../src/accessories/altherma-accessory');
 
+// Use fake timers to prevent tests from hanging due to setInterval/setTimeout in platform
+beforeEach(() => {
+    jest.useFakeTimers();
+});
+
 afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
     jest.resetAllMocks();
 });
 
@@ -30,15 +37,12 @@ test('Initialize platform', async () => {
     expect(platform.updateIntervalDelay).toBe(900000);
 });
 
-// TODO: Fix complex mocking for platform device discovery tests
-test.skip('DaikinCloudPlatform with new Aircondition accessory', async () => {
-    jest.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockResolvedValue([{
+test('DaikinCloudPlatform with new Aircondition accessory', async () => {
+    const mockDevice = {
         getId: () => 'MOCK_ID',
-        getDescription: () => {
-            return {
-                deviceModel: 'Airco',
-            };
-        },
+        getDescription: () => ({
+            deviceModel: 'Airco',
+        }),
         getData: () => 'MOCK_DATE',
         desc: {
             managementPoints: [
@@ -48,7 +52,15 @@ test.skip('DaikinCloudPlatform with new Aircondition accessory', async () => {
                 },
             ],
         },
-    } as unknown as DaikinCloudDevice]);
+    } as unknown as DaikinCloudDevice;
+
+    // Mock the constructor to set up getCloudDevices on the instance
+    (DaikinCloudController as unknown as jest.Mock).mockImplementation(() => ({
+        getCloudDevices: jest.fn().mockResolvedValue([mockDevice]),
+        isAuthenticated: jest.fn().mockReturnValue(true),
+        on: jest.fn(),
+        updateAllDeviceData: jest.fn().mockResolvedValue(undefined),
+    }));
 
     const api = new HomebridgeAPI();
 
@@ -57,22 +69,20 @@ test.skip('DaikinCloudPlatform with new Aircondition accessory', async () => {
     new DaikinCloudPlatform(new Logger(), new MockPlatformConfig(true), api);
     api.signalFinished();
 
-    // Wait for async device discovery to complete
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Wait for async device discovery to complete using fake timers
+    await jest.advanceTimersByTimeAsync(100);
 
     expect(AirConditioningAccessory).toHaveBeenCalled();
     expect(AlthermaAccessory).not.toHaveBeenCalled();
     expect(registerPlatformAccessoriesSpy).toHaveBeenCalledWith('@mp-consulting/homebridge-daikin-cloud', 'DaikinCloud', expect.anything());
 });
 
-test.skip('DaikinCloudPlatform with new Altherma accessory', async () => {
-    jest.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockResolvedValue([{
+test('DaikinCloudPlatform with new Altherma accessory', async () => {
+    const mockDevice = {
         getId: () => 'MOCK_ID',
-        getDescription: () => {
-            return {
-                deviceModel: 'Altherma',
-            };
-        },
+        getDescription: () => ({
+            deviceModel: 'Altherma',
+        }),
         getData: () => 'MOCK_DATE',
         desc: {
             managementPoints: [
@@ -82,7 +92,15 @@ test.skip('DaikinCloudPlatform with new Altherma accessory', async () => {
                 },
             ],
         },
-    } as unknown as DaikinCloudDevice]);
+    } as unknown as DaikinCloudDevice;
+
+    // Mock the constructor to set up getCloudDevices on the instance
+    (DaikinCloudController as unknown as jest.Mock).mockImplementation(() => ({
+        getCloudDevices: jest.fn().mockResolvedValue([mockDevice]),
+        isAuthenticated: jest.fn().mockReturnValue(true),
+        on: jest.fn(),
+        updateAllDeviceData: jest.fn().mockResolvedValue(undefined),
+    }));
 
     const api = new HomebridgeAPI();
 
@@ -91,8 +109,8 @@ test.skip('DaikinCloudPlatform with new Altherma accessory', async () => {
     new DaikinCloudPlatform(new Logger(), new MockPlatformConfig(true), api);
     api.signalFinished();
 
-    // Wait for async device discovery to complete
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Wait for async device discovery to complete using fake timers
+    await jest.advanceTimersByTimeAsync(100);
 
     expect(AlthermaAccessory).toHaveBeenCalled();
     expect(AirConditioningAccessory).not.toHaveBeenCalled();
