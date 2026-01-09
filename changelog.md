@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/) and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.3] - 2026-01-09
+
+### Fixed
+- Temperature sensor returning default value (20°C) instead of actual reading for AC devices
+- Control mode and setpoint mode detection now correctly checks value property from getData()
+
 ## [1.2.2] - 2026-01-09
 
 ### Added
