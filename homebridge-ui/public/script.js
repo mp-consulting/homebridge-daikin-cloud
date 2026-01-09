@@ -675,8 +675,29 @@ const Config = {
                 const platformConfig = config[0];
                 this.populateForm(platformConfig);
             }
+
+            // Prefill callback server address with server IP if empty
+            await this.prefillServerAddress();
         } catch (error) {
             console.error('Failed to load config:', error);
+        }
+    },
+
+    /**
+     * Prefill callback server address with server's IP if not already set
+     */
+    async prefillServerAddress() {
+        const addressField = document.getElementById('callbackServerExternalAddress');
+        if (!addressField || addressField.value.trim()) return; // Already has a value
+
+        try {
+            const serverInfo = await homebridge.request('/server/info');
+            if (serverInfo.primaryIp) {
+                addressField.value = serverInfo.primaryIp;
+                addressField.placeholder = serverInfo.primaryIp;
+            }
+        } catch (error) {
+            console.error('Failed to get server IP:', error);
         }
     },
 

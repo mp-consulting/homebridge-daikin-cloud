@@ -4,6 +4,7 @@ const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
+const os = require('os');
 
 // Import from compiled src/api modules (single source of truth)
 // Use path relative to this file, not cwd
@@ -307,27 +308,63 @@ class CallbackServer {
 
 const HtmlTemplates = {
     callbackResponse(success, message) {
-        return `
-<!DOCTYPE html>
+        const icon = success
+            ? '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'
+            : '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#f44336" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+
+        return `<!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Daikin Authentication</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
-        .container { text-align: center; padding: 2rem; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 400px; }
-        .icon { font-size: 4rem; margin-bottom: 1rem; }
-        .success { color: #4caf50; }
-        .error { color: #f44336; }
-        h1 { margin: 0 0 1rem; font-size: 1.5rem; }
-        p { color: #666; margin: 0; }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            text-align: center;
+            padding: 2.5rem;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 400px;
+            width: 100%;
+        }
+        .icon { margin-bottom: 1.5rem; }
+        h1 {
+            margin: 0 0 0.75rem;
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: ${success ? '#4caf50' : '#f44336'};
+        }
+        .message {
+            color: #333;
+            font-size: 1rem;
+            line-height: 1.5;
+            margin: 0 0 1.5rem;
+        }
+        .hint {
+            color: #888;
+            font-size: 0.875rem;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="icon ${success ? 'success' : 'error'}">${success ? '✓' : '✗'}</div>
+        <div class="icon">${icon}</div>
         <h1>${success ? 'Success!' : 'Error'}</h1>
-        <p>${message}</p>
-        <p style="margin-top: 1rem; font-size: 0.9rem;">You can close this window and return to Homebridge.</p>
+        <p class="message">${message}</p>
+        <p class="hint">You can close this window and return to Homebridge.</p>
     </div>
 </body>
 </html>`;
@@ -369,6 +406,36 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
         this.onRequest('/config/validate', this.handleValidateConfig.bind(this));
         this.onRequest('/devices/list', this.handleListDevices.bind(this));
         this.onRequest('/api/rate-limit', this.handleGetRateLimit.bind(this));
+        this.onRequest('/server/info', this.handleGetServerInfo.bind(this));
+    }
+
+    // -------------------------------------------------------------------------
+    // Server Info Handler
+    // -------------------------------------------------------------------------
+
+    async handleGetServerInfo() {
+        const ipAddresses = this.getServerIpAddresses();
+        return {
+            ipAddresses,
+            primaryIp: ipAddresses[0] || null,
+            hostname: os.hostname(),
+        };
+    }
+
+    getServerIpAddresses() {
+        const interfaces = os.networkInterfaces();
+        const addresses = [];
+
+        for (const nets of Object.values(interfaces)) {
+            if (!nets) continue;
+            for (const net of nets) {
+                // Skip internal and non-IPv4 addresses
+                if (net.internal || net.family !== 'IPv4') continue;
+                addresses.push(net.address);
+            }
+        }
+
+        return addresses;
     }
 
     // -------------------------------------------------------------------------
@@ -488,7 +555,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     }
 
     sendCallbackResponse(res, success, message) {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(HtmlTemplates.callbackResponse(success, message));
     }
 

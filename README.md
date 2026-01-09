@@ -81,7 +81,7 @@ Add the platform to your Homebridge `config.json`:
 |--------|------|---------|-------------|
 | `clientId` | string | *required* | Your Daikin Developer App Client ID |
 | `clientSecret` | string | *required* | Your Daikin Developer App Client Secret |
-| `callbackServerExternalAddress` | string | *required* | External IP/hostname for OAuth callback |
+| `callbackServerExternalAddress` | string | auto-detected | External IP/hostname for OAuth callback |
 | `callbackServerPort` | number | `8582` | Port for OAuth callback server (1-65535) |
 | `oidcCallbackServerBindAddr` | string | `0.0.0.0` | Address to bind callback server (valid IPv4) |
 | `updateIntervalInMinutes` | number | `15` | Polling interval for device updates (1-60) |

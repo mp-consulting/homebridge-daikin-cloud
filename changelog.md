@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/) and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.3] - 2026-01-09
+
+### Added
+- Auto-detection of server IP address for OAuth callback configuration
+- Server info endpoint (`/server/info`) to retrieve Homebridge server IP
+
+### Changed
+- Improved OAuth callback response page with modern styling
+- Callback server address field now auto-populates with detected IP
+
 ## [1.0.2] - 2026-01-09
 
 ### Added
