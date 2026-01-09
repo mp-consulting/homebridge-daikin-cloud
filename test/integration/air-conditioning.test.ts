@@ -21,6 +21,16 @@ import {
     FanOnlyOperationModeFeature,
 } from '../../src/features';
 
+// Use fake timers to prevent tests from hanging due to setInterval/setTimeout in platform
+beforeEach(() => {
+    jest.useFakeTimers();
+});
+
+afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+});
+
 type DeviceState = {
 	activeState: boolean;
 	currentTemperature: number;
