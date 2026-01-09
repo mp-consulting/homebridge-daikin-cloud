@@ -72,15 +72,7 @@
     color: var(--bs-danger-text-emphasis) !important;
 }
 
-/* Device Cards */
-.device-card {
-    transition: box-shadow 0.2s;
-}
-
-.device-card:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
+/* Device Status Badges */
 .device-power {
     font-size: 11px;
     font-weight: 600;
@@ -112,14 +104,6 @@
 .device-status.offline {
     background: var(--bs-danger-bg-subtle);
     color: var(--bs-danger-text-emphasis);
-}
-
-.device-feature-tag {
-    background: var(--bs-primary);
-    color: white;
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 10px;
 }
 
 /* Device Toggle Labels */

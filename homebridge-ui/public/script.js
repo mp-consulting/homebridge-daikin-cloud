@@ -770,24 +770,19 @@ const Devices = {
         const mode = device.operationMode ? Utils.capitalize(device.operationMode) : '-';
 
         return `
-            <div class="col-md-6">
-                <div class="card device-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <h6 class="card-title mb-0">${Utils.escapeHtml(device.name)}</h6>
-                            <div class="d-flex gap-1">
-                                <span class="device-power ${powerOn ? 'power-on' : 'power-off'}">${powerOn ? 'ON' : 'OFF'}</span>
-                                <span class="device-status ${online ? 'online' : 'offline'}">${online ? 'Online' : 'Offline'}</span>
-                            </div>
-                        </div>
-                        <div class="row g-2 small">
-                            ${device.roomTemp ? `<div class="col-6"><div class="text-muted">Room Temp</div><div class="fw-medium">${Utils.escapeHtml(device.roomTemp)}</div></div>` : ''}
-                            ${device.outdoorTemp ? `<div class="col-6"><div class="text-muted">Outdoor</div><div class="fw-medium">${Utils.escapeHtml(device.outdoorTemp)}</div></div>` : ''}
-                            <div class="col-6"><div class="text-muted">Mode</div><div class="fw-medium">${Utils.escapeHtml(mode)}</div></div>
-                            <div class="col-6"><div class="text-muted">Model</div><div class="fw-medium">${Utils.escapeHtml(device.model)}</div></div>
-                        </div>
-                        ${device.features?.length ? `<div class="mt-2 d-flex flex-wrap gap-1">${device.features.map(f => `<span class="device-feature-tag">${f}</span>`).join('')}</div>` : ''}
+            <div class="list-group-item">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="fw-semibold">${Utils.escapeHtml(device.name)}</div>
+                    <div class="d-flex gap-1">
+                        <span class="device-power ${powerOn ? 'power-on' : 'power-off'}">${powerOn ? 'ON' : 'OFF'}</span>
+                        <span class="device-status ${online ? 'online' : 'offline'}">${online ? 'Online' : 'Offline'}</span>
                     </div>
+                </div>
+                <div class="d-flex flex-wrap gap-3 small text-muted">
+                    ${device.roomTemp ? `<span><strong>Room:</strong> ${Utils.escapeHtml(device.roomTemp)}</span>` : ''}
+                    ${device.outdoorTemp ? `<span><strong>Outdoor:</strong> ${Utils.escapeHtml(device.outdoorTemp)}</span>` : ''}
+                    <span><strong>Mode:</strong> ${Utils.escapeHtml(mode)}</span>
+                    <span><strong>Model:</strong> ${Utils.escapeHtml(device.model)}</span>
                 </div>
             </div>`;
     },
