@@ -67,6 +67,7 @@
                     <div class="alert alert-info">
                         You need credentials from the
                         <a href="https://developer.cloud.daikineurope.com/" target="_blank" class="link">Daikin Developer Portal</a>.
+                        <br>
                         Create an application and copy the Client ID and Secret.
                     </div>
 
@@ -106,7 +107,14 @@
                 <div class="wizard-content" id="content-2">
                     <div class="alert alert-warning">
                         Click the button below to open the Daikin login page in a new tab.
-                        After logging in, you'll be redirected back.
+                        After logging in, you'll be redirected automatically.
+                    </div>
+
+                    <div id="callback-server-status" class="alert alert-info hidden">
+                        <strong>Callback server is running.</strong>
+                        Authentication will complete automatically after you log in.
+                        <br><br>
+                        <em>Note: Your browser may show a certificate warning. This is normal for the self-signed certificate. Click "Advanced" and proceed to continue.</em>
                     </div>
 
                     <div id="auth-url-container" class="hidden">
@@ -123,7 +131,7 @@
                     </div>
 
                     <div style="margin-top: 30px;">
-                        <p><strong>After you've authorized, enter the code from the callback URL:</strong></p>
+                        <p><strong>Manual fallback: If automatic redirect doesn't work, enter the code from the URL:</strong></p>
                         <div class="form-group">
                             <label class="form-label">Authorization Code</label>
                             <input type="text" class="form-input" id="authCode" placeholder="Paste the code from the URL">
@@ -155,6 +163,27 @@
             </div>
         </div>
 
+        <!-- Devices Card -->
+        <div class="card" id="devices-card">
+            <div class="card-header">
+                <span>Discovered Devices</span>
+                <button class="btn btn-sm btn-outline" onclick="refreshDevices()" id="btn-refresh-devices">
+                    Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="devices-loading" class="hidden" style="text-align: center; padding: 20px;">
+                    <div class="spinner" style="width: 30px; height: 30px; margin: 0 auto;"></div>
+                    <p style="margin-top: 10px; color: #666;">Loading devices...</p>
+                </div>
+                <div id="devices-list"></div>
+                <div id="devices-empty" class="hidden" style="text-align: center; padding: 20px; color: #666;">
+                    <p>No devices found. Make sure you're authenticated and your Daikin devices are set up.</p>
+                </div>
+                <div id="devices-error" class="alert alert-danger hidden" style="margin-top: 10px;"></div>
+            </div>
+        </div>
+
         <!-- Help Card -->
         <div class="card">
             <div class="card-header">
@@ -169,7 +198,8 @@
                 </div>
                 <div class="info-row">
                     <span class="info-label">API Rate Limit</span>
-                    <span class="info-value">200 requests/day</span>
+                    <span class="info-value" id="rate-limit-display">200 requests/day</span>
+                    <button class="btn btn-sm btn-outline" onclick="checkRateLimit()">Check</button>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Documentation</span>
@@ -184,6 +214,8 @@
     <div class="loading-overlay hidden" id="loading">
         <div class="spinner" style="width: 40px; height: 40px; border-width: 4px;"></div>
     </div>
+
+    <div id="global-error" class="alert alert-danger hidden" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1001; max-width: 500px;"></div>
 
     <script src="script.js"></script>
 </body>
