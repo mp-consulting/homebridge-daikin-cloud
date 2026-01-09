@@ -1,7 +1,7 @@
 // introduced via https://github.com/mp-consulting/homebridge-daikin-cloud/issues/81
 
 export const althermaV1ckoeln = {
-    '_id': 'ef81d359-4501-431f-9479-d71594658b51',
+    'id': 'ef81d359-4501-431f-9479-d71594658b51',
     'deviceModel': 'Altherma',
     'type': 'heating-wlan',
     'isCloudConnectionUp': {
@@ -641,5 +641,4 @@ export const althermaV1ckoeln = {
     ],
     'embeddedId': 'bbfb5284-036a-44ff-96f8-9cde288e1beb',
     'timestamp': '2024-08-18T13:31:41.225Z',
-    'id': 'ef81d359-4501-431f-9479-d71594658b51',
 };

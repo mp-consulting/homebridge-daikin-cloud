@@ -1,6 +1,6 @@
 export const althermaFraction =
     {
-        '_id': '',
+        'id': '',
         'deviceModel': 'Altherma',
         'type': 'heating-wlan',
         'isCloudConnectionUp':
@@ -715,5 +715,4 @@ export const althermaFraction =
             ],
         'embeddedId': '',
         'timestamp': '2024-10-02T09:29:40.484Z',
-        'id': '',
     };

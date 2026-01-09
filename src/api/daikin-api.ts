@@ -6,7 +6,15 @@
 
 import * as https from 'node:https';
 import {DAIKIN_OIDC_CONFIG, RateLimitStatus, GatewayDevice, OAuthProvider} from './daikin-types';
-import {HTTP_STATUS, DEFAULT_RETRY_AFTER_SECONDS, MS_PER_SECOND, MAX_RATE_LIMIT_BLOCK_SECONDS} from '../constants';
+import {
+    HTTP_STATUS,
+    DEFAULT_RETRY_AFTER_SECONDS,
+    MS_PER_SECOND,
+    MAX_RATE_LIMIT_BLOCK_SECONDS,
+    MAX_RETRY_ATTEMPTS,
+    RETRY_BASE_DELAY_MS,
+    RETRY_MAX_DELAY_MS,
+} from '../constants';
 
 export class RateLimitedError extends Error {
     constructor(
@@ -20,6 +28,7 @@ export class RateLimitedError extends Error {
 
 export class DaikinApi {
     private blockedUntil = 0;
+    private isRefreshing = false;
 
     constructor(
         private readonly oauth: OAuthProvider,
@@ -144,12 +153,29 @@ export class DaikinApi {
     }
 
     /**
+     * Calculate delay for exponential backoff with jitter
+     */
+    private getRetryDelay(attempt: number): number {
+        const exponentialDelay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+        const jitter = Math.random() * RETRY_BASE_DELAY_MS;
+        return Math.min(exponentialDelay + jitter, RETRY_MAX_DELAY_MS);
+    }
+
+    /**
+     * Sleep for a specified duration
+     */
+    private sleep(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
      * Make an authenticated API request
      */
     private async request<T>(
         path: string,
         method: 'GET' | 'PATCH' | 'POST' | 'DELETE' = 'GET',
         body?: unknown,
+        retryCount = 0,
     ): Promise<T> {
         // Check rate limit
         if (this.isRateLimited()) {
@@ -187,7 +213,23 @@ export class DaikinApi {
                 throw new Error(`Bad Request (${HTTP_STATUS.BAD_REQUEST}): ${response.body || 'No response body'}`);
 
             case HTTP_STATUS.UNAUTHORIZED:
-                throw new Error(`Unauthorized (${HTTP_STATUS.UNAUTHORIZED}): Token expired or invalid`);
+                // If we've exhausted retries or already refreshing, give up
+                if (retryCount >= MAX_RETRY_ATTEMPTS || this.isRefreshing) {
+                    throw new Error(`Unauthorized (${HTTP_STATUS.UNAUTHORIZED}): Token expired or invalid`);
+                }
+                // Try to refresh the token and retry the request with exponential backoff
+                try {
+                    this.isRefreshing = true;
+                    await this.oauth.refreshToken();
+                    this.isRefreshing = false;
+                    // Apply exponential backoff delay before retry
+                    const delay = this.getRetryDelay(retryCount);
+                    await this.sleep(delay);
+                    return this.request<T>(path, method, body, retryCount + 1);
+                } catch {
+                    this.isRefreshing = false;
+                    throw new Error(`Unauthorized (${HTTP_STATUS.UNAUTHORIZED}): Token refresh failed. Please re-authenticate.`);
+                }
 
             case HTTP_STATUS.NOT_FOUND:
                 throw new Error(`Not Found (${HTTP_STATUS.NOT_FOUND}): ${response.body || 'Resource not found'}`);

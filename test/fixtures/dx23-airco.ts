@@ -1,6 +1,6 @@
 // Keuken Jeroen, more simple, no horizontal and vertical swing, no powerful mode, min-max speed 1-3
 export const dx23Airco = {
-    '_id': 'efd08509-2edb-41d0-a9ab-ce913323d811',
+    'id': 'efd08509-2edb-41d0-a9ab-ce913323d811',
     'isCloudConnectionUp': {
         'settable': false,
         'value': true,
@@ -514,6 +514,5 @@ export const dx23Airco = {
     ],
     'embeddedId': '78e9e2b5-2e25-4e9b-ae72-56184fc0e6a9',
     'timestamp': '2022-05-04T10:47:18.040Z',
-    'id': 'efd08509-2edb-41d0-a9ab-ce913323d811',
     'lastUpdateReceived': '2022-05-04T10:47:18.040Z',
 };

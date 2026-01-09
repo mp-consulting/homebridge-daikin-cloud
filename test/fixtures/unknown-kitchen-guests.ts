@@ -1,6 +1,6 @@
 // Unknown from: https://github.com/mp-consulting/homebridge-daikin-cloud/issues/50
 export const unknownKitchenGuests = {
-    '_id': '60f60b43-0d09-4084-94a0-d7a71020001f',
+    'id': '60f60b43-0d09-4084-94a0-d7a71020001f',
     'error': 'INVALID_GATEWAY_DEVICE',
     'type': 'dx4',
     'deviceModel': 'dx4',
@@ -485,5 +485,4 @@ export const unknownKitchenGuests = {
     ],
     'embeddedId': '1395211',
     'timestamp': '2024-01-24T19:56:47.581Z',
-    'id': '60f60b43-0d09-4084-94a0-d7a71020001f',
 };

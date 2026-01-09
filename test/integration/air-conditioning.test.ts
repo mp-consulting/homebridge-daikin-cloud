@@ -2,9 +2,7 @@ import {PlatformAccessory} from 'homebridge/lib/platformAccessory';
 import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../../src/platform';
 import {MockPlatformConfig} from '../mocks';
 import {AirConditioningAccessory} from '../../src/accessories';
-import {DaikinCloudDevice} from 'daikin-controller-cloud/dist/device';
-import {DaikinCloudController} from 'daikin-controller-cloud/dist/index.js';
-import {OnectaClient} from 'daikin-controller-cloud/dist/onecta/oidc-client';
+import {DaikinCloudDevice, DaikinCloudController, DaikinApi} from '../../src/api';
 import {unknownJan} from '../fixtures/unknown-jan';
 import {unknownKitchenGuests} from '../fixtures/unknown-kitchen-guests';
 import {dx23Airco} from '../fixtures/dx23-airco';
@@ -147,7 +145,10 @@ test.each<Array<string | string | any | DeviceState>>([
         },
     ],
 ])('Create DaikinCloudAirConditioningAccessory with %s device', async (name: string, climateControlEmbeddedId: string, deviceJson, state: DeviceState) => {
-    const device = new DaikinCloudDevice(deviceJson, undefined as unknown as OnectaClient);
+    const mockApi = {
+        updateDevice: jest.fn().mockResolvedValue(undefined),
+    } as unknown as DaikinApi;
+    const device = new DaikinCloudDevice(deviceJson as any, mockApi);
 
     jest.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
         return [device];
@@ -260,7 +261,8 @@ test.each<Array<string | string | any>>([
     ['dx4', 'climateControl', dx4Airco],
     ['dx23', 'climateControl', dx23Airco],
 ])('Create DaikinCloudAirConditioningAccessory with %s device, showExtraFeatures disabled', async (name, climateControlEmbeddedId, deviceJson) => {
-    const device = new DaikinCloudDevice(deviceJson, undefined as unknown as OnectaClient);
+    const mockApi = { updateDevice: jest.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
+    const device = new DaikinCloudDevice(deviceJson as any, mockApi);
 
     jest.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
         return [device];
@@ -294,7 +296,8 @@ test.each<Array<string | string | any>>([
 });
 
 test('DaikinCloudAirConditioningAccessory Getters', async () => {
-    const device = new DaikinCloudDevice(dx4Airco, undefined as unknown as OnectaClient);
+    const mockApi = { updateDevice: jest.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
+    const device = new DaikinCloudDevice(dx4Airco as any, mockApi);
 
     jest.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
         return [device];
@@ -304,7 +307,7 @@ test('DaikinCloudAirConditioningAccessory Getters', async () => {
     const api = new HomebridgeAPI();
 
     const uuid = api.hap.uuid.generate(device.getId());
-    const accessory = new api.platformAccessory(device.getData('climateControl', 'name', undefined).value, uuid);
+    const accessory = new api.platformAccessory(device.getData('climateControl', 'name', undefined).value as string, uuid);
     accessory.context['device'] = device;
 
     const homebridgeAccessory = new AirConditioningAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
@@ -331,7 +334,8 @@ test('DaikinCloudAirConditioningAccessory Getters', async () => {
 });
 
 test('DaikinCloudAirConditioningAccessory Setters', async () => {
-    const device = new DaikinCloudDevice(dx4Airco, undefined as unknown as OnectaClient);
+    const mockApi = { updateDevice: jest.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
+    const device = new DaikinCloudDevice(dx4Airco as any, mockApi);
 
     jest.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
         return [device];
@@ -343,7 +347,7 @@ test('DaikinCloudAirConditioningAccessory Setters', async () => {
     const api = new HomebridgeAPI();
 
     const uuid = api.hap.uuid.generate(device.getId());
-    const accessory = new api.platformAccessory(device.getData('climateControl', 'name', undefined).value, uuid);
+    const accessory = new api.platformAccessory(device.getData('climateControl', 'name', undefined).value as string, uuid);
     // device.updateData = () => jest.fn();
     accessory.context['device'] = device;
 

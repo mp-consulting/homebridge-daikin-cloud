@@ -1,6 +1,6 @@
 // Altherma heatpump
 export const althermaHeatPump = {
-    '_id': '10b029e7-484c-4519-b22e-c14be4b7a71c',
+    'id': '10b029e7-484c-4519-b22e-c14be4b7a71c',
     'deviceModel': 'Altherma',
     'type': 'heating-wlan',
     'isCloudConnectionUp': {
@@ -753,6 +753,5 @@ export const althermaHeatPump = {
     ],
     'embeddedId': 'e1bac939-1495-4803-a6a3-ca2f9388c8ad',
     'timestamp': '2023-03-07T19:01:39.983Z',
-    'id': '10b029e7-484c-4519-b22e-c14be4b7a71c',
     'lastUpdateReceived': '2023-03-07T19:01:39.983Z',
 };

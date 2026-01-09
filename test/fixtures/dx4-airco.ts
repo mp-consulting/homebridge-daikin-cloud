@@ -1,6 +1,6 @@
 // Zolder Jeroen, has all options
 export const dx4Airco= {
-    '_id': 'ca043bde-8db6-488b-a69e-f43949a24020',
+    'id': 'ca043bde-8db6-488b-a69e-f43949a24020',
     'isCloudConnectionUp': {
         'settable': false,
         'value': true,
@@ -910,6 +910,5 @@ export const dx4Airco= {
     ],
     'embeddedId': '87988',
     'timestamp': '2022-05-04T10:49:25.002Z',
-    'id': 'ca043bde-8db6-488b-a69e-f43949a24020',
     'lastUpdateReceived': '2022-05-04T10:49:25.002Z',
 };

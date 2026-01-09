@@ -91,3 +91,16 @@ export const HTTP_STATUS = {
 
 /** Maximum rate limit block duration (24 hours in seconds) */
 export const MAX_RATE_LIMIT_BLOCK_SECONDS = 86400;
+
+// =============================================================================
+// Retry Constants (Exponential Backoff)
+// =============================================================================
+
+/** Maximum number of retry attempts for API requests */
+export const MAX_RETRY_ATTEMPTS = 3;
+
+/** Base delay for exponential backoff (milliseconds) */
+export const RETRY_BASE_DELAY_MS = 1000;
+
+/** Maximum delay for exponential backoff (milliseconds) */
+export const RETRY_MAX_DELAY_MS = 10000;

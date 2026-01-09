@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/) and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.2] - 2026-01-09
+
+### Added
+- Automatic token refresh with exponential backoff on 401 Unauthorized responses
+- Retry constants for configurable backoff behavior (MAX_RETRY_ATTEMPTS, RETRY_BASE_DELAY_MS, RETRY_MAX_DELAY_MS)
+- New API unit tests for DaikinApi and OAuth
+
+### Changed
+- OAuthProvider interface now includes `refreshToken()` method
+- Auth status checks in UI are debounced to prevent excessive API calls
+
 ## [1.2.1] - 2026-01-09
 
 ### Fixed

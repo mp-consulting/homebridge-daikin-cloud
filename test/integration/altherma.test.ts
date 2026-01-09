@@ -2,9 +2,7 @@ import {PlatformAccessory} from 'homebridge/lib/platformAccessory';
 import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../../src/platform';
 import {MockPlatformConfig} from '../mocks';
 import {AlthermaAccessory} from '../../src/accessories';
-import {DaikinCloudDevice} from 'daikin-controller-cloud/dist/device';
-import {OnectaClient} from 'daikin-controller-cloud/dist/onecta/oidc-client';
-import {DaikinCloudController} from 'daikin-controller-cloud/dist/index.js';
+import {DaikinCloudDevice, DaikinCloudController, DaikinApi} from '../../src/api';
 import {althermaV1ckoeln} from '../fixtures/altherma-v1ckoeln';
 import {althermaCrSense2} from '../fixtures/altherma-crSense-2';
 import {althermaWithEmbeddedIdZero} from '../fixtures/altherma-with-embedded-id-zero';
@@ -156,7 +154,8 @@ test.each<Array<string | string | any | DeviceState>>([
         },
     ],
 ])('Create DaikinCloudThermostatAccessory with %s device', async (name, climateControlEmbeddedId, deviceJson, state) => {
-    const device = new DaikinCloudDevice(deviceJson, undefined as unknown as OnectaClient);
+    const mockApi = { updateDevice: jest.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
+    const device = new DaikinCloudDevice(deviceJson as any, mockApi);
 
     jest.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
         return [device];
@@ -229,7 +228,8 @@ test.each<Array<string | string | any | DeviceState>>([
 });
 
 test('DaikinCloudAirConditioningAccessory Getters', async () => {
-    const device = new DaikinCloudDevice(althermaHeatPump, undefined as unknown as OnectaClient);
+    const mockApi = { updateDevice: jest.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
+    const device = new DaikinCloudDevice(althermaHeatPump as any, mockApi);
 
     jest.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
         return [device];
@@ -239,7 +239,7 @@ test('DaikinCloudAirConditioningAccessory Getters', async () => {
     const api = new HomebridgeAPI();
 
     const uuid = api.hap.uuid.generate(device.getId());
-    const accessory = new api.platformAccessory(device.getData('climateControlMainZone', 'name', undefined).value, uuid);
+    const accessory = new api.platformAccessory(device.getData('climateControlMainZone', 'name', undefined).value as string, uuid);
     accessory.context['device'] = device;
 
     const homebridgeAccessory = new AlthermaAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
@@ -251,7 +251,8 @@ test('DaikinCloudAirConditioningAccessory Getters', async () => {
 });
 
 test('DaikinCloudAirConditioningAccessory Setters', async () => {
-    const device = new DaikinCloudDevice(althermaHeatPump, undefined as unknown as OnectaClient);
+    const mockApi = { updateDevice: jest.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
+    const device = new DaikinCloudDevice(althermaHeatPump as any, mockApi);
 
     jest.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
         return [device];
@@ -263,7 +264,7 @@ test('DaikinCloudAirConditioningAccessory Setters', async () => {
     const api = new HomebridgeAPI();
 
     const uuid = api.hap.uuid.generate(device.getId());
-    const accessory = new api.platformAccessory(device.getData('climateControlMainZone', 'name', undefined).value, uuid);
+    const accessory = new api.platformAccessory(device.getData('climateControlMainZone', 'name', undefined).value as string, uuid);
     accessory.context['device'] = device;
 
     const homebridgeAccessory = new AlthermaAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);

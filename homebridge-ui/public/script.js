@@ -173,14 +173,27 @@ const Countdown = {
 
 const Auth = {
     STATUS_REFRESH_INTERVAL: 60000,
+    _lastStatusCheck: 0,
+    _statusPromise: null,
 
     async loadStatus() {
-        try {
-            const response = await homebridge.request('/auth/status');
-            this.updateUI(response);
-        } catch (error) {
-            this.updateUI({ authenticated: false, error: error.message });
+        // Debounce: skip if called within 500ms of last call
+        const now = Date.now();
+        if (now - this._lastStatusCheck < 500 && this._statusPromise) {
+            return this._statusPromise;
         }
+        this._lastStatusCheck = now;
+
+        this._statusPromise = (async () => {
+            try {
+                const response = await homebridge.request('/auth/status');
+                this.updateUI(response);
+            } catch (error) {
+                this.updateUI({ authenticated: false, error: error.message });
+            }
+        })();
+
+        return this._statusPromise;
     },
 
     startStatusRefresh() {

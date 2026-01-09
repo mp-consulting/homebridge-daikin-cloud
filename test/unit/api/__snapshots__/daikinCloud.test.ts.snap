@@ -2,7 +2,6 @@
 
 exports[`Clean cloud device data for altherma device 1`] = `
 {
-  "_id": "10b029e7-484c-4519-b22e-c14be4b7a71c",
   "deviceModel": "Altherma",
   "embeddedId": "e1bac939-1495-4803-a6a3-ca2f9388c8ad",
   "id": "10b029e7-484c-4519-b22e-c14be4b7a71c",
@@ -496,7 +495,6 @@ exports[`Clean cloud device data for altherma device 1`] = `
 
 exports[`Clean cloud device data for dx4 device 1`] = `
 {
-  "_id": "ca043bde-8db6-488b-a69e-f43949a24020",
   "deviceModel": "dx4",
   "embeddedId": "87988",
   "id": "ca043bde-8db6-488b-a69e-f43949a24020",
@@ -1011,7 +1009,6 @@ exports[`Clean cloud device data for dx4 device 1`] = `
 
 exports[`Clean cloud device data for dx23 device 1`] = `
 {
-  "_id": "efd08509-2edb-41d0-a9ab-ce913323d811",
   "deviceModel": "dx23",
   "embeddedId": "78e9e2b5-2e25-4e9b-ae72-56184fc0e6a9",
   "id": "efd08509-2edb-41d0-a9ab-ce913323d811",

@@ -141,10 +141,11 @@ export interface DaikinControllerConfig {
     password?: string;
 }
 
-// OAuth Provider Interface (for WebSocket)
+// OAuth Provider Interface (for WebSocket and API)
 export interface OAuthProvider {
     getAccessToken(): Promise<string>;
     isAuthenticated(): boolean;
+    refreshToken(): Promise<TokenSet>;
 }
 
 // Event Types
