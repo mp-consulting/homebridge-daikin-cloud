@@ -4,13 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/) and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-01-09
+
+### Fixed
+- Dark mode auto-detection using Bootstrap 5 `data-bs-theme` attribute
+- UI now properly responds to system dark/light mode preference changes
+
 ## [1.2.0] - 2026-01-09
 
 ### Changed
 - **UI Redesign**: Migrated to Bootstrap 5 components for cleaner, more consistent design
   - Added Bootstrap 5 CDN for proper styling
   - Reduced custom CSS from ~1130 lines to ~200 lines
-  - Improved dark mode support using Bootstrap's color system
   - Form controls use native Bootstrap form styling
   - Toggle switches use Bootstrap form-switch with `role="switch"`
   - Devices displayed as list instead of card grid
