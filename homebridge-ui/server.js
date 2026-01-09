@@ -20,9 +20,6 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     constructor() {
         super();
 
-        // Token file path
-        this.tokenFilePath = resolve(this.homebridgeStoragePath, '.daikin-controller-cloud-tokenset');
-
         // Pending authorization state
         this.pendingAuth = null;
 
@@ -35,6 +32,13 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
         this.onRequest('/config/validate', this.validateConfig.bind(this));
 
         this.ready();
+    }
+
+    /**
+     * Get token file path (lazy initialization)
+     */
+    getTokenFilePath() {
+        return resolve(this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '', '.daikin-controller-cloud-tokenset');
     }
 
     /**
@@ -234,7 +238,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
 
         // Delete local token file
         try {
-            fs.unlinkSync(this.tokenFilePath);
+            fs.unlinkSync(this.getTokenFilePath());
         } catch (error) {
             if (error.code !== 'ENOENT') {
                 throw error;
@@ -404,8 +408,8 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
      */
     loadTokenSet() {
         try {
-            if (fs.existsSync(this.tokenFilePath)) {
-                const data = fs.readFileSync(this.tokenFilePath, 'utf8');
+            if (fs.existsSync(this.getTokenFilePath())) {
+                const data = fs.readFileSync(this.getTokenFilePath(), 'utf8');
                 return JSON.parse(data);
             }
         } catch (error) {
@@ -418,7 +422,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
      * Save token set to file
      */
     saveTokenSet(tokenSet) {
-        fs.writeFileSync(this.tokenFilePath, JSON.stringify(tokenSet, null, 2), 'utf8');
+        fs.writeFileSync(this.getTokenFilePath(), JSON.stringify(tokenSet, null, 2), 'utf8');
     }
 }
 
