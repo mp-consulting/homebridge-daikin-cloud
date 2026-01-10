@@ -776,8 +776,19 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     // List Devices Handler
     // -------------------------------------------------------------------------
 
-    async handleListDevices() {
-        const tokenSet = this.getActiveTokenSet();
+    async handleListDevices(payload) {
+        const mode = payload?.mode;
+
+        // Get token based on mode parameter, or fall back to active token
+        let tokenSet;
+        if (mode === 'mobile_app') {
+            tokenSet = TokenManager.load(this.getMobileTokenFilePath());
+        } else if (mode === 'developer_portal') {
+            tokenSet = TokenManager.load(this.getTokenFilePath());
+        } else {
+            tokenSet = this.getActiveTokenSet();
+        }
+
         if (!tokenSet?.access_token) {
             return { success: false, devices: [], message: 'Not authenticated. Please authenticate first.' };
         }

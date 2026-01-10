@@ -629,7 +629,7 @@ const Settings = {
         DOM.hide(empty);
 
         try {
-            const result = await homebridge.request('/devices/list');
+            const result = await homebridge.request('/devices/list', { mode: AuthModeManager.current });
             DOM.hide(loading);
 
             if (!result.success || !result.devices.length) {
@@ -743,7 +743,7 @@ const Devices = {
         DOM.hide(El.devicesError);
 
         try {
-            const result = await homebridge.request('/devices/list');
+            const result = await homebridge.request('/devices/list', { mode: AuthModeManager.current });
             DOM.hide(El.devicesLoading);
 
             if (!result.success) {
