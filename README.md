@@ -1,5 +1,9 @@
 # Homebridge Daikin Cloud
 
+[![npm version](https://badge.fury.io/js/@mp-consulting%2Fhomebridge-daikin-cloud.svg)](https://badge.fury.io/js/@mp-consulting%2Fhomebridge-daikin-cloud)
+[![Build and Lint](https://github.com/mp-consulting/homebridge-daikin-cloud/actions/workflows/build.yml/badge.svg)](https://github.com/mp-consulting/homebridge-daikin-cloud/actions/workflows/build.yml)
+[![codecov](https://codecov.io/gh/mp-consulting/homebridge-daikin-cloud/branch/main/graph/badge.svg)](https://codecov.io/gh/mp-consulting/homebridge-daikin-cloud)
+
 A [Homebridge](https://homebridge.io) plugin that integrates Daikin air conditioning units via the Daikin Cloud (Onecta) API, allowing you to control your devices through Apple HomeKit.
 
 ![HomeKit Controls](images/homekit-controls.jpeg) ![HomeKit Settings](images/homekit-settings.jpeg)
