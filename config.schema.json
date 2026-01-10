@@ -48,10 +48,12 @@
       },
       "callbackServerPort": {
         "title": "Callback Server Port",
-        "description": "Port for the OAuth callback server",
-        "type": "string",
+        "description": "Port for the OAuth callback server (1-65535)",
+        "type": "integer",
         "required": false,
-        "default": "8582",
+        "default": 8582,
+        "minimum": 1,
+        "maximum": 65535,
         "x-schema-form": {
           "placeholder": "8582",
           "condition": "model.authMode !== 'mobile_app'"
