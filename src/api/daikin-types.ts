@@ -12,16 +12,17 @@ export const DAIKIN_OIDC_CONFIG = {
 };
 
 // Mobile App OIDC Configuration (Gigya + PKCE)
+// Note: These credentials can be overridden via environment variables for security
 export const DAIKIN_MOBILE_CONFIG = {
-    apiKey: '3_xRB3jaQ62bVjqXU1omaEsPDVYC0Twi1zfq1zHPu_5HFT0zWkDvZJS97Yw1loJnTm',
-    clientId: 'FjS6T5oZHvzpZENIDybFRdtK',
-    clientSecret: '_yWGLBGUnQFrN-u7uIOAZhSBsJOfcnBs0IS87wTgUvUmnLnEOs4NQmaKagqZBpQpG0XYl07KeCx8XHHKxAn24w',
-    redirectUri: 'daikinunified://cdc/',
-    gigyaBaseUrl: 'https://cdc.daikin.eu',
-    idpTokenEndpoint: 'https://idp.onecta.daikineurope.com/v1/oidc/token',
-    scope: 'openid onecta:onecta.application offline_access',
-    apiBaseUrl: 'https://api.onecta.daikineurope.com',
-    websocketUrl: 'wss://wsapi.onecta.daikineurope.com',
+    apiKey: process.env.DAIKIN_API_KEY || '3_xRB3jaQ62bVjqXU1omaEsPDVYC0Twi1zfq1zHPu_5HFT0zWkDvZJS97Yw1loJnTm',
+    clientId: process.env.DAIKIN_CLIENT_ID || 'FjS6T5oZHvzpZENIDybFRdtK',
+    clientSecret: process.env.DAIKIN_CLIENT_SECRET || '_yWGLBGUnQFrN-u7uIOAZhSBsJOfcnBs0IS87wTgUvUmnLnEOs4NQmaKagqZBpQpG0XYl07KeCx8XHHKxAn24w',
+    redirectUri: process.env.DAIKIN_REDIRECT_URI || 'daikinunified://cdc/',
+    gigyaBaseUrl: process.env.DAIKIN_GIGYA_BASE_URL || 'https://cdc.daikin.eu',
+    idpTokenEndpoint: process.env.DAIKIN_IDP_TOKEN_ENDPOINT || 'https://idp.onecta.daikineurope.com/v1/oidc/token',
+    scope: process.env.DAIKIN_SCOPE || 'openid onecta:onecta.application offline_access',
+    apiBaseUrl: process.env.DAIKIN_API_BASE_URL || 'https://api.onecta.daikineurope.com',
+    websocketUrl: process.env.DAIKIN_WEBSOCKET_URL || 'wss://wsapi.onecta.daikineurope.com',
 };
 
 // Token Set
