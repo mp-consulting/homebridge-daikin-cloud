@@ -205,10 +205,12 @@ export class ConfigManager {
     /**
      * Validate configuration
      */
-    validate(): { valid: boolean; errors: string[] } {
+    validate(): { valid: boolean; errors: string[]; warnings: string[] } {
         const errors: string[] = [];
+        const warnings: string[] = [];
         const authMode = this.getAuthMode();
 
+        // Validate authentication credentials
         if (authMode === 'developer_portal') {
             if (!this.config.clientId) {
                 errors.push('Client ID is required for Developer Portal mode');
@@ -219,6 +221,11 @@ export class ConfigManager {
             if (!this.config.callbackServerExternalAddress) {
                 errors.push('Callback Server Address is required for Developer Portal mode');
             }
+            // Warn about localhost
+            if (this.config.callbackServerExternalAddress === 'localhost' ||
+                this.config.callbackServerExternalAddress === '127.0.0.1') {
+                errors.push('Callback address cannot be localhost. Use your external IP or domain.');
+            }
         } else if (authMode === 'mobile_app') {
             if (!this.config.daikinEmail) {
                 errors.push('Email is required for Mobile App mode');
@@ -228,9 +235,42 @@ export class ConfigManager {
             }
         }
 
+        // Validate port
+        if (this.config.callbackServerPort !== undefined) {
+            const port = typeof this.config.callbackServerPort === 'string'
+                ? parseInt(this.config.callbackServerPort, 10)
+                : this.config.callbackServerPort;
+
+            if (isNaN(port) || port < 1 || port > 65535) {
+                errors.push(`Invalid port number: ${this.config.callbackServerPort}. Must be between 1 and 65535.`);
+            } else if (port < 1024) {
+                warnings.push(`Port ${port} is privileged (< 1024) and may require root permissions.`);
+            }
+        }
+
+        // Validate update interval
+        if (this.config.updateIntervalInMinutes !== undefined) {
+            const interval = this.config.updateIntervalInMinutes;
+            if (interval < 1 || interval > 60) {
+                errors.push(`Update interval must be between 1 and 60 minutes, got: ${interval}`);
+            } else if (authMode === 'developer_portal' && interval < 15) {
+                warnings.push(`Update interval ${interval}min may exceed Developer Portal rate limit (200 calls/day). Recommended: 15+ minutes.`);
+            }
+        }
+
+        // Validate force update delay
+        if (this.config.forceUpdateDelay !== undefined) {
+            const delay = this.config.forceUpdateDelay;
+            const delaySeconds = Math.floor(delay / 1000);
+            if (delaySeconds < 1 || delaySeconds > 300) {
+                errors.push(`Force update delay must be between 1 and 300 seconds, got: ${delaySeconds}`);
+            }
+        }
+
         return {
             valid: errors.length === 0,
             errors,
+            warnings,
         };
     }
 
