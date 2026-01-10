@@ -1,7 +1,7 @@
 export class DaikinCloudRepo {
-    static maskSensitiveCloudDeviceData(cloudDeviceDetails) {
+    static maskSensitiveCloudDeviceData(cloudDeviceDetails: any) {
         return {
-            managementPoints: cloudDeviceDetails.managementPoints.map(managementPoint => {
+            managementPoints: cloudDeviceDetails.managementPoints.map((managementPoint: any) => {
                 if (managementPoint.ipAddress) managementPoint.ipAddress.value = 'REDACTED';
                 if (managementPoint.macAddress) managementPoint.macAddress.value = 'REDACTED';
                 if (managementPoint.ssid) managementPoint.ssid.value = 'REDACTED';

@@ -28,7 +28,7 @@ export class UpdateMapper {
     constructor(
         private readonly logger: Logger,
         private readonly serviceClass: typeof Service,
-        private readonly characteristicClass: WithUUID<typeof Characteristic>,
+        private readonly characteristicClass: typeof Characteristic,
     ) {}
 
     /**

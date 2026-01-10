@@ -8,12 +8,12 @@ import {StringUtils} from './utils/strings';
 
 import fs from 'node:fs';
 import {DaikinCloudRepo, DaikinCloudController, DaikinCloudDevice, DaikinControllerConfig} from './api';
+import {UpdateMapper} from './utils/update-mapper';
 import {
     ONE_MINUTE_MS,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DEFAULT_FORCE_UPDATE_DELAY_MS,
     RATE_LIMIT_WARNING_THRESHOLD,
-    FAN_SPEED_TO_PERCENTAGE_MULTIPLIER,
 } from './constants';
 
 export type DaikinCloudAccessoryContext = {
@@ -33,6 +33,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     public updateInterval: NodeJS.Timeout | undefined;
     public forceUpdateTimeout: NodeJS.Timeout | undefined;
     private readonly accessoryFactory: AccessoryFactory;
+    private readonly updateMapper: UpdateMapper;
     private readonly authMode: 'developer_portal' | 'mobile_app';
 
     constructor(
@@ -49,6 +50,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         this.storagePath = api.user.storagePath();
         this.updateIntervalDelay = ONE_MINUTE_MS * (this.config.updateIntervalInMinutes || DEFAULT_UPDATE_INTERVAL_MINUTES);
         this.accessoryFactory = new AccessoryFactory(this);
+        this.updateMapper = new UpdateMapper(this.log, this.Service, this.Characteristic);
 
         // Determine authentication mode
         this.authMode = this.config.authMode === 'mobile_app' ? 'mobile_app' : 'developer_portal';
@@ -339,163 +341,11 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
             return;
         }
 
-        // Determine which service type is being used
-        const heaterCoolerService = accessory.getService(this.Service.HeaterCooler);
-        const thermostatService = accessory.getService(this.Service.Thermostat);
-        const service = heaterCoolerService || thermostatService;
+        // Use the UpdateMapper to apply the update
+        const result = this.updateMapper.applyUpdate(accessory, update);
 
-        if (!service) {
-            return;
-        }
-
-        const isHeaterCooler = !!heaterCoolerService;
-
-        // Map WebSocket characteristic names to HomeKit characteristics for updates
-        const characteristicName = update.characteristicName;
-
-        switch (characteristicName) {
-            case 'onOffMode': {
-                const isOn = update.data.value === 'on';
-
-                if (isHeaterCooler) {
-                    // HeaterCooler uses Active characteristic
-                    service.updateCharacteristic(
-                        this.Characteristic.Active,
-                        isOn ? this.Characteristic.Active.ACTIVE : this.Characteristic.Active.INACTIVE,
-                    );
-                    this.log.debug(`[WebSocket] Updated Active to ${isOn ? 'ACTIVE' : 'INACTIVE'}`);
-
-                    // Also update CurrentHeaterCoolerState
-                    if (!isOn) {
-                        service.updateCharacteristic(
-                            this.Characteristic.CurrentHeaterCoolerState,
-                            this.Characteristic.CurrentHeaterCoolerState.INACTIVE,
-                        );
-                    }
-                } else {
-                    // Thermostat uses CurrentHeatingCoolingState
-                    const operationMode = accessory.context.device.getData(update.embeddedId, 'operationMode', undefined).value as string;
-                    let currentState: number;
-                    if (!isOn) {
-                        currentState = this.Characteristic.CurrentHeatingCoolingState.OFF;
-                    } else {
-                        switch (operationMode) {
-                            case 'cooling':
-                                currentState = this.Characteristic.CurrentHeatingCoolingState.COOL;
-                                break;
-                            case 'heating':
-                                currentState = this.Characteristic.CurrentHeatingCoolingState.HEAT;
-                                break;
-                            default:
-                                currentState = this.Characteristic.CurrentHeatingCoolingState.HEAT;
-                        }
-                    }
-                    service.updateCharacteristic(this.Characteristic.CurrentHeatingCoolingState, currentState);
-                    this.log.debug(`[WebSocket] Updated CurrentHeatingCoolingState to ${currentState}`);
-                }
-                break;
-            }
-
-            case 'operationMode': {
-                const isOn = accessory.context.device.getData(update.embeddedId, 'onOffMode', undefined).value === 'on';
-                if (!isOn) {
-                    return; // Don't update target state if device is off
-                }
-
-                if (isHeaterCooler) {
-                    // HeaterCooler uses TargetHeaterCoolerState and CurrentHeaterCoolerState
-                    let targetState: number;
-                    let currentState: number;
-                    switch (update.data.value) {
-                        case 'cooling':
-                            targetState = this.Characteristic.TargetHeaterCoolerState.COOL;
-                            currentState = this.Characteristic.CurrentHeaterCoolerState.COOLING;
-                            break;
-                        case 'heating':
-                            targetState = this.Characteristic.TargetHeaterCoolerState.HEAT;
-                            currentState = this.Characteristic.CurrentHeaterCoolerState.HEATING;
-                            break;
-                        case 'auto':
-                            targetState = this.Characteristic.TargetHeaterCoolerState.AUTO;
-                            currentState = this.Characteristic.CurrentHeaterCoolerState.IDLE;
-                            break;
-                        default:
-                            return;
-                    }
-                    service.updateCharacteristic(this.Characteristic.TargetHeaterCoolerState, targetState);
-                    service.updateCharacteristic(this.Characteristic.CurrentHeaterCoolerState, currentState);
-                    this.log.debug(`[WebSocket] Updated TargetHeaterCoolerState to ${targetState}, CurrentHeaterCoolerState to ${currentState}`);
-                } else {
-                    // Thermostat uses TargetHeatingCoolingState
-                    let targetState: number;
-                    switch (update.data.value) {
-                        case 'cooling':
-                            targetState = this.Characteristic.TargetHeatingCoolingState.COOL;
-                            break;
-                        case 'heating':
-                            targetState = this.Characteristic.TargetHeatingCoolingState.HEAT;
-                            break;
-                        case 'auto':
-                            targetState = this.Characteristic.TargetHeatingCoolingState.AUTO;
-                            break;
-                        default:
-                            return;
-                    }
-                    service.updateCharacteristic(this.Characteristic.TargetHeatingCoolingState, targetState);
-                    this.log.debug(`[WebSocket] Updated TargetHeatingCoolingState to ${targetState}`);
-                }
-                break;
-            }
-
-            case 'sensoryData': {
-                // Temperature sensor updates - same for both service types
-                const data = update.data.value as { roomTemperature?: { value: number }; outdoorTemperature?: { value: number } };
-                if (data.roomTemperature?.value !== undefined) {
-                    service.updateCharacteristic(
-                        this.Characteristic.CurrentTemperature,
-                        data.roomTemperature.value,
-                    );
-                    this.log.debug(`[WebSocket] Updated CurrentTemperature to ${data.roomTemperature.value}`);
-                }
-                break;
-            }
-
-            case 'temperatureControl': {
-                // Temperature setpoint updates - same for both service types
-                const data = update.data.value as {
-                    operationModes?: {
-                        heating?: { setpoints?: { roomTemperature?: { value: number } } };
-                        cooling?: { setpoints?: { roomTemperature?: { value: number } } };
-                    };
-                };
-                const heatingTemp = data.operationModes?.heating?.setpoints?.roomTemperature?.value;
-                const coolingTemp = data.operationModes?.cooling?.setpoints?.roomTemperature?.value;
-
-                if (heatingTemp !== undefined) {
-                    service.updateCharacteristic(this.Characteristic.HeatingThresholdTemperature, heatingTemp);
-                    this.log.debug(`[WebSocket] Updated HeatingThresholdTemperature to ${heatingTemp}`);
-                }
-                if (coolingTemp !== undefined) {
-                    service.updateCharacteristic(this.Characteristic.CoolingThresholdTemperature, coolingTemp);
-                    this.log.debug(`[WebSocket] Updated CoolingThresholdTemperature to ${coolingTemp}`);
-                }
-                break;
-            }
-
-            case 'fanControl': {
-                // Fan speed updates - same for both service types
-                const data = update.data.value as { operationModes?: { cooling?: { fanSpeed?: { currentMode?: { value: string }; modes?: { fixed?: { value: number } } } } } };
-                const fanMode = data.operationModes?.cooling?.fanSpeed?.currentMode?.value;
-                const fanSpeed = data.operationModes?.cooling?.fanSpeed?.modes?.fixed?.value;
-
-                if (fanMode === 'fixed' && fanSpeed !== undefined) {
-                    // Convert fan speed (1-5) to percentage (20-100)
-                    const rotationSpeed = fanSpeed * FAN_SPEED_TO_PERCENTAGE_MULTIPLIER;
-                    service.updateCharacteristic(this.Characteristic.RotationSpeed, rotationSpeed);
-                    this.log.debug(`[WebSocket] Updated RotationSpeed to ${rotationSpeed}`);
-                }
-                break;
-            }
+        if (result.success) {
+            this.log.debug(`[WebSocket] Updated ${result.updated.join(', ')}`);
         }
     }
 }

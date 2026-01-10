@@ -6,6 +6,7 @@
  */
 
 import {AuthMode} from '../api/daikin-types';
+import {safeValidateData, DaikinControllerConfigSchema} from '../api/daikin-schemas';
 import {
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DEFAULT_FORCE_UPDATE_DELAY_MS,
@@ -200,6 +201,33 @@ export class ConfigManager {
      */
     isWebSocketEnabled(): boolean {
         return this.config.enableWebSocket !== false;
+    }
+
+    /**
+     * Validate configuration using Zod schemas
+     */
+    validateWithZod(): { valid: boolean; errors: string[] } {
+        const configData = {
+            authMode: this.getAuthMode(),
+            tokenFilePath: '', // This will be set by the controller
+            clientId: this.config.clientId,
+            clientSecret: this.config.clientSecret,
+            callbackServerExternalAddress: this.config.callbackServerExternalAddress,
+            callbackServerPort: this.config.callbackServerPort,
+            oidcCallbackServerBindAddr: this.config.oidcCallbackServerBindAddr,
+            email: this.config.daikinEmail,
+            password: this.config.daikinPassword,
+        };
+
+        const result = safeValidateData(DaikinControllerConfigSchema, configData);
+        if (!result.success) {
+            return {
+                valid: false,
+                errors: [result.error],
+            };
+        }
+
+        return { valid: true, errors: [] };
     }
 
     /**
