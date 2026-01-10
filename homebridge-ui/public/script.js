@@ -632,7 +632,14 @@ const Settings = {
             const result = await homebridge.request('/devices/list', { mode: AuthMode.current });
             DOM.hide(loading);
 
-            if (!result.success || !result.devices.length) {
+            if (!result.success) {
+                empty.innerHTML = `<p class="mb-0">${result.message || 'No devices found. Authenticate first to see your devices.'}</p>`;
+                DOM.show(empty);
+                return;
+            }
+
+            if (!result.devices.length) {
+                empty.innerHTML = '<p class="mb-0">No devices found. Authenticate first to see your devices.</p>';
                 DOM.show(empty);
                 return;
             }
@@ -649,7 +656,7 @@ const Settings = {
             });
         } catch (error) {
             DOM.hide(loading);
-            empty.innerHTML = `<p>Failed to load: ${error.message}</p>`;
+            empty.innerHTML = `<p class="mb-0">Failed to load: ${error.message}</p>`;
             DOM.show(empty);
         }
     },
