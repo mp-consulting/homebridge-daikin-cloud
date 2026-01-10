@@ -1071,11 +1071,11 @@ function cacheElements() {
     };
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     cacheElements();
     Auth.loadStatus();
     Config.load();
     Settings.load();
+    await AuthMode.init();
     Devices.load();
-    AuthMode.init();
 });

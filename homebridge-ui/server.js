@@ -789,6 +789,11 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
             tokenSet = this.getActiveTokenSet();
         }
 
+        // If the requested mode's token doesn't exist or is invalid, fall back to active token
+        if (!tokenSet?.access_token) {
+            tokenSet = this.getActiveTokenSet();
+        }
+
         if (!tokenSet?.access_token) {
             return { success: false, devices: [], message: 'Not authenticated. Please authenticate first.' };
         }
