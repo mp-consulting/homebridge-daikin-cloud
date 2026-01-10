@@ -1082,7 +1082,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     cacheElements();
     Auth.loadStatus();
     Config.load();
-    Settings.load();
     await AuthMode.init();
+    Settings.load();
     Devices.load();
 });
