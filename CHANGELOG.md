@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2026-01-10
+
+### Fixed
+
+- **UI initialization race condition**: Fixed "Token expired or invalid" error on initial UI load. The device list now waits for `AuthMode` initialization to complete before fetching devices. Backend now gracefully falls back to active token if the requested mode's token is unavailable, ensuring device list loads even during initialization.
+
 ## [1.3.2] - 2026-01-10
 
 ### Fixed
