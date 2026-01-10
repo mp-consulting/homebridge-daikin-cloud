@@ -295,10 +295,11 @@ export class DaikinOAuth {
 
     private saveTokenToFile(): void {
         try {
+            // Write token file with restricted permissions (owner read/write only)
             fs.writeFileSync(
                 this.config.tokenFilePath,
                 JSON.stringify(this.tokenSet, null, 2),
-                'utf8',
+                { encoding: 'utf8', mode: 0o600 },
             );
         } catch (error) {
             if (this.onError) {
