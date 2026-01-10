@@ -49,7 +49,7 @@ This document provides detailed implementation guidance for the remaining improv
 #### 1.5 Create ARCHITECTURE.md ✓
 **Status**: Completed
 **Changes Made:**
-- Created comprehensive [ARCHITECTURE.md](ARCHITECTURE.md) with:
+- Created comprehensive [ARCHITECTURE.md](docs/ARCHITECTURE.md) with:
   - System architecture diagram
   - Component documentation
   - Data flow diagrams

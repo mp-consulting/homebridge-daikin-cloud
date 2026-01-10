@@ -216,6 +216,25 @@ npm run watch
 npm test
 ```
 
+### Code Quality
+
+This plugin uses:
+- **TypeScript strict mode** for enhanced type safety
+- **Zod validation** for runtime type checking
+- **ESLint** for code quality enforcement
+- **Jest** with 60%+ test coverage
+
+### Documentation
+
+Comprehensive developer documentation is available in the [`docs/`](docs/) folder:
+
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture, component design, data flows, and extension guides
+- **[IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)** - Step-by-step implementation guide for improvements
+- **[IMPROVEMENTS_SUMMARY.md](docs/IMPROVEMENTS_SUMMARY.md)** - Summary of recent improvements and progress
+- **[NEXT_STEPS.md](docs/NEXT_STEPS.md)** - Quick-start guide for contributing
+
+For development workflows and coding conventions, see [CLAUDE.md](CLAUDE.md).
+
 ## License
 
 [Apache-2.0](LICENSE)

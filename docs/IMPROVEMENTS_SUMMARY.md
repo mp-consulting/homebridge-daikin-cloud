@@ -121,7 +121,7 @@ if (result.success) {
 **Impact**: High
 **Effort**: 3 hours
 
-**Created**: [ARCHITECTURE.md](ARCHITECTURE.md) - Comprehensive architecture documentation
+**Created**: [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Comprehensive architecture documentation
 
 **Contents:**
 - System architecture diagram showing component interactions
@@ -156,7 +156,7 @@ if (result.success) {
 **Impact**: High
 **Effort**: 4 hours
 
-**Created**: [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) - Step-by-step implementation guide
+**Created**: [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) - Step-by-step implementation guide
 
 **Contents:**
 - ✅ Completed improvements summary
@@ -186,7 +186,7 @@ if (result.success) {
 **Impact**: Medium
 **Effort**: 2 hours
 
-**Updated**: [CLAUDE.md](CLAUDE.md) - Comprehensive project instructions for Claude Code
+**Updated**: [CLAUDE.md](../CLAUDE.md) - Comprehensive project instructions for Claude Code
 
 **Additions:**
 - Project overview with key technologies
@@ -264,7 +264,7 @@ if (result.success) {
 
 ## 🎯 Remaining Work (6/14 Tasks)
 
-**Note**: Foundational utilities are now created and ready to use! See [NEXT_STEPS.md](NEXT_STEPS.md) for quick-start guide.
+**Note**: Foundational utilities are now created and ready to use! See [NEXT_STEPS.md](docs/NEXT_STEPS.md) for quick-start guide.
 
 ### Utilities Ready for Integration ✅
 - ✅ `retry.ts` - Exponential backoff retry logic
@@ -305,9 +305,9 @@ if (result.success) {
 ### To Build on These Improvements:
 
 1. **Read the guides**:
-   - [ARCHITECTURE.md](ARCHITECTURE.md) - Understand the system
-   - [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) - Implementation details
-   - [CLAUDE.md](CLAUDE.md) - Development workflows
+   - [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Understand the system
+   - [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) - Implementation details
+   - [CLAUDE.md](../CLAUDE.md) - Development workflows
 
 2. **Verify your environment**:
    ```bash
@@ -402,9 +402,9 @@ No migration needed. Users can upgrade seamlessly:
 ## 📞 Support
 
 For questions about these improvements:
-1. Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design
-2. Check [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) for implementation details
-3. Check [CLAUDE.md](CLAUDE.md) for development workflows
+1. Check [ARCHITECTURE.md](docs/ARCHITECTURE.md) for system design
+2. Check [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) for implementation details
+3. Check [CLAUDE.md](../CLAUDE.md) for development workflows
 
 ---
 

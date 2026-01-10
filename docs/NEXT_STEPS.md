@@ -12,9 +12,9 @@ Phase 1 improvements are **100% complete** and committed. The remaining improvem
 - ✅ WebSocket logic consolidated (removed 180+ lines of duplication)
 - ✅ GitHub Actions updated to v4
 - ✅ Comprehensive documentation created:
-  - [ARCHITECTURE.md](ARCHITECTURE.md) - System design
-  - [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) - Detailed implementation steps
-  - [IMPROVEMENTS_SUMMARY.md](IMPROVEMENTS_SUMMARY.md) - Progress tracking
+  - [ARCHITECTURE.md](docs/ARCHITECTURE.md) - System design
+  - [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) - Detailed implementation steps
+  - [IMPROVEMENTS_SUMMARY.md](docs/IMPROVEMENTS_SUMMARY.md) - Progress tracking
 
 ### Utilities Created
 - ✅ `src/api/daikin-schemas.ts` - Zod validation schemas
@@ -67,7 +67,7 @@ I recommend starting with these in order:
 
 ### 3. Follow the Implementation Guide
 
-Each task in [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) includes:
+Each task in [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) includes:
 - ✅ Detailed implementation steps
 - ✅ Code samples (copy-paste ready)
 - ✅ File structure
@@ -76,7 +76,7 @@ Each task in [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) includes:
 
 ### 4. Example: Adding OAuth Tests
 
-From [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md):
+From [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md):
 
 ```bash
 # 1. Install dependencies
@@ -192,7 +192,7 @@ git push origin feature/oauth-tests
 
 ### Update Progress
 
-Edit [IMPROVEMENTS_SUMMARY.md](IMPROVEMENTS_SUMMARY.md) after completing each task:
+Edit [IMPROVEMENTS_SUMMARY.md](docs/IMPROVEMENTS_SUMMARY.md) after completing each task:
 
 ```markdown
 ## ✅ Completed Improvements (9/14)
@@ -213,15 +213,15 @@ Edit [IMPROVEMENTS_SUMMARY.md](IMPROVEMENTS_SUMMARY.md) after completing each ta
 
 ### Documentation References
 
-1. **System Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
+1. **System Architecture**: [ARCHITECTURE.md](docs/ARCHITECTURE.md)
    - Understand how components interact
    - Find the files you need to modify
 
-2. **Implementation Guide**: [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)
+2. **Implementation Guide**: [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)
    - Step-by-step instructions
    - Code samples for each task
 
-3. **Development Workflows**: [CLAUDE.md](CLAUDE.md)
+3. **Development Workflows**: [CLAUDE.md](../CLAUDE.md)
    - Build and test commands
    - Commit conventions
    - Common development tasks
@@ -297,8 +297,8 @@ Before committing each improvement:
 ### Q: What if I get stuck?
 
 **A**:
-1. Check [ARCHITECTURE.md](ARCHITECTURE.md) for system context
-2. Check [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) for detailed steps
+1. Check [ARCHITECTURE.md](docs/ARCHITECTURE.md) for system context
+2. Check [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) for detailed steps
 3. Look at existing code patterns (e.g., how tests are structured)
 4. The utilities are already created and ready to use
 
