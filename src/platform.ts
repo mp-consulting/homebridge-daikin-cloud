@@ -244,8 +244,8 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
             } catch (error) {
                 if (error instanceof Error) {
                     this.log.error(`[Platform] Failed to create accessory: ${error.message}`);
-                    this.log.debug(`[Platform] Error details:`, error.stack);
-                    this.log.debug(`[Platform] Device JSON:`, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(device.desc), null, 2));
+                    this.log.debug('[Platform] Error details:', error.stack);
+                    this.log.debug('[Platform] Device JSON:', JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(device.desc), null, 2));
                 }
             }
         });
