@@ -242,11 +242,10 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
                     this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
                 }
             } catch (error) {
-                // eslint-disable-next-line no-console
-                console.error(error);
-
                 if (error instanceof Error) {
-                    this.log.error(`[Platform] Failed to create HeaterCooler accessory from device, only HeaterCooler is supported at the moment: ${error.message}, device JSON: ${JSON.stringify(device)}`);
+                    this.log.error(`[Platform] Failed to create accessory: ${error.message}`);
+                    this.log.debug(`[Platform] Error details:`, error.stack);
+                    this.log.debug(`[Platform] Device JSON:`, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(device.desc), null, 2));
                 }
             }
         });
