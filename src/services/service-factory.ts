@@ -88,7 +88,7 @@ export class ServiceFactory {
             hotWaterTank?: HotWaterTankService;
         } = {};
 
-        const managementPoints = accessory.context.device.managementPoints || [];
+        const managementPoints = accessory.context.device.desc.managementPoints || [];
 
         for (const mp of managementPoints) {
             if (mp.managementPointType === 'climateControl') {

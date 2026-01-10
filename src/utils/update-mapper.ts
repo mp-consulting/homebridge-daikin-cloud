@@ -27,8 +27,8 @@ export interface UpdateResult {
 export class UpdateMapper {
     constructor(
         private readonly logger: Logger,
-        private readonly Service: typeof Service,
-        private readonly Characteristic: WithUUID<new () => Characteristic>,
+        private readonly serviceClass: typeof Service,
+        private readonly characteristicClass: WithUUID<typeof Characteristic>,
     ) {}
 
     /**
@@ -44,8 +44,8 @@ export class UpdateMapper {
         };
 
         // Determine which service type is being used
-        const heaterCoolerService = accessory.getService(this.Service.HeaterCooler);
-        const thermostatService = accessory.getService(this.Service.Thermostat);
+        const heaterCoolerService = accessory.getService(this.serviceClass.HeaterCooler);
+        const thermostatService = accessory.getService(this.serviceClass.Thermostat);
         const service = heaterCoolerService || thermostatService;
 
         if (!service) {
@@ -95,16 +95,16 @@ export class UpdateMapper {
         if (isHeaterCooler) {
             // HeaterCooler uses Active characteristic
             service.updateCharacteristic(
-                this.Characteristic.Active,
-                isOn ? this.Characteristic.Active.ACTIVE : this.Characteristic.Active.INACTIVE,
+                this.characteristicClass.Active,
+                isOn ? this.characteristicClass.Active.ACTIVE : this.characteristicClass.Active.INACTIVE,
             );
             result.updated.push(`Active=${isOn ? 'ACTIVE' : 'INACTIVE'}`);
 
             // Also update CurrentHeaterCoolerState
             if (!isOn) {
                 service.updateCharacteristic(
-                    this.Characteristic.CurrentHeaterCoolerState,
-                    this.Characteristic.CurrentHeaterCoolerState.INACTIVE,
+                    this.characteristicClass.CurrentHeaterCoolerState,
+                    this.characteristicClass.CurrentHeaterCoolerState.INACTIVE,
                 );
                 result.updated.push('CurrentHeaterCoolerState=INACTIVE');
             }
@@ -118,21 +118,21 @@ export class UpdateMapper {
 
             let currentState: number;
             if (!isOn) {
-                currentState = this.Characteristic.CurrentHeatingCoolingState.OFF;
+                currentState = this.characteristicClass.CurrentHeatingCoolingState.OFF;
             } else {
                 switch (operationMode) {
                     case 'cooling':
-                        currentState = this.Characteristic.CurrentHeatingCoolingState.COOL;
+                        currentState = this.characteristicClass.CurrentHeatingCoolingState.COOL;
                         break;
                     case 'heating':
-                        currentState = this.Characteristic.CurrentHeatingCoolingState.HEAT;
+                        currentState = this.characteristicClass.CurrentHeatingCoolingState.HEAT;
                         break;
                     default:
-                        currentState = this.Characteristic.CurrentHeatingCoolingState.HEAT;
+                        currentState = this.characteristicClass.CurrentHeatingCoolingState.HEAT;
                 }
             }
 
-            service.updateCharacteristic(this.Characteristic.CurrentHeatingCoolingState, currentState);
+            service.updateCharacteristic(this.characteristicClass.CurrentHeatingCoolingState, currentState);
             result.updated.push(`CurrentHeatingCoolingState=${currentState}`);
         }
     }
@@ -156,8 +156,8 @@ export class UpdateMapper {
             // HeaterCooler uses TargetHeaterCoolerState and CurrentHeaterCoolerState
             const mapping = this.mapOperationModeToHeaterCooler(update.data.value as string);
             if (mapping) {
-                service.updateCharacteristic(this.Characteristic.TargetHeaterCoolerState, mapping.target);
-                service.updateCharacteristic(this.Characteristic.CurrentHeaterCoolerState, mapping.current);
+                service.updateCharacteristic(this.characteristicClass.TargetHeaterCoolerState, mapping.target);
+                service.updateCharacteristic(this.characteristicClass.CurrentHeaterCoolerState, mapping.current);
                 result.updated.push(
                     `TargetHeaterCoolerState=${mapping.target}`,
                     `CurrentHeaterCoolerState=${mapping.current}`,
@@ -167,7 +167,7 @@ export class UpdateMapper {
             // Thermostat uses TargetHeatingCoolingState
             const mapping = this.mapOperationModeToThermostat(update.data.value as string);
             if (mapping !== null) {
-                service.updateCharacteristic(this.Characteristic.TargetHeatingCoolingState, mapping);
+                service.updateCharacteristic(this.characteristicClass.TargetHeatingCoolingState, mapping);
                 result.updated.push(`TargetHeatingCoolingState=${mapping}`);
             }
         }
@@ -188,7 +188,7 @@ export class UpdateMapper {
 
         if (data.roomTemperature?.value !== undefined) {
             service.updateCharacteristic(
-                this.Characteristic.CurrentTemperature,
+                this.characteristicClass.CurrentTemperature,
                 data.roomTemperature.value,
             );
             result.updated.push(`CurrentTemperature=${data.roomTemperature.value}`);
@@ -214,12 +214,12 @@ export class UpdateMapper {
         const coolingTemp = data.operationModes?.cooling?.setpoints?.roomTemperature?.value;
 
         if (heatingTemp !== undefined) {
-            service.updateCharacteristic(this.Characteristic.HeatingThresholdTemperature, heatingTemp);
+            service.updateCharacteristic(this.characteristicClass.HeatingThresholdTemperature, heatingTemp);
             result.updated.push(`HeatingThresholdTemperature=${heatingTemp}`);
         }
 
         if (coolingTemp !== undefined) {
-            service.updateCharacteristic(this.Characteristic.CoolingThresholdTemperature, coolingTemp);
+            service.updateCharacteristic(this.characteristicClass.CoolingThresholdTemperature, coolingTemp);
             result.updated.push(`CoolingThresholdTemperature=${coolingTemp}`);
         }
     }
@@ -233,18 +233,18 @@ export class UpdateMapper {
         switch (mode) {
             case 'cooling':
                 return {
-                    target: this.Characteristic.TargetHeaterCoolerState.COOL,
-                    current: this.Characteristic.CurrentHeaterCoolerState.COOLING,
+                    target: this.characteristicClass.TargetHeaterCoolerState.COOL,
+                    current: this.characteristicClass.CurrentHeaterCoolerState.COOLING,
                 };
             case 'heating':
                 return {
-                    target: this.Characteristic.TargetHeaterCoolerState.HEAT,
-                    current: this.Characteristic.CurrentHeaterCoolerState.HEATING,
+                    target: this.characteristicClass.TargetHeaterCoolerState.HEAT,
+                    current: this.characteristicClass.CurrentHeaterCoolerState.HEATING,
                 };
             case 'auto':
                 return {
-                    target: this.Characteristic.TargetHeaterCoolerState.AUTO,
-                    current: this.Characteristic.CurrentHeaterCoolerState.IDLE,
+                    target: this.characteristicClass.TargetHeaterCoolerState.AUTO,
+                    current: this.characteristicClass.CurrentHeaterCoolerState.IDLE,
                 };
             default:
                 return null;
@@ -257,11 +257,11 @@ export class UpdateMapper {
     private mapOperationModeToThermostat(mode: string): number | null {
         switch (mode) {
             case 'cooling':
-                return this.Characteristic.TargetHeatingCoolingState.COOL;
+                return this.characteristicClass.TargetHeatingCoolingState.COOL;
             case 'heating':
-                return this.Characteristic.TargetHeatingCoolingState.HEAT;
+                return this.characteristicClass.TargetHeatingCoolingState.HEAT;
             case 'auto':
-                return this.Characteristic.TargetHeatingCoolingState.AUTO;
+                return this.characteristicClass.TargetHeatingCoolingState.AUTO;
             default:
                 return null;
         }
