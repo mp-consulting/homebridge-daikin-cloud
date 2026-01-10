@@ -3,7 +3,7 @@
 
 import {PlatformConfig} from "homebridge";
 
-export const MockLogger = (...args) => jest.fn();
+export const MockLogger = (...args: any[]) => jest.fn();
 MockLogger.debug = MockLogger;
 MockLogger.info = MockLogger;
 MockLogger.success = MockLogger;

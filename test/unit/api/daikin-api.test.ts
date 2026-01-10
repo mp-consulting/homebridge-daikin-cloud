@@ -36,7 +36,7 @@ describe('DaikinApi', () => {
     }
 
     function mockHttpsRequest(statusCode: number, body: string, headers: Record<string, string> = {}) {
-        const mockResponse = {
+        const mockResponse: any = {
             statusCode,
             headers,
             on: jest.fn((event, callback) => {
@@ -88,7 +88,7 @@ describe('DaikinApi', () => {
                 const statusCode = callCount === 1 ? 401 : 200;
                 const body = callCount === 1 ? 'Unauthorized' : JSON.stringify(devices);
 
-                const mockResponse = {
+                const mockResponse: any = {
                     statusCode,
                     headers: {},
                     on: jest.fn((event, cb) => {
@@ -212,7 +212,7 @@ describe('DaikinApi', () => {
                 const statusCode = callCount === 1 ? 504 : 200;
                 const body = callCount === 1 ? 'Gateway Timeout' : JSON.stringify(devices);
 
-                const mockResponse = {
+                const mockResponse: any = {
                     statusCode,
                     headers: {},
                     on: jest.fn((event, cb) => {
@@ -251,7 +251,7 @@ describe('DaikinApi', () => {
                 const statusCode = callCount === 1 ? 502 : 200;
                 const body = callCount === 1 ? 'Bad Gateway' : JSON.stringify(devices);
 
-                const mockResponse = {
+                const mockResponse: any = {
                     statusCode,
                     headers: {},
                     on: jest.fn((event, cb) => {
@@ -290,7 +290,7 @@ describe('DaikinApi', () => {
                 const statusCode = callCount === 1 ? 503 : 200;
                 const body = callCount === 1 ? 'Service Unavailable' : JSON.stringify(devices);
 
-                const mockResponse = {
+                const mockResponse: any = {
                     statusCode,
                     headers: {},
                     on: jest.fn((event, cb) => {
