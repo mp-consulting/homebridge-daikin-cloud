@@ -7,18 +7,26 @@
 
 import * as fs from 'node:fs';
 import {TokenSet} from './daikin-types';
+import {TokenSetSchema} from './daikin-schemas';
 
 /** File permissions: owner read/write only */
 const TOKEN_FILE_MODE = 0o600;
 
 /**
  * Load a token set from a file.
+ * Validates the loaded data against the TokenSetSchema.
  */
 export function loadTokenFromFile(filePath: string): TokenSet | null {
     try {
         if (fs.existsSync(filePath)) {
             const data = fs.readFileSync(filePath, 'utf8');
-            return JSON.parse(data);
+            const parsed = JSON.parse(data);
+            const result = TokenSetSchema.safeParse(parsed);
+            if (result.success) {
+                return result.data as TokenSet;
+            }
+            // Token file has invalid structure - treat as missing
+            return null;
         }
     } catch {
         // Return null on any read/parse error

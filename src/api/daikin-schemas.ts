@@ -15,14 +15,6 @@ export const TokenSetSchema = z.object({
     scope: z.string().optional(),
 });
 
-// Rate Limit Status Schema
-export const RateLimitStatusSchema = z.object({
-    limitMinute: z.number().optional(),
-    remainingMinute: z.number().optional(),
-    limitDay: z.number().optional(),
-    remainingDay: z.number().optional(),
-});
-
 // Management Point Schema
 export const ManagementPointSchema = z.object({
     embeddedId: z.string(),
@@ -91,40 +83,7 @@ export const GatewayDeviceSchema = z.object({
     managementPoints: z.array(ManagementPointSchema),
 }).passthrough(); // Allow additional properties
 
-// WebSocket Device Update Schema
-export const WebSocketDeviceUpdateSchema = z.object({
-    deviceId: z.string(),
-    embeddedId: z.string(),
-    managementPointId: z.string(),
-    characteristicName: z.string(),
-    data: z.object({
-        name: z.string(),
-        settable: z.boolean().optional(),
-        value: z.unknown(), // Can be any type
-        values: z.array(z.string()).optional(),
-        ref: z.string().optional(),
-        minValue: z.number().optional(),
-        maxValue: z.number().optional(),
-        stepValue: z.number().optional(),
-    }),
-});
-
-// Configuration Validation Schemas
-export const DaikinClientConfigSchema = z.object({
-    clientId: z.string().min(1, 'Client ID is required'),
-    clientSecret: z.string().min(1, 'Client Secret is required'),
-    callbackServerExternalAddress: z.string().min(1, 'Callback server address is required'),
-    callbackServerPort: z.number().int().min(1).max(65535, 'Port must be between 1 and 65535'),
-    oidcCallbackServerBindAddr: z.string().ip({ version: 'v4' }).optional().or(z.literal('')),
-    tokenFilePath: z.string().min(1),
-});
-
-export const MobileClientConfigSchema = z.object({
-    email: z.string().email('Invalid email address'),
-    password: z.string().min(1, 'Password is required'),
-    tokenFilePath: z.string().min(1),
-});
-
+// Configuration Validation Schema
 export const DaikinControllerConfigSchema = z.object({
     authMode: z.enum(['developer_portal', 'mobile_app']),
     tokenFilePath: z.string().min(1),

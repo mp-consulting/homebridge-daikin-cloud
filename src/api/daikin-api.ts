@@ -5,7 +5,9 @@
  */
 
 import * as https from 'node:https';
+import {z} from 'zod';
 import {DAIKIN_OIDC_CONFIG, RateLimitStatus, GatewayDevice, OAuthProvider} from './daikin-types';
+import {GatewayDeviceSchema} from './daikin-schemas';
 import {
     HTTP_STATUS,
     DEFAULT_RETRY_AFTER_SECONDS,
@@ -137,10 +139,11 @@ export class DaikinApi {
     // =========================================================================
 
     /**
-     * Get all gateway devices
+     * Get all gateway devices with runtime validation
      */
     async getDevices(): Promise<GatewayDevice[]> {
-        return this.request<GatewayDevice[]>('/v1/gateway-devices');
+        const rawDevices = await this.request<unknown[]>('/v1/gateway-devices');
+        return z.array(GatewayDeviceSchema).parse(rawDevices) as GatewayDevice[];
     }
 
     /**

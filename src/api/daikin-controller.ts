@@ -277,10 +277,3 @@ export class DaikinCloudController extends EventEmitter {
         return this.websocket.getState();
     }
 }
-
-// Re-export types and errors
-export {DaikinCloudDevice} from './daikin-device';
-export {RateLimitedError} from './daikin-api';
-export {DaikinOAuth} from './daikin-oauth';
-export {DaikinApi} from './daikin-api';
-export * from './daikin-types';

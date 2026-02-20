@@ -39,6 +39,13 @@ describe('Token Storage', () => {
             expect(loadTokenFromFile(filePath)).toBeNull();
         });
 
+        it('should return null on invalid token structure', () => {
+            mockFs.existsSync.mockReturnValue(true);
+            // Missing required access_token and token_type
+            mockFs.readFileSync.mockReturnValue(JSON.stringify({ foo: 'bar' }));
+            expect(loadTokenFromFile(filePath)).toBeNull();
+        });
+
         it('should return null if readFileSync throws', () => {
             mockFs.existsSync.mockReturnValue(true);
             mockFs.readFileSync.mockImplementation(() => {

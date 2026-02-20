@@ -9,6 +9,7 @@ import {StringUtils} from './utils/strings';
 import fs from 'node:fs';
 import {DaikinCloudRepo, DaikinCloudController, DaikinCloudDevice, DaikinControllerConfig} from './api';
 import {UpdateMapper} from './utils/update-mapper';
+import {ConfigManager, PluginConfig} from './config/config-manager';
 import {
     ONE_MINUTE_MS,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
@@ -29,9 +30,9 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     public readonly storagePath: string = '';
     public controller: DaikinCloudController | undefined;
 
-    public readonly updateIntervalDelay = ONE_MINUTE_MS * DEFAULT_UPDATE_INTERVAL_MINUTES;
-    public updateInterval: NodeJS.Timeout | undefined;
-    public forceUpdateTimeout: NodeJS.Timeout | undefined;
+    public readonly updateIntervalDelay: number;
+    private updateInterval: NodeJS.Timeout | undefined;
+    private forceUpdateTimeout: NodeJS.Timeout | undefined;
     private readonly accessoryFactory: AccessoryFactory;
     private readonly updateMapper: UpdateMapper;
     private readonly authMode: 'developer_portal' | 'mobile_app';
@@ -56,6 +57,13 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         // Determine authentication mode
         this.authMode = this.config.authMode === 'mobile_app' ? 'mobile_app' : 'developer_portal';
         this.log.info(`[Config] Authentication mode: ${this.authMode}`);
+
+        // Validate configuration
+        const configManager = new ConfigManager(this.config as PluginConfig);
+        const validation = configManager.validate();
+        for (const warning of validation.warnings) {
+            this.log.warn(`[Config] ${warning}`);
+        }
 
         // Check if credentials are configured based on auth mode
         if (this.authMode === 'mobile_app') {
