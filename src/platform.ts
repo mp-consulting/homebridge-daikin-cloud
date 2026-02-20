@@ -304,7 +304,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         }
     }
 
-    forceUpdateDevices(delay: number = this.config.forceUpdateDelay || DEFAULT_FORCE_UPDATE_DELAY_MS) {
+    forceUpdateDevices(delay: number = Math.max(0, this.config.forceUpdateDelay || DEFAULT_FORCE_UPDATE_DELAY_MS)) {
         // Debounce: if a force update is already pending, don't restart timers
         if (this.forceUpdateTimeout) {
             this.log.debug('[API Syncing] Force update already pending, skipping duplicate request');

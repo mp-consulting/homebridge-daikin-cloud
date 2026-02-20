@@ -69,7 +69,8 @@ export class ClimateControlService {
         if (roomTemperatureControlForCooling) {
             const coolingChar = this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature);
             // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-            const clampedCoolingValue = Math.max(HOMEKIT_TEMP_MIN, Math.min(COOLING_TEMP_CLAMP_MAX, roomTemperatureControlForCooling.value as number));
+            const coolingValue = typeof roomTemperatureControlForCooling.value === 'number' ? roomTemperatureControlForCooling.value : COOLING_TEMP_CLAMP_MAX;
+            const clampedCoolingValue = Math.max(HOMEKIT_TEMP_MIN, Math.min(COOLING_TEMP_CLAMP_MAX, coolingValue));
             coolingChar.updateValue(clampedCoolingValue);
             coolingChar
                 .setProps({
@@ -87,7 +88,8 @@ export class ClimateControlService {
         if (roomTemperatureControlForHeating) {
             const heatingChar = this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature);
             // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-            const clampedHeatingValue = Math.max(HEATING_TEMP_CLAMP_MIN, Math.min(HEATING_TEMP_CLAMP_MAX, roomTemperatureControlForHeating.value as number));
+            const heatingValue = typeof roomTemperatureControlForHeating.value === 'number' ? roomTemperatureControlForHeating.value : DEFAULT_ROOM_TEMPERATURE;
+            const clampedHeatingValue = Math.max(HEATING_TEMP_CLAMP_MIN, Math.min(HEATING_TEMP_CLAMP_MAX, heatingValue));
             heatingChar.updateValue(clampedHeatingValue);
             heatingChar
                 .setProps({
@@ -124,7 +126,8 @@ export class ClimateControlService {
         if (fanControl) {
             const rotationChar = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
             // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-            const clampedRotationValue = Math.max(0, Math.min(100, fanControl.value as number));
+            const rotationValue = typeof fanControl.value === 'number' ? fanControl.value : 1;
+            const clampedRotationValue = Math.max(0, Math.min(100, rotationValue));
             rotationChar.updateValue(clampedRotationValue);
             rotationChar
                 .setProps({
