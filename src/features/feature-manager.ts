@@ -84,18 +84,4 @@ export class FeatureManager {
     ): T | undefined {
         return this.features.find(f => f instanceof featureClass) as T | undefined;
     }
-
-    /**
-     * Get all supported features.
-     */
-    getSupportedFeatures(): BaseFeature[] {
-        return this.features.filter(f => f.isSupported());
-    }
-
-    /**
-     * Get all features.
-     */
-    getAllFeatures(): BaseFeature[] {
-        return [...this.features];
-    }
 }
