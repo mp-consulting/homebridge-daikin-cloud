@@ -8,10 +8,11 @@
  * - Automatic token refresh
  */
 
-import * as fs from 'node:fs';
 import * as https from 'node:https';
 import * as crypto from 'node:crypto';
 import {DAIKIN_MOBILE_CONFIG, TokenSet, MobileClientConfig} from './daikin-types';
+import {HTTP_REQUEST_TIMEOUT_MS} from '../constants';
+import {loadTokenFromFile, saveTokenToFile, deleteTokenFile} from './token-storage';
 
 interface PKCEPair {
     verifier: string;
@@ -37,7 +38,7 @@ export class DaikinMobileOAuth {
         private readonly onTokenUpdate?: (tokenSet: TokenSet) => void,
         private readonly onError?: (error: Error) => void,
     ) {
-        this.loadTokenFromFile();
+        this.loadFromFile();
     }
 
     /**
@@ -171,7 +172,7 @@ export class DaikinMobileOAuth {
      * Clear stored tokens
      */
     clearTokens(): void {
-        this.deleteTokenFile();
+        this.deleteFile();
         this.tokenSet = null;
     }
 
@@ -398,19 +399,16 @@ export class DaikinMobileOAuth {
         }
 
         this.tokenSet = tokenSet;
-        this.saveTokenToFile();
+        this.saveToFile();
 
         if (this.onTokenUpdate) {
             this.onTokenUpdate(tokenSet);
         }
     }
 
-    private loadTokenFromFile(): void {
+    private loadFromFile(): void {
         try {
-            if (fs.existsSync(this.config.tokenFilePath)) {
-                const data = fs.readFileSync(this.config.tokenFilePath, 'utf8');
-                this.tokenSet = JSON.parse(data);
-            }
+            this.tokenSet = loadTokenFromFile(this.config.tokenFilePath);
         } catch (error) {
             if (this.onError) {
                 this.onError(new Error('Failed to load token file: ' + (error as Error).message));
@@ -418,14 +416,11 @@ export class DaikinMobileOAuth {
         }
     }
 
-    private saveTokenToFile(): void {
+    private saveToFile(): void {
         try {
-            // Write token file with restricted permissions (owner read/write only)
-            fs.writeFileSync(
-                this.config.tokenFilePath,
-                JSON.stringify(this.tokenSet, null, 2),
-                { encoding: 'utf8', mode: 0o600 },
-            );
+            if (this.tokenSet) {
+                saveTokenToFile(this.config.tokenFilePath, this.tokenSet);
+            }
         } catch (error) {
             if (this.onError) {
                 this.onError(new Error('Failed to save token file: ' + (error as Error).message));
@@ -433,14 +428,8 @@ export class DaikinMobileOAuth {
         }
     }
 
-    private deleteTokenFile(): void {
-        try {
-            if (fs.existsSync(this.config.tokenFilePath)) {
-                fs.unlinkSync(this.config.tokenFilePath);
-            }
-        } catch {
-            // Ignore delete errors
-        }
+    private deleteFile(): void {
+        deleteTokenFile(this.config.tokenFilePath);
     }
 
     // =========================================================================
@@ -475,6 +464,10 @@ export class DaikinMobileOAuth {
                         body: data,
                     });
                 });
+            });
+
+            req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
+                req.destroy(new Error(`Mobile OAuth request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
             });
 
             req.on('error', reject);

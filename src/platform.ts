@@ -302,7 +302,11 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
 
         this.forceUpdateTimeout = setTimeout(async () => {
             this.forceUpdateTimeout = undefined;
-            await this.updateDevices();
+            try {
+                await this.updateDevices();
+            } catch (error) {
+                this.log.error(`[API Syncing] Force update failed: ${(error as Error).message}`);
+            }
             this.startUpdateDevicesInterval();
         }, delay);
     }
@@ -310,7 +314,11 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     private startUpdateDevicesInterval() {
         this.log.debug(`[API Syncing] (Re)starting update devices interval every ${this.updateIntervalDelay / ONE_MINUTE_MS} minutes`);
         this.updateInterval = setInterval(async () => {
-            await this.updateDevices();
+            try {
+                await this.updateDevices();
+            } catch (error) {
+                this.log.error(`[API Syncing] Periodic update failed: ${(error as Error).message}`);
+            }
         }, this.updateIntervalDelay);
     }
 

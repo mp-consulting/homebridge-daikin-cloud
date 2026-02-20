@@ -40,7 +40,7 @@ export class ApiTimeoutError extends Error {
 
 export class DaikinApi {
     private blockedUntil = 0;
-    private isRefreshing = false;
+    private refreshPromise: Promise<void> | null = null;
 
     constructor(
         private readonly oauth: OAuthProvider,
@@ -256,21 +256,29 @@ export class DaikinApi {
                 throw new Error(`Bad Request (${HTTP_STATUS.BAD_REQUEST}): ${response.body || 'No response body'}`);
 
             case HTTP_STATUS.UNAUTHORIZED:
-                // If we've exhausted retries or already refreshing, give up
-                if (retryCount >= MAX_RETRY_ATTEMPTS || this.isRefreshing) {
+                // If we've exhausted retries, give up
+                if (retryCount >= MAX_RETRY_ATTEMPTS) {
                     throw new Error(`Unauthorized (${HTTP_STATUS.UNAUTHORIZED}): Token expired or invalid`);
                 }
-                // Try to refresh the token and retry the request with exponential backoff
+                // Deduplicate concurrent refresh requests using a shared promise
                 try {
-                    this.isRefreshing = true;
-                    await this.oauth.refreshToken();
-                    this.isRefreshing = false;
+                    if (!this.refreshPromise) {
+                        this.refreshPromise = this.oauth.refreshToken().then(
+                            () => {
+                                this.refreshPromise = null;
+                            },
+                            (err) => {
+                                this.refreshPromise = null;
+                                throw err;
+                            },
+                        );
+                    }
+                    await this.refreshPromise;
                     // Apply exponential backoff delay before retry
                     const delay = this.getRetryDelay(retryCount);
                     await this.sleep(delay);
                     return this.request<T>(path, method, body, retryCount + 1);
                 } catch {
-                    this.isRefreshing = false;
                     throw new Error(`Unauthorized (${HTTP_STATUS.UNAUTHORIZED}): Token refresh failed. Please re-authenticate.`);
                 }
 

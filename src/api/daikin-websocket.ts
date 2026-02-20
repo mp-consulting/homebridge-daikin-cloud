@@ -14,10 +14,14 @@ import {DAIKIN_WEBSOCKET_URL} from '../constants';
 const INITIAL_RECONNECT_DELAY = 1000;  // 1 second
 const MAX_RECONNECT_DELAY = 300000;    // 5 minutes
 const RECONNECT_BACKOFF_MULTIPLIER = 2;
+const MAX_RECONNECT_ATTEMPTS = 50;     // Give up after 50 consecutive failures
 
 // Heartbeat settings
 const PING_INTERVAL = 30000;  // 30 seconds
 const PONG_TIMEOUT = 10000;   // 10 seconds to receive pong
+
+// Connection timeout
+const CONNECTION_TIMEOUT = 30000;  // 30 seconds to establish connection
 
 /**
  * WebSocket event for a gateway device management point characteristic update
@@ -147,6 +151,7 @@ export class DaikinWebSocket extends EventEmitter {
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
                 },
+                handshakeTimeout: CONNECTION_TIMEOUT,
             });
 
             this.setupEventHandlers();
@@ -264,9 +269,23 @@ export class DaikinWebSocket extends EventEmitter {
             return;
         }
 
+        // Circuit breaker: give up after too many consecutive failures
+        if (this.connectionAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            this.state = 'disconnected';
+            const error = new Error(`WebSocket gave up after ${MAX_RECONNECT_ATTEMPTS} consecutive reconnection attempts`);
+            this.handleError(error);
+            this.emit('disconnected', {reconnecting: false});
+            return;
+        }
+
         this.reconnectTimeout = setTimeout(async () => {
             this.reconnectTimeout = null;
-            await this.establishConnection();
+            try {
+                await this.establishConnection();
+            } catch (error) {
+                this.handleError(error as Error);
+                this.scheduleReconnect();
+            }
         }, this.reconnectDelay);
 
         // Exponential backoff with max delay

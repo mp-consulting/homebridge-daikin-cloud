@@ -127,10 +127,11 @@ export class HotWaterTankService {
             }
 
             await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', '/operationModes/heating/setpoints/domesticHotWaterTemperature', temperature);
+            this.platform.forceUpdateDevices();
         } catch (e) {
             this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
+            throw e;
         }
-        this.platform.forceUpdateDevices();
     }
 
     async handleHotWaterTankTargetHeatingCoolingStateGet(): Promise<CharacteristicValue> {
@@ -162,6 +163,7 @@ export class HotWaterTankService {
                 await this.accessory.context.device.setData(this.managementPointId, 'onOffMode', DaikinOnOffModes.OFF, undefined);
             } catch (e) {
                 this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
+                throw e;
             }
             return;
         }
@@ -191,11 +193,11 @@ export class HotWaterTankService {
             }
 
             await this.accessory.context.device.setData(this.managementPointId, 'operationMode', daikinOperationMode, undefined);
+            this.platform.forceUpdateDevices();
         } catch (e) {
             this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
+            throw e;
         }
-
-        this.platform.forceUpdateDevices();
     }
 
     async handlePowerfulModeGet() {
@@ -212,6 +214,7 @@ export class HotWaterTankService {
             this.platform.forceUpdateDevices();
         } catch (e) {
             this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
+            throw e;
         }
     }
 

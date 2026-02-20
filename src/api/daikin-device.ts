@@ -19,15 +19,20 @@ export interface DeviceDataPoint {
 }
 
 export class DaikinCloudDevice extends EventEmitter {
-    public readonly desc: GatewayDevice;
     private lastUpdated: Date = new Date();
 
     constructor(
-        private readonly rawData: GatewayDevice,
+        private rawData: GatewayDevice,
         private readonly api: DaikinApi,
     ) {
         super();
-        this.desc = rawData;
+    }
+
+    /**
+     * Get the raw device data (replaces the old `desc` property)
+     */
+    get desc(): GatewayDevice {
+        return this.rawData;
     }
 
     /**
@@ -128,8 +133,7 @@ export class DaikinCloudDevice extends EventEmitter {
      * Update the raw device data (after refresh from API)
      */
     updateRawData(newData: GatewayDevice): void {
-        Object.assign(this.rawData, newData);
-        (this as { desc: GatewayDevice }).desc = this.rawData;
+        this.rawData = newData;
         this.lastUpdated = new Date();
     }
 

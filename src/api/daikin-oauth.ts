@@ -4,10 +4,11 @@
  * Handles OAuth 2.0 authentication with the Daikin Cloud API.
  */
 
-import * as fs from 'node:fs';
 import * as https from 'node:https';
 import * as crypto from 'node:crypto';
 import {DAIKIN_OIDC_CONFIG, TokenSet, DaikinClientConfig} from './daikin-types';
+import {HTTP_REQUEST_TIMEOUT_MS} from '../constants';
+import {loadTokenFromFile, saveTokenToFile, deleteTokenFile} from './token-storage';
 
 export class DaikinOAuth {
     private tokenSet: TokenSet | null = null;
@@ -18,7 +19,7 @@ export class DaikinOAuth {
         private readonly onTokenUpdate?: (tokenSet: TokenSet) => void,
         private readonly onError?: (error: Error) => void,
     ) {
-        this.loadTokenFromFile();
+        this.loadFromFile();
     }
 
     // =========================================================================
@@ -119,6 +120,10 @@ export class DaikinOAuth {
                 res.on('end', () => resolve(data));
             });
 
+            req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
+                req.destroy(new Error(`OAuth request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
+            });
+
             req.on('error', reject);
             req.write(postData);
             req.end();
@@ -214,7 +219,7 @@ export class DaikinOAuth {
             // Ignore revocation errors
         }
 
-        this.deleteTokenFile();
+        this.deleteFile();
         this.tokenSet = null;
     }
 
@@ -273,19 +278,16 @@ export class DaikinOAuth {
         }
 
         this.tokenSet = tokenSet;
-        this.saveTokenToFile();
+        this.saveToFile();
 
         if (this.onTokenUpdate) {
             this.onTokenUpdate(tokenSet);
         }
     }
 
-    private loadTokenFromFile(): void {
+    private loadFromFile(): void {
         try {
-            if (fs.existsSync(this.config.tokenFilePath)) {
-                const data = fs.readFileSync(this.config.tokenFilePath, 'utf8');
-                this.tokenSet = JSON.parse(data);
-            }
+            this.tokenSet = loadTokenFromFile(this.config.tokenFilePath);
         } catch (error) {
             if (this.onError) {
                 this.onError(new Error(`Failed to load token file: ${(error as Error).message}`));
@@ -293,14 +295,11 @@ export class DaikinOAuth {
         }
     }
 
-    private saveTokenToFile(): void {
+    private saveToFile(): void {
         try {
-            // Write token file with restricted permissions (owner read/write only)
-            fs.writeFileSync(
-                this.config.tokenFilePath,
-                JSON.stringify(this.tokenSet, null, 2),
-                { encoding: 'utf8', mode: 0o600 },
-            );
+            if (this.tokenSet) {
+                saveTokenToFile(this.config.tokenFilePath, this.tokenSet);
+            }
         } catch (error) {
             if (this.onError) {
                 this.onError(new Error(`Failed to save token file: ${(error as Error).message}`));
@@ -308,14 +307,8 @@ export class DaikinOAuth {
         }
     }
 
-    private deleteTokenFile(): void {
-        try {
-            if (fs.existsSync(this.config.tokenFilePath)) {
-                fs.unlinkSync(this.config.tokenFilePath);
-            }
-        } catch (error) {
-            // Ignore delete errors
-        }
+    private deleteFile(): void {
+        deleteTokenFile(this.config.tokenFilePath);
     }
 
     private async makeTokenRequest(params: Record<string, string>): Promise<TokenSet> {
@@ -350,6 +343,10 @@ export class DaikinOAuth {
                 let data = '';
                 res.on('data', (chunk) => data += chunk);
                 res.on('end', () => resolve(data));
+            });
+
+            req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
+                req.destroy(new Error(`OAuth request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
             });
 
             req.on('error', reject);

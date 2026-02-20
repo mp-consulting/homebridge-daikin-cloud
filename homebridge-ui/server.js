@@ -88,7 +88,7 @@ const TokenManager = {
     },
 
     save(filePath, tokenSet) {
-        fs.writeFileSync(filePath, JSON.stringify(tokenSet, null, 2), 'utf8');
+        fs.writeFileSync(filePath, JSON.stringify(tokenSet, null, 2), { encoding: 'utf8', mode: 0o600 });
     },
 
     delete(filePath) {
