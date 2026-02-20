@@ -1,7 +1,6 @@
 import {PlatformAccessory} from 'homebridge';
 import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../platform';
-import {DeviceCapabilityDetector} from '../device';
-import {getCapabilitySummary} from '../device';
+import {DeviceCapabilityDetector, getCapabilitySummary} from '../device';
 
 export class BaseAccessory {
     readonly platform: DaikinCloudPlatform;

@@ -16,6 +16,8 @@ import {
     DEFAULT_ROOM_TEMPERATURE,
     HOMEKIT_TEMP_MIN,
     COOLING_TEMP_CLAMP_MAX,
+    HEATING_TEMP_CLAMP_MIN,
+    HEATING_TEMP_CLAMP_MAX,
 } from '../constants';
 
 export class ClimateControlService {
@@ -85,7 +87,7 @@ export class ClimateControlService {
         if (roomTemperatureControlForHeating) {
             const heatingChar = this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature);
             // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-            const clampedHeatingValue = Math.max(0, Math.min(25, roomTemperatureControlForHeating.value as number));
+            const clampedHeatingValue = Math.max(HEATING_TEMP_CLAMP_MIN, Math.min(HEATING_TEMP_CLAMP_MAX, roomTemperatureControlForHeating.value as number));
             heatingChar.updateValue(clampedHeatingValue);
             heatingChar
                 .setProps({

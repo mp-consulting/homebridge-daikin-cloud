@@ -26,6 +26,12 @@ export const HOMEKIT_TEMP_MAX = 38;
 /** Cooling temperature clamp maximum (°C) */
 export const COOLING_TEMP_CLAMP_MAX = 35;
 
+/** Heating temperature clamp minimum (°C) */
+export const HEATING_TEMP_CLAMP_MIN = 0;
+
+/** Heating temperature clamp maximum (°C) */
+export const HEATING_TEMP_CLAMP_MAX = 25;
+
 // =============================================================================
 // Fan Speed Constants
 // =============================================================================

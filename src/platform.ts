@@ -191,12 +191,19 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
             this.log.info('--------------- End Daikin info for debugging reasons --------------------');
         });
 
-        // Shutdown handler: clean up timers and WebSocket on platform shutdown
+        // Shutdown handler: clean up timers, WebSocket, and device listeners on platform shutdown
         this.api.on('shutdown', () => {
             this.log.debug('[Platform] Shutting down, cleaning up resources...');
             clearInterval(this.updateInterval);
             clearTimeout(this.forceUpdateTimeout);
             this.controller?.disableWebSocket();
+            for (const [uuid, listener] of this.deviceListeners) {
+                const accessory = this.accessories.find(a => a.UUID === uuid);
+                if (accessory?.context.device) {
+                    accessory.context.device.removeListener('updated', listener);
+                }
+            }
+            this.deviceListeners.clear();
         });
     }
 
