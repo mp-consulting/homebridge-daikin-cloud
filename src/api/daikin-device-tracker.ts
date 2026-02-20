@@ -21,7 +21,7 @@ export interface DeviceError {
  */
 export class DeviceTracker {
     private lastUpdate: Date = new Date();
-    private dataHash: string = '';
+    private dataHash = '';
     private errors: DeviceError[] = [];
     private readonly maxErrors = 10; // Keep last 10 errors
 

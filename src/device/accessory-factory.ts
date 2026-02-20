@@ -62,7 +62,7 @@ export class AccessoryFactory {
                 } else {
                     throw new Error(
                         `Unsupported device type: ${device.getDescription().deviceModel}. ` +
-                        `Device has no climate control management point.`,
+                        'Device has no climate control management point.',
                     );
                 }
                 break;

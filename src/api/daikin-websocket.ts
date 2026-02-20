@@ -8,8 +8,7 @@
 import WebSocket from 'ws';
 import {EventEmitter} from 'node:events';
 import {OAuthProvider} from './daikin-types';
-
-const WEBSOCKET_URL = 'wss://wsapi.onecta.daikineurope.com';
+import {DAIKIN_WEBSOCKET_URL} from '../constants';
 
 // Reconnection settings
 const INITIAL_RECONNECT_DELAY = 1000;  // 1 second
@@ -144,7 +143,7 @@ export class DaikinWebSocket extends EventEmitter {
         try {
             const accessToken = await this.oauth.getAccessToken();
 
-            this.ws = new WebSocket(WEBSOCKET_URL, {
+            this.ws = new WebSocket(DAIKIN_WEBSOCKET_URL, {
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
                 },
@@ -161,7 +160,9 @@ export class DaikinWebSocket extends EventEmitter {
      * Set up WebSocket event handlers
      */
     private setupEventHandlers(): void {
-        if (!this.ws) return;
+        if (!this.ws) {
+            return;
+        }
 
         this.ws.on('open', () => {
             this.state = 'connected';
@@ -259,7 +260,9 @@ export class DaikinWebSocket extends EventEmitter {
      * Schedule a reconnection attempt with exponential backoff
      */
     private scheduleReconnect(): void {
-        if (!this.shouldReconnect) return;
+        if (!this.shouldReconnect) {
+            return;
+        }
 
         this.reconnectTimeout = setTimeout(async () => {
             this.reconnectTimeout = null;

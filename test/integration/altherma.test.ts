@@ -177,35 +177,25 @@ test.each<Array<string | string | any | DeviceState>>([
 
     if (typeof state.activeState !== 'undefined') {
         expect(await homebridgeAccessory.service?.handleActiveStateGet()).toBe(state.activeState);
-        expect(async () => {
-            await homebridgeAccessory.service?.handleActiveStateSet(1);
-        }).not.toThrow();
-        expect(async () => {
-            await homebridgeAccessory.service?.handleActiveStateSet(0);
-        }).not.toThrow();
+        await expect(homebridgeAccessory.service!.handleActiveStateSet(1)).resolves.not.toThrow();
+        await expect(homebridgeAccessory.service!.handleActiveStateSet(0)).resolves.not.toThrow();
     }
 
     expect(await homebridgeAccessory.service?.handleCurrentTemperatureGet()).toBe(state.currentTemperature);
 
     if (typeof state.coolingThresholdTemperature !== 'undefined') {
         expect(await homebridgeAccessory.service?.handleCoolingThresholdTemperatureGet()).toBe(state.coolingThresholdTemperature);
-        expect(async () => {
-            await homebridgeAccessory.service?.handleCoolingThresholdTemperatureSet(21);
-        }).not.toThrow();
+        await expect(homebridgeAccessory.service!.handleCoolingThresholdTemperatureSet(21)).resolves.not.toThrow();
     }
 
     if (typeof state.heatingThresholdTemperature !== 'undefined') {
         expect(await homebridgeAccessory.service?.handleHeatingThresholdTemperatureGet()).toBe(state.heatingThresholdTemperature);
-        expect(async () => {
-            await homebridgeAccessory.service?.handleHeatingThresholdTemperatureSet(25);
-        }).not.toThrow();
+        await expect(homebridgeAccessory.service!.handleHeatingThresholdTemperatureSet(25)).resolves.not.toThrow();
     }
 
     if (typeof state.targetHeaterCoolerState !== 'undefined') {
         expect(await homebridgeAccessory.service?.handleTargetHeaterCoolerStateGet()).toBe(state.targetHeaterCoolerState);
-        expect(async () => {
-            await homebridgeAccessory.service?.handleTargetHeaterCoolerStateSet(1);
-        }).not.toThrow();
+        await expect(homebridgeAccessory.service!.handleTargetHeaterCoolerStateSet(1)).resolves.not.toThrow();
     }
 
 

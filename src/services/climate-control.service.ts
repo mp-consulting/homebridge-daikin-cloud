@@ -169,7 +169,6 @@ export class ClimateControlService {
 
     async handleCoolingThresholdTemperatureSet(value: CharacteristicValue) {
         const temperature = Math.round(value as number * 2) / 2;
-        // const temperature = value as number;
         this.platform.log.debug(`[${this.name}] SET CoolingThresholdTemperature, temperature to: ${temperature}`);
         try {
             await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`, temperature);
@@ -208,7 +207,6 @@ export class ClimateControlService {
     async handleHeatingThresholdTemperatureSet(value: CharacteristicValue) {
         try {
             const temperature = Math.round(value as number * 2) / 2;
-            // const temperature = value as number;
             this.platform.log.debug(`[${this.name}] SET HeatingThresholdTemperature, temperature to: ${temperature}`);
             await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`, temperature);
             this.platform.forceUpdateDevices();

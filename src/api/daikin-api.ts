@@ -14,6 +14,7 @@ import {
     MAX_RETRY_ATTEMPTS,
     RETRY_BASE_DELAY_MS,
     RETRY_MAX_DELAY_MS,
+    HTTP_REQUEST_TIMEOUT_MS,
 } from '../constants';
 
 export class RateLimitedError extends Error {
@@ -86,7 +87,9 @@ export class DaikinApi {
     }
 
     private static parseHeaderStatic(value: string | string[] | undefined): number | undefined {
-        if (!value) return undefined;
+        if (!value) {
+            return undefined;
+        }
         const str = Array.isArray(value) ? value[0] : value;
         const num = parseInt(str, 10);
         return isNaN(num) ? undefined : num;
@@ -118,6 +121,10 @@ export class DaikinApi {
                     body: data,
                     headers: res.headers,
                 }));
+            });
+
+            req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
+                req.destroy(new Error(`Request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
             });
 
             req.on('error', reject);
@@ -310,7 +317,9 @@ export class DaikinApi {
     }
 
     private parseHeader(value: string | string[] | undefined): number | undefined {
-        if (!value) return undefined;
+        if (!value) {
+            return undefined;
+        }
         const str = Array.isArray(value) ? value[0] : value;
         const num = parseInt(str, 10);
         return isNaN(num) ? undefined : num;
@@ -349,6 +358,10 @@ export class DaikinApi {
                     body: data,
                     headers: res.headers,
                 }));
+            });
+
+            req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
+                req.destroy(new Error(`Request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
             });
 
             req.on('error', reject);

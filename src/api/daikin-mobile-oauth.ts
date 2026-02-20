@@ -30,7 +30,7 @@ interface GigyaLoginResult {
 export class DaikinMobileOAuth {
     private tokenSet: TokenSet | null = null;
     private refreshPromise: Promise<TokenSet> | null = null;
-    private cookies: string = '';
+    private cookies = '';
 
     constructor(
         private readonly config: MobileClientConfig,

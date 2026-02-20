@@ -136,7 +136,9 @@ export class RateLimitInterceptor implements Interceptor {
     }
 
     private parseRetryAfter(value: string | string[] | undefined): number {
-        if (!value) return 60; // Default 60 seconds
+        if (!value) {
+            return 60;
+        } // Default 60 seconds
         const str = Array.isArray(value) ? value[0] : value;
         const num = parseInt(str, 10);
         return isNaN(num) ? 60 : num;

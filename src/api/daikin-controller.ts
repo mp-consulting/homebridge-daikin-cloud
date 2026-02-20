@@ -16,7 +16,7 @@ import {
 } from './daikin-types';
 import {DaikinOAuth} from './daikin-oauth';
 import {DaikinMobileOAuth} from './daikin-mobile-oauth';
-import {DaikinApi, RateLimitedError} from './daikin-api';
+import {DaikinApi} from './daikin-api';
 import {DaikinCloudDevice} from './daikin-device';
 import {DaikinWebSocket, WebSocketState} from './daikin-websocket';
 

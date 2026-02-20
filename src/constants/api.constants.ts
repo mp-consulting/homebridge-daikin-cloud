@@ -36,3 +36,9 @@ export const RETRY_BASE_DELAY_MS = 1000;
 
 /** Maximum delay for exponential backoff (milliseconds) */
 export const RETRY_MAX_DELAY_MS = 10000;
+
+/** HTTP request timeout (milliseconds) */
+export const HTTP_REQUEST_TIMEOUT_MS = 30000;
+
+/** Daikin WebSocket URL for real-time updates */
+export const DAIKIN_WEBSOCKET_URL = 'wss://wsapi.onecta.daikineurope.com';

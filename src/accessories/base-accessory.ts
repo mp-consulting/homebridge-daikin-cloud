@@ -30,9 +30,11 @@ export class BaseAccessory {
             .setCharacteristic(this.platform.Characteristic.Model, modelInfo)
             .setCharacteristic(this.platform.Characteristic.SerialNumber, serialNumber);
 
-        this.accessory.context.device.on('updated', () => {
+        const updateListener = () => {
             this.platform.log.debug(`[API Syncing] Updated ${this.accessory.displayName} (${this.accessory.UUID}), LastUpdated: ${this.accessory.context.device.getLastUpdated()}`);
-        });
+        };
+        this.accessory.context.device.on('updated', updateListener);
+        this.platform.registerDeviceListener(this.accessory, updateListener);
     }
 
     printDeviceInfo() {

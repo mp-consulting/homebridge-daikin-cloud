@@ -5,7 +5,7 @@
  * Extracts update mapping logic from the platform class.
  */
 
-import {PlatformAccessory, Service, Characteristic, WithUUID} from 'homebridge';
+import {PlatformAccessory, Service, Characteristic} from 'homebridge';
 import {DaikinCloudAccessoryContext} from '../platform';
 import type {Logger} from 'homebridge';
 
