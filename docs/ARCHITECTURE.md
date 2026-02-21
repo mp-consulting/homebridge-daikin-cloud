@@ -102,7 +102,7 @@ Unified controller managing both authentication modes.
 ##### Mobile App Mode
 - Uses Gigya authentication + PKCE
 - Requires email/password (same as Onecta app)
-- 5000 API calls/day limit
+- 3000 API calls/day limit
 - WebSocket support for real-time updates
 - **Flow:**
   1. Login via Gigya API
@@ -139,7 +139,7 @@ HTTP client for Daikin Cloud API with built-in resilience.
 Headers:
 - x-ratelimit-limit-minute: 10
 - x-ratelimit-remaining-minute: 9
-- x-ratelimit-limit-day: 200 (Developer) / 5000 (Mobile)
+- x-ratelimit-limit-day: 200 (Developer) / 3000 (Mobile)
 - x-ratelimit-remaining-day: 195
 ```
 

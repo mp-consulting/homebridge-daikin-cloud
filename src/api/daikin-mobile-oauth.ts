@@ -3,7 +3,7 @@
  *
  * Handles OAuth 2.0 authentication using the mobile app flow (Gigya + PKCE).
  * Provides:
- * - 5000 API calls/day (vs 200 for Developer Portal)
+ * - 3000 API calls/day (vs 200 for Developer Portal)
  * - WebSocket access for real-time device updates
  * - Automatic token refresh
  */

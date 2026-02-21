@@ -93,7 +93,7 @@ export interface ManagementPoint {
     powerfulMode?: { value: string };
     econoMode?: { value: string };
     streamerMode?: { value: string };
-    holidayMode?: { value: string };
+    holidayMode?: { value: { enabled: boolean; startDate?: string; endDate?: string } };
     [key: string]: unknown;
 }
 

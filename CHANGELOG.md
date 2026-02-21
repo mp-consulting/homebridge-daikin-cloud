@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.6] - 2026-02-21
+
+### Fixed
+
+- **`holidayMode` schema mismatch**: Corrected Zod schema and TypeScript type for `holidayMode` — the Daikin API returns `value` as an object (`{ enabled: boolean, startDate?, endDate? }`) not a string, preventing all devices from loading on startup
+- **Error mutation crash**: Fixed `TypeError: Cannot set property message of [object Object] which has only a getter` in `discoverDevices` by avoiding mutation of the `Error.message` property
+
+### Changed
+
+- Updated Mobile App daily API rate limit from 5000 to 3000 across all documentation, UI labels, and code comments to reflect the current Daikin Cloud limit
+
 ## [1.3.5] - 2026-01-10
 
 ### Fixed

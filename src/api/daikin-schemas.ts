@@ -71,7 +71,13 @@ export const ManagementPointSchema = z.object({
     powerfulMode: z.object({ value: z.string() }).optional(),
     econoMode: z.object({ value: z.string() }).optional(),
     streamerMode: z.object({ value: z.string() }).optional(),
-    holidayMode: z.object({ value: z.string() }).optional(),
+    holidayMode: z.object({
+        value: z.object({
+            enabled: z.boolean(),
+            startDate: z.string().optional(),
+            endDate: z.string().optional(),
+        }),
+    }).optional(),
 }).passthrough(); // Allow additional properties
 
 // Gateway Device Schema

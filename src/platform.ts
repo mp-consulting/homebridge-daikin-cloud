@@ -217,8 +217,8 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
             return await controller.getCloudDevices();
         } catch (error) {
             if (error instanceof Error) {
-                error.message = `[API Syncing] Failed to get cloud devices from Daikin Cloud: ${error.message}`;
-                this.log.error(error.message);
+                const message = `[API Syncing] Failed to get cloud devices from Daikin Cloud: ${error.message}`;
+                this.log.error(message);
 
                 if (error.message.includes('invalid_grant')) {
                     onInvalidGrantError();

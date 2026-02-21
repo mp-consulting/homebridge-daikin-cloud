@@ -236,7 +236,7 @@ grep -i "websocket" ~/.homebridge/homebridge.log
 | Auth Mode | Rate Limit | Recommended Interval |
 |-----------|------------|---------------------|
 | Developer Portal | 200 calls/day | 15+ minutes |
-| Mobile App | 5000 calls/day | 1-5 minutes |
+| Mobile App | 3000 calls/day | 1-5 minutes |
 
 ### Symptoms
 - "Rate limit exceeded" errors
@@ -260,7 +260,7 @@ Go to Homebridge UI > Daikin Cloud plugin > Authentication tab to see:
 ```
 
 **Switch to Mobile App Mode**
-- 25x higher rate limit (5000 vs 200 calls/day)
+- 15x higher rate limit (3000 vs 200 calls/day)
 - Enables WebSocket for real-time updates
 - Reduces polling needs
 
