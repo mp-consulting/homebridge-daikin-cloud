@@ -16,7 +16,7 @@ import {
 } from './daikin-types';
 import {DaikinOAuth} from './daikin-oauth';
 import {DaikinMobileOAuth} from './daikin-mobile-oauth';
-import {DaikinApi, RateLimitedError} from './daikin-api';
+import {DaikinApi} from './daikin-api';
 import {DaikinCloudDevice} from './daikin-device';
 import {DaikinWebSocket, WebSocketState} from './daikin-websocket';
 
@@ -277,10 +277,3 @@ export class DaikinCloudController extends EventEmitter {
         return this.websocket.getState();
     }
 }
-
-// Re-export types and errors
-export {DaikinCloudDevice} from './daikin-device';
-export {RateLimitedError} from './daikin-api';
-export {DaikinOAuth} from './daikin-oauth';
-export {DaikinApi} from './daikin-api';
-export * from './daikin-types';

@@ -16,6 +16,8 @@ import {
     DEFAULT_ROOM_TEMPERATURE,
     HOMEKIT_TEMP_MIN,
     COOLING_TEMP_CLAMP_MAX,
+    HEATING_TEMP_CLAMP_MIN,
+    HEATING_TEMP_CLAMP_MAX,
 } from '../constants';
 
 export class ClimateControlService {
@@ -67,7 +69,8 @@ export class ClimateControlService {
         if (roomTemperatureControlForCooling) {
             const coolingChar = this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature);
             // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-            const clampedCoolingValue = Math.max(HOMEKIT_TEMP_MIN, Math.min(COOLING_TEMP_CLAMP_MAX, roomTemperatureControlForCooling.value as number));
+            const coolingValue = typeof roomTemperatureControlForCooling.value === 'number' ? roomTemperatureControlForCooling.value : COOLING_TEMP_CLAMP_MAX;
+            const clampedCoolingValue = Math.max(HOMEKIT_TEMP_MIN, Math.min(COOLING_TEMP_CLAMP_MAX, coolingValue));
             coolingChar.updateValue(clampedCoolingValue);
             coolingChar
                 .setProps({
@@ -85,7 +88,8 @@ export class ClimateControlService {
         if (roomTemperatureControlForHeating) {
             const heatingChar = this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature);
             // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-            const clampedHeatingValue = Math.max(0, Math.min(25, roomTemperatureControlForHeating.value as number));
+            const heatingValue = typeof roomTemperatureControlForHeating.value === 'number' ? roomTemperatureControlForHeating.value : DEFAULT_ROOM_TEMPERATURE;
+            const clampedHeatingValue = Math.max(HEATING_TEMP_CLAMP_MIN, Math.min(HEATING_TEMP_CLAMP_MAX, heatingValue));
             heatingChar.updateValue(clampedHeatingValue);
             heatingChar
                 .setProps({
@@ -122,7 +126,8 @@ export class ClimateControlService {
         if (fanControl) {
             const rotationChar = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
             // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-            const clampedRotationValue = Math.max(0, Math.min(100, fanControl.value as number));
+            const rotationValue = typeof fanControl.value === 'number' ? fanControl.value : 1;
+            const clampedRotationValue = Math.max(0, Math.min(100, rotationValue));
             rotationChar.updateValue(clampedRotationValue);
             rotationChar
                 .setProps({
@@ -148,10 +153,11 @@ export class ClimateControlService {
         const state = value as boolean;
         try {
             await this.accessory.context.device.setData(this.managementPointId, 'onOffMode', state ? DaikinOnOffModes.ON : DaikinOnOffModes.OFF, undefined);
+            this.platform.forceUpdateDevices();
         } catch (e) {
             this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
+            throw e;
         }
-        this.platform.forceUpdateDevices();
     }
 
     async handleCurrentTemperatureGet(): Promise<CharacteristicValue> {
@@ -169,15 +175,14 @@ export class ClimateControlService {
 
     async handleCoolingThresholdTemperatureSet(value: CharacteristicValue) {
         const temperature = Math.round(value as number * 2) / 2;
-        // const temperature = value as number;
         this.platform.log.debug(`[${this.name}] SET CoolingThresholdTemperature, temperature to: ${temperature}`);
         try {
             await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`, temperature);
+            this.platform.forceUpdateDevices();
         } catch (e) {
             this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
+            throw e;
         }
-
-        this.platform.forceUpdateDevices();
     }
 
     async handleRotationSpeedGet(): Promise<CharacteristicValue> {
@@ -192,11 +197,11 @@ export class ClimateControlService {
         try {
             await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/currentMode`, 'fixed');
             await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`, speed);
+            this.platform.forceUpdateDevices();
         } catch (e) {
             this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
+            throw e;
         }
-
-        this.platform.forceUpdateDevices();
     }
 
     async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {
@@ -208,12 +213,12 @@ export class ClimateControlService {
     async handleHeatingThresholdTemperatureSet(value: CharacteristicValue) {
         try {
             const temperature = Math.round(value as number * 2) / 2;
-            // const temperature = value as number;
             this.platform.log.debug(`[${this.name}] SET HeatingThresholdTemperature, temperature to: ${temperature}`);
             await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`, temperature);
             this.platform.forceUpdateDevices();
         } catch (e) {
             this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
+            throw e;
         }
     }
 
@@ -258,6 +263,7 @@ export class ClimateControlService {
             this.platform.forceUpdateDevices();
         } catch (e) {
             this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
+            throw e;
         }
     }
 
@@ -278,6 +284,7 @@ export class ClimateControlService {
             this.platform.forceUpdateDevices();
         } catch (e) {
             this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
+            throw e;
         }
     }
 

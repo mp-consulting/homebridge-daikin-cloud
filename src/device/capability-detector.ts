@@ -9,7 +9,6 @@ import {DaikinCloudDevice} from '../api';
 import {
     DeviceCapabilities,
     DeviceTemperatureCapabilities,
-    TemperatureConstraints,
     DaikinOperationModes,
     DaikinFanSpeedModes,
 } from '../types';

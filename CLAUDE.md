@@ -203,7 +203,7 @@ Configuration is managed via Homebridge UI:
 
 2. **Mobile App** (Gigya):
    - Email/password authentication
-   - 5000 API calls/day limit
+   - 3000 API calls/day limit
    - WebSocket support for real-time updates
 
 ### Rate Limiting

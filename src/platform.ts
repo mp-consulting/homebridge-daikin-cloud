@@ -9,6 +9,7 @@ import {StringUtils} from './utils/strings';
 import fs from 'node:fs';
 import {DaikinCloudRepo, DaikinCloudController, DaikinCloudDevice, DaikinControllerConfig} from './api';
 import {UpdateMapper} from './utils/update-mapper';
+import {ConfigManager, PluginConfig} from './config/config-manager';
 import {
     ONE_MINUTE_MS,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
@@ -29,12 +30,13 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     public readonly storagePath: string = '';
     public controller: DaikinCloudController | undefined;
 
-    public readonly updateIntervalDelay = ONE_MINUTE_MS * DEFAULT_UPDATE_INTERVAL_MINUTES;
-    public updateInterval: NodeJS.Timeout | undefined;
-    public forceUpdateTimeout: NodeJS.Timeout | undefined;
+    public readonly updateIntervalDelay: number;
+    private updateInterval: NodeJS.Timeout | undefined;
+    private forceUpdateTimeout: NodeJS.Timeout | undefined;
     private readonly accessoryFactory: AccessoryFactory;
     private readonly updateMapper: UpdateMapper;
     private readonly authMode: 'developer_portal' | 'mobile_app';
+    private readonly deviceListeners = new Map<string, () => void>();
 
     constructor(
         public readonly log: Logger,
@@ -55,6 +57,13 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         // Determine authentication mode
         this.authMode = this.config.authMode === 'mobile_app' ? 'mobile_app' : 'developer_portal';
         this.log.info(`[Config] Authentication mode: ${this.authMode}`);
+
+        // Validate configuration
+        const configManager = new ConfigManager(this.config as PluginConfig);
+        const validation = configManager.validate();
+        for (const warning of validation.warnings) {
+            this.log.warn(`[Config] ${warning}`);
+        }
 
         // Check if credentials are configured based on auth mode
         if (this.authMode === 'mobile_app') {
@@ -170,7 +179,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
             const devices: DaikinCloudDevice[] = await this.discoverDevices(this.controller, onInvalidGrantError);
 
             if (devices.length > 0) {
-                await this.createDevices(devices);
+                this.createDevices(devices);
                 this.startUpdateDevicesInterval();
 
                 // Enable WebSocket for real-time updates (unless explicitly disabled)
@@ -180,6 +189,21 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
             }
 
             this.log.info('--------------- End Daikin info for debugging reasons --------------------');
+        });
+
+        // Shutdown handler: clean up timers, WebSocket, and device listeners on platform shutdown
+        this.api.on('shutdown', () => {
+            this.log.debug('[Platform] Shutting down, cleaning up resources...');
+            clearInterval(this.updateInterval);
+            clearTimeout(this.forceUpdateTimeout);
+            this.controller?.disableWebSocket();
+            for (const [uuid, listener] of this.deviceListeners) {
+                const accessory = this.accessories.find(a => a.UUID === uuid);
+                if (accessory?.context.device) {
+                    accessory.context.device.removeListener('updated', listener);
+                }
+            }
+            this.deviceListeners.clear();
         });
     }
 
@@ -193,8 +217,8 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
             return await controller.getCloudDevices();
         } catch (error) {
             if (error instanceof Error) {
-                error.message = `[API Syncing] Failed to get cloud devices from Daikin Cloud: ${error.message}`;
-                this.log.error(error.message);
+                const message = `[API Syncing] Failed to get cloud devices from Daikin Cloud: ${error.message}`;
+                this.log.error(message);
 
                 if (error.message.includes('invalid_grant')) {
                     onInvalidGrantError();
@@ -204,8 +228,8 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         }
     }
 
-    private async createDevices(devices: DaikinCloudDevice[]) {
-        devices.forEach(device => {
+    private createDevices(devices: DaikinCloudDevice[]) {
+        for (const device of devices) {
             try {
                 const uuid = this.api.hap.uuid.generate(device.getId());
                 const deviceModel: string = device.getDescription().deviceModel;
@@ -219,11 +243,15 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
                     if (existingAccessory) {
                         this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
                     }
-                    return;
+                    continue;
                 }
 
                 if (existingAccessory) {
                     this.log.info('[Platform] Restoring existing accessory from cache:', existingAccessory.displayName);
+
+                    // Remove old event listener before reassigning device
+                    this.removeDeviceListener(existingAccessory);
+
                     existingAccessory.context.device = device;
                     this.api.updatePlatformAccessories([existingAccessory]);
 
@@ -250,7 +278,19 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
                     this.log.debug('[Platform] Device JSON:', JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(device.desc), null, 2));
                 }
             }
-        });
+        }
+    }
+
+    private removeDeviceListener(accessory: PlatformAccessory<DaikinCloudAccessoryContext>) {
+        const existingListener = this.deviceListeners.get(accessory.UUID);
+        if (existingListener && accessory.context.device) {
+            accessory.context.device.removeListener('updated', existingListener);
+            this.deviceListeners.delete(accessory.UUID);
+        }
+    }
+
+    registerDeviceListener(accessory: PlatformAccessory<DaikinCloudAccessoryContext>, listener: () => void) {
+        this.deviceListeners.set(accessory.UUID, listener);
     }
 
     private async updateDevices() {
@@ -264,14 +304,24 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         }
     }
 
-    forceUpdateDevices(delay: number = this.config.forceUpdateDelay || DEFAULT_FORCE_UPDATE_DELAY_MS) {
-        this.log.debug(`[API Syncing] Force update devices data (delayed by ${delay}, update pending: ${this.forceUpdateTimeout || 'no update pending'})`);
+    forceUpdateDevices(delay: number = Math.max(0, this.config.forceUpdateDelay || DEFAULT_FORCE_UPDATE_DELAY_MS)) {
+        // Debounce: if a force update is already pending, don't restart timers
+        if (this.forceUpdateTimeout) {
+            this.log.debug('[API Syncing] Force update already pending, skipping duplicate request');
+            return;
+        }
+
+        this.log.debug(`[API Syncing] Force update devices data (delayed by ${delay}ms)`);
 
         clearInterval(this.updateInterval);
-        clearTimeout(this.forceUpdateTimeout);
 
         this.forceUpdateTimeout = setTimeout(async () => {
-            await this.updateDevices();
+            this.forceUpdateTimeout = undefined;
+            try {
+                await this.updateDevices();
+            } catch (error) {
+                this.log.error(`[API Syncing] Force update failed: ${(error as Error).message}`);
+            }
             this.startUpdateDevicesInterval();
         }, delay);
     }
@@ -279,7 +329,11 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     private startUpdateDevicesInterval() {
         this.log.debug(`[API Syncing] (Re)starting update devices interval every ${this.updateIntervalDelay / ONE_MINUTE_MS} minutes`);
         this.updateInterval = setInterval(async () => {
-            await this.updateDevices();
+            try {
+                await this.updateDevices();
+            } catch (error) {
+                this.log.error(`[API Syncing] Periodic update failed: ${(error as Error).message}`);
+            }
         }, this.updateIntervalDelay);
     }
 

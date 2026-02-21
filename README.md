@@ -32,7 +32,7 @@ This plugin supports two authentication methods:
 
 | Method | API Calls/Day | WebSocket | Setup |
 |--------|--------------|-----------|-------|
-| **Mobile App** | 5000 | Yes | Email/password (same as Onecta app) |
+| **Mobile App** | 3000 | Yes | Email/password (same as Onecta app) |
 | **Developer Portal** | 200 | No | OAuth with developer credentials |
 
 **Recommended**: Mobile App authentication provides more API calls and real-time WebSocket updates.
@@ -132,7 +132,7 @@ Add the platform to your Homebridge `config.json`:
 | Mode | Daily Limit | Recommended Polling |
 |------|-------------|---------------------|
 | Developer Portal | 200 calls/day | 15+ minutes |
-| Mobile App | 5000 calls/day | 1-5 minutes |
+| Mobile App | 3000 calls/day | 1-5 minutes |
 
 The plugin manages rate limits by:
 - Polling at configurable intervals

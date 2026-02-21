@@ -5,7 +5,9 @@
  */
 
 import * as https from 'node:https';
+import {z} from 'zod';
 import {DAIKIN_OIDC_CONFIG, RateLimitStatus, GatewayDevice, OAuthProvider} from './daikin-types';
+import {GatewayDeviceSchema} from './daikin-schemas';
 import {
     HTTP_STATUS,
     DEFAULT_RETRY_AFTER_SECONDS,
@@ -14,6 +16,7 @@ import {
     MAX_RETRY_ATTEMPTS,
     RETRY_BASE_DELAY_MS,
     RETRY_MAX_DELAY_MS,
+    HTTP_REQUEST_TIMEOUT_MS,
 } from '../constants';
 
 export class RateLimitedError extends Error {
@@ -39,7 +42,7 @@ export class ApiTimeoutError extends Error {
 
 export class DaikinApi {
     private blockedUntil = 0;
-    private isRefreshing = false;
+    private refreshPromise: Promise<void> | null = null;
 
     constructor(
         private readonly oauth: OAuthProvider,
@@ -86,7 +89,9 @@ export class DaikinApi {
     }
 
     private static parseHeaderStatic(value: string | string[] | undefined): number | undefined {
-        if (!value) return undefined;
+        if (!value) {
+            return undefined;
+        }
         const str = Array.isArray(value) ? value[0] : value;
         const num = parseInt(str, 10);
         return isNaN(num) ? undefined : num;
@@ -120,6 +125,10 @@ export class DaikinApi {
                 }));
             });
 
+            req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
+                req.destroy(new Error(`Request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
+            });
+
             req.on('error', reject);
             req.end();
         });
@@ -130,10 +139,11 @@ export class DaikinApi {
     // =========================================================================
 
     /**
-     * Get all gateway devices
+     * Get all gateway devices with runtime validation
      */
     async getDevices(): Promise<GatewayDevice[]> {
-        return this.request<GatewayDevice[]>('/v1/gateway-devices');
+        const rawDevices = await this.request<unknown[]>('/v1/gateway-devices');
+        return z.array(GatewayDeviceSchema).parse(rawDevices) as GatewayDevice[];
     }
 
     /**
@@ -249,21 +259,29 @@ export class DaikinApi {
                 throw new Error(`Bad Request (${HTTP_STATUS.BAD_REQUEST}): ${response.body || 'No response body'}`);
 
             case HTTP_STATUS.UNAUTHORIZED:
-                // If we've exhausted retries or already refreshing, give up
-                if (retryCount >= MAX_RETRY_ATTEMPTS || this.isRefreshing) {
+                // If we've exhausted retries, give up
+                if (retryCount >= MAX_RETRY_ATTEMPTS) {
                     throw new Error(`Unauthorized (${HTTP_STATUS.UNAUTHORIZED}): Token expired or invalid`);
                 }
-                // Try to refresh the token and retry the request with exponential backoff
+                // Deduplicate concurrent refresh requests using a shared promise
                 try {
-                    this.isRefreshing = true;
-                    await this.oauth.refreshToken();
-                    this.isRefreshing = false;
+                    if (!this.refreshPromise) {
+                        this.refreshPromise = this.oauth.refreshToken().then(
+                            () => {
+                                this.refreshPromise = null;
+                            },
+                            (err) => {
+                                this.refreshPromise = null;
+                                throw err;
+                            },
+                        );
+                    }
+                    await this.refreshPromise;
                     // Apply exponential backoff delay before retry
                     const delay = this.getRetryDelay(retryCount);
                     await this.sleep(delay);
                     return this.request<T>(path, method, body, retryCount + 1);
                 } catch {
-                    this.isRefreshing = false;
                     throw new Error(`Unauthorized (${HTTP_STATUS.UNAUTHORIZED}): Token refresh failed. Please re-authenticate.`);
                 }
 
@@ -310,7 +328,9 @@ export class DaikinApi {
     }
 
     private parseHeader(value: string | string[] | undefined): number | undefined {
-        if (!value) return undefined;
+        if (!value) {
+            return undefined;
+        }
         const str = Array.isArray(value) ? value[0] : value;
         const num = parseInt(str, 10);
         return isNaN(num) ? undefined : num;
@@ -349,6 +369,10 @@ export class DaikinApi {
                     body: data,
                     headers: res.headers,
                 }));
+            });
+
+            req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
+                req.destroy(new Error(`Request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
             });
 
             req.on('error', reject);

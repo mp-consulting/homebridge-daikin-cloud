@@ -167,6 +167,79 @@ describe('DaikinApi', () => {
             // Should only refresh MAX_RETRY_ATTEMPTS times
             expect(mockOAuth.refreshToken).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS);
         });
+
+        it('should deduplicate concurrent token refresh requests', async () => {
+            jest.useRealTimers();
+
+            // Create a slow refresh that we can control
+            let resolveRefresh!: () => void;
+            const refreshPromise = new Promise<void>((resolve) => {
+                resolveRefresh = resolve;
+            });
+
+            let callCount = 0;
+            mockOAuth.refreshToken.mockImplementation(async () => {
+                callCount++;
+                await refreshPromise;
+                return {
+                    access_token: 'new-token',
+                    refresh_token: 'new-refresh',
+                    token_type: 'Bearer',
+                    expires_in: 3600,
+                } as TokenSet;
+            });
+
+            const devices = [{id: 'device-1', managementPoints: []}];
+            let httpCallCount = 0;
+            const mockRequest = {
+                on: jest.fn().mockReturnThis(),
+                write: jest.fn(),
+                end: jest.fn(),
+                setTimeout: jest.fn(),
+            };
+
+            (https.request as jest.Mock).mockImplementation((options, callback) => {
+                httpCallCount++;
+                // First two return 401, then 200
+                const statusCode = httpCallCount <= 2 ? 401 : 200;
+                const body = statusCode === 200 ? JSON.stringify(devices) : 'Unauthorized';
+                const mockResponse: any = {
+                    statusCode,
+                    headers: {},
+                    on: jest.fn((event, cb) => {
+                        if (event === 'data') {
+                            cb(body);
+                        }
+                        if (event === 'end') {
+                            cb();
+                        }
+                        return mockResponse;
+                    }),
+                };
+                callback(mockResponse);
+                return mockRequest;
+            });
+
+            const api = new DaikinApi(mockOAuth);
+            (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
+
+            mockOAuth.getAccessToken
+                .mockResolvedValueOnce('expired-token')
+                .mockResolvedValueOnce('expired-token')
+                .mockResolvedValue('new-token');
+
+            // Fire two concurrent requests that will both get 401
+            const p1 = api.getDevices();
+            const p2 = api.getDevices();
+
+            // Let the refresh complete
+            resolveRefresh();
+
+            await Promise.all([p1, p2]);
+
+            // Should only have refreshed once despite two concurrent 401s
+            expect(callCount).toBe(1);
+        });
     });
 
     describe('rate limiting', () => {
@@ -334,17 +407,12 @@ describe('DaikinApi', () => {
             const api = new DaikinApi(mockOAuth);
             (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
 
-            try {
-                await api.getDevices();
-                fail('Expected ApiTimeoutError to be thrown');
-            } catch (error) {
-                expect(error).toBeInstanceOf(ApiTimeoutError);
-                const timeoutError = error as ApiTimeoutError;
-                expect(timeoutError.statusCode).toBe(504);
-                expect(timeoutError.attemptsMade).toBe(MAX_RETRY_ATTEMPTS + 1);
-                expect(timeoutError.message).toContain('Gateway Timeout');
-                expect(timeoutError.message).toContain('504');
-            }
+            const error = await api.getDevices().catch((e) => e);
+            expect(error).toBeInstanceOf(ApiTimeoutError);
+            expect(error.statusCode).toBe(504);
+            expect(error.attemptsMade).toBe(MAX_RETRY_ATTEMPTS + 1);
+            expect(error.message).toContain('Gateway Timeout');
+            expect(error.message).toContain('504');
         });
 
         it('should throw ApiTimeoutError with correct name for 502', async () => {
@@ -353,15 +421,10 @@ describe('DaikinApi', () => {
             const api = new DaikinApi(mockOAuth);
             (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
 
-            try {
-                await api.getDevices();
-                fail('Expected ApiTimeoutError to be thrown');
-            } catch (error) {
-                expect(error).toBeInstanceOf(ApiTimeoutError);
-                const timeoutError = error as ApiTimeoutError;
-                expect(timeoutError.statusCode).toBe(502);
-                expect(timeoutError.message).toContain('Bad Gateway');
-            }
+            const error = await api.getDevices().catch((e) => e);
+            expect(error).toBeInstanceOf(ApiTimeoutError);
+            expect(error.statusCode).toBe(502);
+            expect(error.message).toContain('Bad Gateway');
         });
 
         it('should throw ApiTimeoutError with correct name for 503', async () => {
@@ -370,15 +433,10 @@ describe('DaikinApi', () => {
             const api = new DaikinApi(mockOAuth);
             (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
 
-            try {
-                await api.getDevices();
-                fail('Expected ApiTimeoutError to be thrown');
-            } catch (error) {
-                expect(error).toBeInstanceOf(ApiTimeoutError);
-                const timeoutError = error as ApiTimeoutError;
-                expect(timeoutError.statusCode).toBe(503);
-                expect(timeoutError.message).toContain('Service Unavailable');
-            }
+            const error = await api.getDevices().catch((e) => e);
+            expect(error).toBeInstanceOf(ApiTimeoutError);
+            expect(error.statusCode).toBe(503);
+            expect(error.message).toContain('Service Unavailable');
         });
     });
 });

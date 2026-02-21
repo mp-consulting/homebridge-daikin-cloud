@@ -30,7 +30,25 @@ const SSLUtils = {
         return ipv4Pattern.test(str) || ipv6Pattern.test(str);
     },
 
+    /**
+     * Validate that a hostname is safe for use in shell commands.
+     * Only allows alphanumeric, dots, hyphens, and colons (for IPv6).
+     */
+    validateHostname(hostname) {
+        if (!hostname || typeof hostname !== 'string') {
+            throw new Error('Hostname is required');
+        }
+        if (!/^[a-zA-Z0-9.:_-]+$/.test(hostname)) {
+            throw new Error(`Invalid hostname: contains disallowed characters`);
+        }
+        if (hostname.length > 253) {
+            throw new Error('Hostname too long (max 253 characters)');
+        }
+    },
+
     generateCert(hostname, certDir) {
+        this.validateHostname(hostname);
+
         const keyPath = resolve(certDir, 'server.key');
         const certPath = resolve(certDir, 'server.crt');
 
@@ -88,7 +106,7 @@ const TokenManager = {
     },
 
     save(filePath, tokenSet) {
-        fs.writeFileSync(filePath, JSON.stringify(tokenSet, null, 2), 'utf8');
+        fs.writeFileSync(filePath, JSON.stringify(tokenSet, null, 2), { encoding: 'utf8', mode: 0o600 });
     },
 
     delete(filePath) {
@@ -730,21 +748,27 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     // -------------------------------------------------------------------------
 
     async handleRevokeAuth(payload) {
-        const tokenSet = TokenManager.load(this.getTokenFilePath());
-        if (!tokenSet) return { success: true, message: 'No tokens to revoke' };
+        const devPortalTokenSet = TokenManager.load(this.getTokenFilePath());
+        const mobileTokenSet = TokenManager.load(this.getMobileTokenFilePath());
+
+        if (!devPortalTokenSet && !mobileTokenSet) {
+            return { success: true, message: 'No tokens to revoke' };
+        }
 
         const { clientId, clientSecret } = payload;
 
-        if (tokenSet.refresh_token && clientId && clientSecret) {
+        if (devPortalTokenSet?.refresh_token && clientId && clientSecret) {
             try {
                 // Use static method from compiled src/api
-                await DaikinOAuth.revokeTokenStatic(tokenSet.refresh_token, clientId, clientSecret);
+                await DaikinOAuth.revokeTokenStatic(devPortalTokenSet.refresh_token, clientId, clientSecret);
             } catch (error) {
                 console.warn('Failed to revoke token at server:', error.message);
             }
         }
 
+        // Delete both token files
         TokenManager.delete(this.getTokenFilePath());
+        TokenManager.delete(this.getMobileTokenFilePath());
         return { success: true, message: 'Authentication revoked. You will need to re-authenticate.' };
     }
 

@@ -1,7 +1,6 @@
 import {PlatformAccessory} from 'homebridge';
 import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../platform';
-import {DeviceCapabilityDetector} from '../device';
-import {getCapabilitySummary} from '../device';
+import {DeviceCapabilityDetector, getCapabilitySummary} from '../device';
 
 export class BaseAccessory {
     readonly platform: DaikinCloudPlatform;
@@ -15,8 +14,6 @@ export class BaseAccessory {
         this.accessory = accessory;
         this.gatewayManagementPointId = this.getEmbeddedIdByManagementPointType('gateway');
 
-        this.printDeviceInfo();
-
         const modelInfo = this.gatewayManagementPointId
             ? (accessory.context.device.getData(this.gatewayManagementPointId, 'modelInfo', undefined).value as string) || 'Unknown'
             : 'Unknown';
@@ -25,24 +22,25 @@ export class BaseAccessory {
             : null;
         const serialNumber = serialData ? (serialData.value as string) || 'NOT_AVAILABLE' : 'NOT_AVAILABLE';
 
+        this.printDeviceInfo(modelInfo);
+
         this.accessory.getService(this.platform.Service.AccessoryInformation)!
             .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Daikin')
             .setCharacteristic(this.platform.Characteristic.Model, modelInfo)
             .setCharacteristic(this.platform.Characteristic.SerialNumber, serialNumber);
 
-        this.accessory.context.device.on('updated', () => {
+        const updateListener = () => {
             this.platform.log.debug(`[API Syncing] Updated ${this.accessory.displayName} (${this.accessory.UUID}), LastUpdated: ${this.accessory.context.device.getLastUpdated()}`);
-        });
+        };
+        this.accessory.context.device.on('updated', updateListener);
+        this.platform.registerDeviceListener(this.accessory, updateListener);
     }
 
-    printDeviceInfo() {
+    private printDeviceInfo(modelInfo: string) {
         this.platform.log.info('[Platform] Device found with id: ' + this.accessory.UUID);
         this.platform.log.info('[Platform]     id: ' + this.accessory.UUID);
         this.platform.log.info('[Platform]     name: ' + this.accessory.displayName);
         this.platform.log.info('[Platform]     last updated: ' + this.accessory.context.device.getLastUpdated());
-        const modelInfo = this.gatewayManagementPointId
-            ? this.accessory.context.device.getData(this.gatewayManagementPointId, 'modelInfo', undefined).value
-            : 'Unknown';
         this.platform.log.info('[Platform]     modelInfo: ' + modelInfo);
         this.platform.log.info('[Platform]     deviceModel: ' + this.accessory.context.device.getDescription().deviceModel);
     }
@@ -72,8 +70,7 @@ export class BaseAccessory {
         }
 
         if (managementPoints.length >= 2) {
-            this.platform.log.warn(`[Platform] Found more then one management point for managementPointType ${managementPointType}, we don't expect this, please open an issue on https://github.com/mp-consulting/homebridge-daikin-cloud/issues`);
-            return null;
+            this.platform.log.warn(`[Platform] Found more than one management point for managementPointType ${managementPointType}, using first one. Please open an issue on https://github.com/mp-consulting/homebridge-daikin-cloud/issues`);
         }
 
         return managementPoints[0].embeddedId;

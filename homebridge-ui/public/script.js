@@ -898,7 +898,7 @@ const MobileAuth = {
                 await this.saveCredentials(email, password);
                 success.innerHTML = `
                     <strong>Success!</strong> Found ${result.deviceCount || 0} device(s).<br>
-                    Rate limit: ${result.rateLimit?.remainingDay || '?'}/${result.rateLimit?.limitDay || '5000'}/day<br>
+                    Rate limit: ${result.rateLimit?.remainingDay || '?'}/${result.rateLimit?.limitDay || '3000'}/day<br>
                     <small>Restart Homebridge to apply.</small>`;
                 DOM.show(success);
                 setTimeout(() => {
@@ -975,8 +975,8 @@ const AuthMode = {
         DOM.toggle($id('btn-authenticate-mobile'), isMobile);
 
         $id('auth-mode-text').textContent = isMobile ? 'Mobile App' : 'Developer Portal';
-        $id('rate-limit-display').textContent = isMobile ? '5000 requests/day' : '200 requests/day';
-        $id('rate-limit-info').textContent = `The Daikin API limits you to ${isMobile ? '5000' : '200'} requests per day.`;
+        $id('rate-limit-display').textContent = isMobile ? '3000 requests/day' : '200 requests/day';
+        $id('rate-limit-info').textContent = `The Daikin API limits you to ${isMobile ? '3000' : '200'} requests per day.`;
 
         DOM.toggle($id('websocket-setting-row'), isMobile);
 
@@ -990,7 +990,7 @@ const AuthMode = {
 
         if (interval) {
             interval.placeholder = isMobile ? '5 (recommended)' : '15 (recommended)';
-            interval.title = isMobile ? '1-5 min (5000 calls/day)' : '15+ min (200 calls/day)';
+            interval.title = isMobile ? '1-5 min (3000 calls/day)' : '15+ min (200 calls/day)';
         }
         if (delay) {
             delay.placeholder = isMobile ? '10 (recommended)' : '60 (recommended)';

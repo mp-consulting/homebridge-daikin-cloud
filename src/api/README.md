@@ -19,7 +19,7 @@ Daikin Cloud API integration layer with support for both Developer Portal and Mo
 Uses OAuth 2.0 with client credentials from the Daikin Developer Portal.
 Requires manual OAuth flow through Homebridge UI.
 
-### Mobile App (5000 API calls/day)
+### Mobile App (3000 API calls/day)
 Uses the mobile app's Gigya authentication with PKCE.
 Provides automatic authentication and WebSocket access for real-time updates.
 

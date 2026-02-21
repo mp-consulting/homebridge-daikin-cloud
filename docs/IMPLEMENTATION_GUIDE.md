@@ -477,7 +477,7 @@ describe('DaikinWebSocket', () => {
        <h3>API Rate Limit</h3>
        <div class="progress">
            <div id="rate-limit-bar" class="progress-bar" style="width: 75%">
-               <span id="rate-limit-text">75% remaining (3750/5000)</span>
+               <span id="rate-limit-text">75% remaining (2250/3000)</span>
            </div>
        </div>
        <small>Resets: <span id="rate-limit-reset">23:59 UTC</span></small>
