@@ -1,43 +1,34 @@
-name: Build and Lint
+name: CI
 
 on: [push, pull_request]
 
 jobs:
   build:
+    name: Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
-        # the Node.js versions to build on
-        node-version: [18.x, 20.x]
+        node-version: [20.x, 22.x]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Lint the project
+      - name: Lint
         run: npm run lint
 
-      - name: Build the project
+      - name: Build
         run: npm run build
-        env:
-          CI: true
 
-      - name: Test with Coverage
-        run: npm run test -- --coverage
-
-      - name: Upload Coverage to Codecov
-        uses: codecov/codecov-action@v3
-        if: matrix.node-version == '20.x'
-        with:
-          files: ./coverage/lcov.info
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
+      - name: Test
+        run: npm test
