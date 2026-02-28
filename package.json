@@ -53,10 +53,8 @@
     "ts-node": "^10.3.0",
     "typescript": "^4.4.4"
   },
-  "funding": [
-    {
-      "type": "paypal",
-      "url": "https://www.paypal.me/MickaelPalma"
-    }
-  ]
+  "funding": {
+    "type": "paypal",
+    "url": "https://paypal.me/mickaelpalma"
+  }
 }
