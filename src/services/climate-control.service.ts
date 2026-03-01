@@ -162,14 +162,24 @@ export class ClimateControlService {
 
   async handleCurrentTemperatureGet(): Promise<CharacteristicValue> {
     const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/' + this.getCurrentControlMode()).value as number | undefined;
-    this.platform.log.debug(`[${this.name}] GET CurrentTemperature, temperature: ${temperature}, last update: ${this.accessory.context.device.getLastUpdated()}`);
+    const lastUpdate = this.accessory.context.device.getLastUpdated();
+    this.platform.log.debug(
+      `[${this.name}] GET CurrentTemperature, temperature: ${temperature}, last update: ${lastUpdate}`,
+    );
     // Return a valid temperature value, defaulting to 20 if undefined
     return typeof temperature === 'number' && isFinite(temperature) ? temperature : DEFAULT_ROOM_TEMPERATURE;
   }
 
   async handleCoolingThresholdTemperatureGet(): Promise<CharacteristicValue> {
-    const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`).value as number | undefined;
-    this.platform.log.debug(`[${this.name}] GET CoolingThresholdTemperature, temperature: ${temperature}, last update: ${this.accessory.context.device.getLastUpdated()}`);
+    const setpoint = this.getSetpoint(DaikinOperationModes.COOLING);
+    const path = `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${setpoint}`;
+    const temperature = this.accessory.context.device.getData(
+      this.managementPointId, 'temperatureControl', path,
+    ).value as number | undefined;
+    const lastUpdate = this.accessory.context.device.getLastUpdated();
+    this.platform.log.debug(
+      `[${this.name}] GET CoolingThresholdTemperature, temperature: ${temperature}, last update: ${lastUpdate}`,
+    );
     return typeof temperature === 'number' && isFinite(temperature) ? temperature : 25;
   }
 
@@ -205,8 +215,15 @@ export class ClimateControlService {
   }
 
   async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {
-    const temperature = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`).value as number | undefined;
-    this.platform.log.debug(`[${this.name}] GET HeatingThresholdTemperature, temperature: ${temperature}, last update: ${this.accessory.context.device.getLastUpdated()}`);
+    const setpoint = this.getSetpoint(DaikinOperationModes.HEATING);
+    const path = `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${setpoint}`;
+    const temperature = this.accessory.context.device.getData(
+      this.managementPointId, 'temperatureControl', path,
+    ).value as number | undefined;
+    const lastUpdate = this.accessory.context.device.getLastUpdated();
+    this.platform.log.debug(
+      `[${this.name}] GET HeatingThresholdTemperature, temperature: ${temperature}, last update: ${lastUpdate}`,
+    );
     return typeof temperature === 'number' && isFinite(temperature) ? temperature : DEFAULT_ROOM_TEMPERATURE;
   }
 
@@ -224,7 +241,10 @@ export class ClimateControlService {
 
   async handleTargetHeaterCoolerStateGet(): Promise<CharacteristicValue> {
     const operationMode: DaikinOperationModes = this.getCurrentOperationMode();
-    this.platform.log.debug(`[${this.name}] GET TargetHeaterCoolerState, operationMode: ${operationMode}, last update: ${this.accessory.context.device.getLastUpdated()}`);
+    const lastUpdate = this.accessory.context.device.getLastUpdated();
+    this.platform.log.debug(
+      `[${this.name}] GET TargetHeaterCoolerState, operationMode: ${operationMode}, last update: ${lastUpdate}`,
+    );
 
     switch (operationMode) {
       case DaikinOperationModes.COOLING:
@@ -291,8 +311,13 @@ export class ClimateControlService {
   async handleSwingModeGet(): Promise<CharacteristicValue> {
     const verticalSwingMode = this.hasSwingModeVerticalFeature() ? this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/vertical/currentMode`).value : null;
     const horizontalSwingMode = this.hasSwingModeHorizontalFeature() ? this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/horizontal/currentMode`).value : null;
-    this.platform.log.debug(`[${this.name}] GET SwingMode, verticalSwingMode: ${verticalSwingMode}, last update: ${this.accessory.context.device.getLastUpdated()}`);
-    this.platform.log.debug(`[${this.name}] GET SwingMode, horizontalSwingMode: ${horizontalSwingMode}, last update: ${this.accessory.context.device.getLastUpdated()}`);
+    const lastUpdate = this.accessory.context.device.getLastUpdated();
+    this.platform.log.debug(
+      `[${this.name}] GET SwingMode, verticalSwingMode: ${verticalSwingMode}, last update: ${lastUpdate}`,
+    );
+    this.platform.log.debug(
+      `[${this.name}] GET SwingMode, horizontalSwingMode: ${horizontalSwingMode}, last update: ${lastUpdate}`,
+    );
 
     if (horizontalSwingMode === DaikinFanDirectionHorizontalModes.STOP || verticalSwingMode === DaikinFanDirectionVerticalModes.STOP) {
       return this.platform.Characteristic.SwingMode.SWING_DISABLED;
@@ -365,7 +390,13 @@ export class ClimateControlService {
       }
 
 
-      throw new Error(`Could not determine the TemperatureControlSetpoint for operationMode: ${operationMode}, setpointMode: ${setpointMode}, controlMode: ${controlMode}, for device: ${JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4)}`);
+      const deviceDesc = JSON.stringify(
+        DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4,
+      );
+      throw new Error(
+        `Could not determine the TemperatureControlSetpoint for operationMode: ${operationMode}, `
+        + `setpointMode: ${setpointMode}, controlMode: ${controlMode}, for device: ${deviceDesc}`,
+      );
     }
 
     switch (controlMode) {

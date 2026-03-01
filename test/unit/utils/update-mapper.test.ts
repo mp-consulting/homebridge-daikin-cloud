@@ -211,7 +211,7 @@ describe('UpdateMapper', () => {
       });
 
       it('should map heating mode to HeaterCooler HEAT', () => {
-        const { accessory, mockService } = createMockAccessory('HeaterCooler', {
+        const { accessory } = createMockAccessory('HeaterCooler', {
           onOffMode: { value: 'on' },
         });
         const update: DeviceUpdate = {

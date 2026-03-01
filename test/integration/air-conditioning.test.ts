@@ -283,7 +283,8 @@ test.each<Array<string | string | any>>([
 
   const removeServiceSpy = vi.spyOn(accessory, 'removeService').mockImplementation(() => {});
 
-  const homebridgeAccessory = new AirConditioningAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
+  // Constructor side-effects register services on the accessory; the instance itself is unused
+  new AirConditioningAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
 
 
   expect(removeServiceSpy).toHaveBeenNthCalledWith(1, expect.objectContaining({ displayName: 'Powerful mode', subtype: 'Powerful_Mode' }));

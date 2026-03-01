@@ -4,7 +4,7 @@
 import { vi } from 'vitest';
 import type { PlatformConfig } from 'homebridge';
 
-export const MockLogger = (...args: any[]) => vi.fn();
+export const MockLogger = (..._args: any[]) => vi.fn();
 MockLogger.debug = MockLogger;
 MockLogger.info = MockLogger;
 MockLogger.success = MockLogger;

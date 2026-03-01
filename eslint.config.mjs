@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   // Ignores
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**', 'node_modules/**', 'test/test-*.js'],
   },
   // Base recommended configs
   eslint.configs.recommended,
@@ -52,12 +52,22 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-use-before-define': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
+      'max-len': 'off',
     },
   },
-  // homebridge-ui browser globals (if applicable)
+  // Test helper files — relaxed rules
+  {
+    files: ['test/helpers/**/*.ts', 'test/fixtures/**/*.ts', 'test/mocks/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      'max-len': 'off',
+    },
+  },
+  // homebridge-ui browser globals
   {
     files: ['homebridge-ui/public/**/*.js'],
     languageOptions: {
+      sourceType: 'script',
       globals: {
         document: 'readonly',
         window: 'readonly',
@@ -68,16 +78,20 @@ export default tseslint.config(
         clearTimeout: 'readonly',
         setInterval: 'readonly',
         clearInterval: 'readonly',
+        URL: 'readonly',
       },
     },
     rules: {
       '@typescript-eslint/no-use-before-define': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
-  // homebridge-ui server globals (if applicable)
+  // homebridge-ui server globals
   {
     files: ['homebridge-ui/server.js'],
     languageOptions: {
+      sourceType: 'commonjs',
       globals: {
         console: 'readonly',
         setTimeout: 'readonly',
@@ -86,7 +100,18 @@ export default tseslint.config(
         clearInterval: 'readonly',
         process: 'readonly',
         fetch: 'readonly',
+        require: 'readonly',
+        module: 'readonly',
+        exports: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        URL: 'readonly',
+        Buffer: 'readonly',
       },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      'prefer-const': 'off',
     },
   },
 );

@@ -30,7 +30,12 @@ export class BaseAccessory {
           .setCharacteristic(this.platform.Characteristic.SerialNumber, serialNumber);
 
         const updateListener = () => {
-          this.platform.log.debug(`[API Syncing] Updated ${this.accessory.displayName} (${this.accessory.UUID}), LastUpdated: ${this.accessory.context.device.getLastUpdated()}`);
+          const name = this.accessory.displayName;
+          const uuid = this.accessory.UUID;
+          const lastUpdated = this.accessory.context.device.getLastUpdated();
+          this.platform.log.debug(
+            `[API Syncing] Updated ${name} (${uuid}), LastUpdated: ${lastUpdated}`,
+          );
         };
         this.accessory.context.device.on('updated', updateListener);
         this.platform.registerDeviceListener(this.accessory, updateListener);
@@ -62,7 +67,9 @@ export class BaseAccessory {
   }
 
   getEmbeddedIdByManagementPointType(managementPointType: string): string | null {
-    const managementPoints = this.accessory.context.device.desc.managementPoints.filter((managementPoint) => (managementPoint).managementPointType === managementPointType);
+    const managementPoints = this.accessory.context.device.desc.managementPoints.filter(
+      (managementPoint) => (managementPoint).managementPointType === managementPointType,
+    );
 
     if (managementPoints.length === 0) {
       this.platform.log.error(`[Platform] No management point found for managementPointType ${managementPointType}`);

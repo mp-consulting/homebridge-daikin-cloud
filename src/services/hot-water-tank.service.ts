@@ -99,7 +99,9 @@ export class HotWaterTankService {
   async handleHotWaterTankCurrentHeatingCoolingStateGet(): Promise<CharacteristicValue> {
     const state = this.accessory.context.device.getData(this.managementPointId, 'onOffMode', undefined).value;
     this.platform.log.debug(`[${this.name}] GET ActiveState, state: ${state}, last update: ${this.accessory.context.device.getLastUpdated()}`);
-    const val = state === DaikinOnOffModes.ON ? this.platform.Characteristic.CurrentHeatingCoolingState.HEAT : this.platform.Characteristic.CurrentHeatingCoolingState.OFF;
+    const val = state === DaikinOnOffModes.ON
+      ? this.platform.Characteristic.CurrentHeatingCoolingState.HEAT
+      : this.platform.Characteristic.CurrentHeatingCoolingState.OFF;
     this.platform.log.debug(`[${this.name}] GET ActiveState going to return ${val}`);
     return val;
   }
@@ -124,7 +126,10 @@ export class HotWaterTankService {
     try {
       const temperatureControl = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', '/operationModes/heating/setpoints/domesticHotWaterTemperature');
       if (temperatureControl.settable === false) {
-        this.platform.log.warn(`[${this.name}] SET HeatingTargetTemperature domesticHotWaterTank is not possible because temperatureControl isn't settable`, temperatureControl);
+        this.platform.log.warn(
+          `[${this.name}] SET HeatingTargetTemperature domesticHotWaterTank is not possible because temperatureControl isn't settable`,
+          temperatureControl,
+        );
       }
 
       await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', '/operationModes/heating/setpoints/domesticHotWaterTemperature', temperature);
@@ -184,7 +189,8 @@ export class HotWaterTankService {
     this.platform.log.debug(`[${this.name}] SET TargetHeatingCoolingState, daikinOperationMode to: ${daikinOperationMode}`);
 
     try {
-      // turn on the device as well because there is no specific on/off characteristic in Homebridge, while targetState/operationMode and onOffMode are separate with the Daikin API
+      // turn on the device as well because there is no specific on/off characteristic in
+      // Homebridge, while targetState/operationMode and onOffMode are separate with the Daikin API
       await this.accessory.context.device.setData(this.managementPointId, 'onOffMode', DaikinOnOffModes.ON, undefined);
 
       const operationMode = this.accessory.context.device.getData(this.managementPointId, 'operationMode', undefined);
@@ -203,7 +209,10 @@ export class HotWaterTankService {
 
   async handlePowerfulModeGet() {
     const powerfulModeOn = this.accessory.context.device.getData(this.managementPointId, 'powerfulMode', undefined).value === DaikinPowerfulModes.ON;
-    this.platform.log.debug(`[${this.name}] GET PowerfulMode, powerfulModeOn: ${powerfulModeOn}, last update: ${this.accessory.context.device.getLastUpdated()}`);
+    const lastUpdate = this.accessory.context.device.getLastUpdated();
+    this.platform.log.debug(
+      `[${this.name}] GET PowerfulMode, powerfulModeOn: ${powerfulModeOn}, last update: ${lastUpdate}`,
+    );
     return powerfulModeOn;
   }
 
