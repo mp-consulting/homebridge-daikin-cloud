@@ -12,14 +12,10 @@ assignees: ''
 **Describe Your Problem:**
 <!-- A clear and concise description of what problem you are trying to solve. -->
 
-**Logs (with debug mode enabled):**
+**Logs:**
 
 ```
-Show the Homebridge logs here, sensitive information is removed. I'm mainly interested in the part between 
-
---- Daikin info for debugging reasons (enable Debug Mode for more logs) ---
-and 
---------------- End Daikin info for debugging reasons --------------------
+Show the Homebridge logs here, remove any sensitive information.
 ```
 
 **Plugin Config:**
@@ -31,12 +27,7 @@ Show your Homebridge config.json here, remove any sensitive information.
 **Screenshots:**
 <!-- If applicable, add screenshots to help explain your problem. -->
 
-**Daikin Environment:**
-
-* **Daikin model**:,<!-- BRP069C4x -->
-* **Daikin firmware version**: <!-- 1_12_51 -->
-
-**Homebridge Environment:**
+**Environment:**
 
 * **Plugin Version**:
 * **Homebridge Version**: <!-- homebridge -V -->

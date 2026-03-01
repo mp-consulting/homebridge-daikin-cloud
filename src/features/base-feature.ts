@@ -5,34 +5,34 @@
  * Each feature represents an optional capability like PowerfulMode, EconoMode, etc.
  */
 
-import {CharacteristicValue, PlatformAccessory, Service, Logger} from 'homebridge';
-import {DaikinCloudAccessoryContext, DaikinCloudPlatform} from '../platform';
-import {DaikinCloudRepo} from '../api/daikin-cloud.repository';
+import type { CharacteristicValue, PlatformAccessory, Service, Logger } from 'homebridge';
+import type { DaikinCloudAccessoryContext, DaikinCloudPlatform } from '../platform';
+import { DaikinCloudRepo } from '../api/daikin-cloud.repository';
 
 /**
  * Abstract base class for feature modules.
  * Features are optional capabilities that can be enabled/disabled via switches.
  */
 export abstract class BaseFeature {
-    protected readonly platform: DaikinCloudPlatform;
-    protected readonly accessory: PlatformAccessory<DaikinCloudAccessoryContext>;
-    protected readonly managementPointId: string;
-    protected readonly log: Logger;
-    protected readonly name: string;
+  protected readonly platform: DaikinCloudPlatform;
+  protected readonly accessory: PlatformAccessory<DaikinCloudAccessoryContext>;
+  protected readonly managementPointId: string;
+  protected readonly log: Logger;
+  protected readonly name: string;
 
-    protected switchService?: Service;
+  protected switchService?: Service;
 
-    constructor(
-        platform: DaikinCloudPlatform,
-        accessory: PlatformAccessory<DaikinCloudAccessoryContext>,
-        managementPointId: string,
-    ) {
-        this.platform = platform;
-        this.accessory = accessory;
-        this.managementPointId = managementPointId;
-        this.log = platform.log;
-        this.name = accessory.displayName;
-    }
+  constructor(
+    platform: DaikinCloudPlatform,
+    accessory: PlatformAccessory<DaikinCloudAccessoryContext>,
+    managementPointId: string,
+  ) {
+    this.platform = platform;
+    this.accessory = accessory;
+    this.managementPointId = managementPointId;
+    this.log = platform.log;
+    this.name = accessory.displayName;
+  }
 
     /**
      * The display name for this feature (used for the switch service).
@@ -70,79 +70,79 @@ export abstract class BaseFeature {
      * Supports both legacy `showExtraFeatures` (all features) and individual feature toggles.
      */
     protected isEnabledInConfig(): boolean {
-        const config = this.platform.config;
+      const config = this.platform.config;
 
-        // Check individual feature config first (e.g., showPowerfulMode)
-        if (this.configKey in config) {
-            return config[this.configKey] === true;
-        }
+      // Check individual feature config first (e.g., showPowerfulMode)
+      if (this.configKey in config) {
+        return config[this.configKey] === true;
+      }
 
-        // Fall back to legacy showExtraFeatures (enables all features)
-        return config.showExtraFeatures === true;
+      // Fall back to legacy showExtraFeatures (enables all features)
+      return config.showExtraFeatures === true;
     }
 
     /**
      * Set up the feature. Creates or removes the switch service based on support and config.
      */
     setup(): void {
-        if (this.isSupported() && this.isEnabledInConfig()) {
-            this.log.debug(`[${this.name}] Device has ${this.featureName}, add Switch Service`);
-            this.createOrUpdateSwitchService();
-        } else {
-            this.removeServiceIfExists();
-        }
+      if (this.isSupported() && this.isEnabledInConfig()) {
+        this.log.debug(`[${this.name}] Device has ${this.featureName}, add Switch Service`);
+        this.createOrUpdateSwitchService();
+      } else {
+        this.removeServiceIfExists();
+      }
     }
 
     /**
      * Create or update the switch service for this feature.
      */
     protected createOrUpdateSwitchService(): void {
-        // Get existing service or create new one
-        this.switchService = this.accessory.getService(this.featureName) ||
+      // Get existing service or create new one
+      this.switchService = this.accessory.getService(this.featureName) ||
             this.accessory.addService(
-                this.platform.Service.Switch,
-                this.featureName,
-                this.serviceSubtype,
+              this.platform.Service.Switch,
+              this.featureName,
+              this.serviceSubtype,
             );
 
-        // Set the name
-        this.switchService.setCharacteristic(
-            this.platform.Characteristic.Name,
-            this.featureName,
-        );
+      // Set the name
+      this.switchService.setCharacteristic(
+        this.platform.Characteristic.Name,
+        this.featureName,
+      );
 
-        // Add and set configured name
-        this.switchService.addOptionalCharacteristic(
-            this.platform.Characteristic.ConfiguredName,
-        );
-        this.switchService.setCharacteristic(
-            this.platform.Characteristic.ConfiguredName,
-            this.featureName,
-        );
+      // Add and set configured name
+      this.switchService.addOptionalCharacteristic(
+        this.platform.Characteristic.ConfiguredName,
+      );
+      this.switchService.setCharacteristic(
+        this.platform.Characteristic.ConfiguredName,
+        this.featureName,
+      );
 
-        // Set up handlers
-        this.switchService
-            .getCharacteristic(this.platform.Characteristic.On)
-            .onGet(this.handleGet.bind(this))
-            .onSet(this.handleSet.bind(this));
+      // Set up handlers
+      this.switchService
+        .getCharacteristic(this.platform.Characteristic.On)
+        .onGet(this.handleGet.bind(this))
+        .onSet(this.handleSet.bind(this));
     }
 
     /**
      * Remove the switch service if it exists.
      */
     protected removeServiceIfExists(): void {
-        const existingService = this.accessory.getService(this.featureName);
-        if (existingService) {
-            this.accessory.removeService(existingService);
-            this.switchService = undefined;
-        }
+      const existingService = this.accessory.getService(this.featureName);
+      if (existingService) {
+        this.accessory.removeService(existingService);
+        this.switchService = undefined;
+      }
     }
 
     /**
      * Get device data from the Daikin Cloud.
      */
     protected getData(dataPoint: string, path?: string): unknown {
-        return this.accessory.context.device.getData(this.managementPointId, dataPoint, path);
+      return this.accessory.context.device.getData(this.managementPointId, dataPoint, path);
     }
 
     /**
@@ -152,20 +152,20 @@ export abstract class BaseFeature {
      * - With path: setData(managementPointId, dataPoint, path, value)
      */
     protected async setData(dataPoint: string, value: unknown, path?: string): Promise<void> {
-        try {
-            if (path) {
-                await this.accessory.context.device.setData(this.managementPointId, dataPoint, path, value);
-            } else {
-                await this.accessory.context.device.setData(this.managementPointId, dataPoint, value, undefined);
-            }
-            this.platform.forceUpdateDevices();
-        } catch (e) {
-            this.log.error(
-                `[${this.name}] Failed to set ${dataPoint}:`,
-                e,
-                JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4),
-            );
-            throw e;
+      try {
+        if (path) {
+          await this.accessory.context.device.setData(this.managementPointId, dataPoint, path, value);
+        } else {
+          await this.accessory.context.device.setData(this.managementPointId, dataPoint, value, undefined);
         }
+        this.platform.forceUpdateDevices();
+      } catch (e) {
+        this.log.error(
+          `[${this.name}] Failed to set ${dataPoint}:`,
+          e,
+          JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4),
+        );
+        throw e;
+      }
     }
 }

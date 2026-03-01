@@ -1,11 +1,8 @@
 {
-  "watch": [
-    "src",
-    "homebridge-ui"
-  ],
-  "ext": "ts",
+  "watch": ["src", "homebridge-ui"],
+  "ext": "ts,js,json,html,css",
   "ignore": [],
-  "exec": "tsc && homebridge -I -D -U ./test/hbConfig 2>&1 | tee ./test/hbConfig/tmp/homebridge.log",
+  "exec": "tsc && homebridge-config-ui-x run -U ./test/hbConfig -D",
   "signal": "SIGTERM",
   "env": {
     "NODE_OPTIONS": "--trace-warnings"

@@ -1,718 +1,718 @@
 export const althermaFraction =
     {
-        'id': '',
-        'deviceModel': 'Altherma',
-        'type': 'heating-wlan',
-        'isCloudConnectionUp':
+      'id': '',
+      'deviceModel': 'Altherma',
+      'type': 'heating-wlan',
+      'isCloudConnectionUp':
             {
-                'settable': false,
-                'value': true,
+              'settable': false,
+              'value': true,
             },
-        'managementPoints':
+      'managementPoints':
             [
-                {
-                    'embeddedId': 'gateway',
-                    'managementPointType': 'gateway',
-                    'managementPointCategory': 'secondary',
-                    'firmwareVersion':
+              {
+                'embeddedId': 'gateway',
+                'managementPointType': 'gateway',
+                'managementPointCategory': 'secondary',
+                'firmwareVersion':
                         {
-                            'settable': false,
-                            'value': '3.3.0',
-                            'maxLength': 8,
+                          'settable': false,
+                          'value': '3.3.0',
+                          'maxLength': 8,
                         },
-                    'ipAddress':
+                'ipAddress':
                         {
-                            'settable': false,
-                            'value': '192.168.0.220',
-                            'maxLength': 15,
+                          'settable': false,
+                          'value': '192.168.0.220',
+                          'maxLength': 15,
                         },
-                    'isFirmwareUpdateSupported':
+                'isFirmwareUpdateSupported':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': true,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': true,
                         },
-                    'macAddress':
+                'macAddress':
                         {
-                            'settable': false,
-                            'value': '',
-                            'maxLength': 17,
+                          'settable': false,
+                          'value': '',
+                          'maxLength': 17,
                         },
-                    'modelInfo':
+                'modelInfo':
                         {
-                            'settable': false,
-                            'value': 'BRP069A78',
-                            'maxLength': 9,
+                          'settable': false,
+                          'value': 'BRP069A78',
+                          'maxLength': 9,
                         },
-                    'name':
+                'name':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': 'Gateway',
-                            'maxLength': 63,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': 'Gateway',
+                          'maxLength': 63,
                         },
-                },
-                {
-                    'embeddedId': 'climateControlMainZone',
-                    'managementPointType': 'climateControl',
-                    'managementPointCategory': 'primary',
-                    'managementPointSubType': 'mainZone',
-                    'consumptionData':
+              },
+              {
+                'embeddedId': 'climateControlMainZone',
+                'managementPointType': 'climateControl',
+                'managementPointCategory': 'primary',
+                'managementPointSubType': 'mainZone',
+                'consumptionData':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'ref': '#consumptionData',
-                            'value':
+                          'settable': false,
+                          'requiresReboot': false,
+                          'ref': '#consumptionData',
+                          'value':
                                 {
-                                    'electrical':
+                                  'electrical':
                                         {
-                                            'heating':
+                                          'heating':
                                                 {
-                                                    'd':
+                                                  'd':
                                                         [
-                                                            1,
-                                                            1,
-                                                            2,
-                                                            1,
-                                                            1,
-                                                            1,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            1,
-                                                            1,
-                                                            2,
-                                                            1,
-                                                            1,
-                                                            1,
-                                                            1,
-                                                            1,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
+                                                          1,
+                                                          1,
+                                                          2,
+                                                          1,
+                                                          1,
+                                                          1,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          1,
+                                                          1,
+                                                          2,
+                                                          1,
+                                                          1,
+                                                          1,
+                                                          1,
+                                                          1,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
                                                         ],
-                                                    'w':
+                                                  'w':
                                                         [
-                                                            4,
-                                                            5,
-                                                            5,
-                                                            4,
-                                                            6,
-                                                            8,
-                                                            14,
-                                                            15,
-                                                            11,
-                                                            5,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
+                                                          4,
+                                                          5,
+                                                          5,
+                                                          4,
+                                                          6,
+                                                          8,
+                                                          14,
+                                                          15,
+                                                          11,
+                                                          5,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
                                                         ],
-                                                    'm':
+                                                  'm':
                                                         [
-                                                            1131,
-                                                            1140,
-                                                            957,
-                                                            654,
-                                                            278,
-                                                            48,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            371,
-                                                            884,
-                                                            1270,
-                                                            1607,
-                                                            790,
-                                                            646,
-                                                            419,
-                                                            164,
-                                                            17,
-                                                            0,
-                                                            0,
-                                                            129,
-                                                            16,
-                                                            null,
-                                                            null,
+                                                          1131,
+                                                          1140,
+                                                          957,
+                                                          654,
+                                                          278,
+                                                          48,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          371,
+                                                          884,
+                                                          1270,
+                                                          1607,
+                                                          790,
+                                                          646,
+                                                          419,
+                                                          164,
+                                                          17,
+                                                          0,
+                                                          0,
+                                                          129,
+                                                          16,
+                                                          null,
+                                                          null,
                                                         ],
                                                 },
-                                            'cooling':
+                                          'cooling':
                                                 {
-                                                    'd':
+                                                  'd':
                                                         [
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
                                                         ],
-                                                    'w':
+                                                  'w':
                                                         [
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
                                                         ],
-                                                    'm':
+                                                  'm':
                                                         [
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            73,
-                                                            161,
-                                                            94,
-                                                            65,
-                                                            7,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            80,
-                                                            142,
-                                                            158,
-                                                            56,
-                                                            0,
-                                                            null,
-                                                            null,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          73,
+                                                          161,
+                                                          94,
+                                                          65,
+                                                          7,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          0,
+                                                          80,
+                                                          142,
+                                                          158,
+                                                          56,
+                                                          0,
+                                                          null,
+                                                          null,
                                                         ],
                                                 },
                                         },
                                 },
                         },
-                    'controlMode':
+                'controlMode':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': 'leavingWaterTemperature',
-                            'values':
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': 'leavingWaterTemperature',
+                          'values':
                                 [
-                                    'leavingWaterTemperature',
-                                    'externalRoomTemperature',
-                                    'roomTemperature',
+                                  'leavingWaterTemperature',
+                                  'externalRoomTemperature',
+                                  'roomTemperature',
                                 ],
                         },
-                    'errorCode':
+                'errorCode':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': '',
-                            'maxLength': 16,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': '',
+                          'maxLength': 16,
                         },
-                    'holidayMode':
+                'holidayMode':
                         {
-                            'settable': true,
-                            'requiresReboot': false,
-                            'ref': '#holidayMode',
-                            'value':
+                          'settable': true,
+                          'requiresReboot': false,
+                          'ref': '#holidayMode',
+                          'value':
                                 {
-                                    'enabled': false,
-                                    'startDate': '2017-01-01',
-                                    'endDate': '2017-01-01',
+                                  'enabled': false,
+                                  'startDate': '2017-01-01',
+                                  'endDate': '2017-01-01',
                                 },
                         },
-                    'isHolidayModeActive':
+                'isHolidayModeActive':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': false,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': false,
                         },
-                    'isInEmergencyState':
+                'isInEmergencyState':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': false,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': false,
                         },
-                    'isInErrorState':
+                'isInErrorState':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': false,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': false,
                         },
-                    'isInInstallerState':
+                'isInInstallerState':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': false,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': false,
                         },
-                    'isInWarningState':
+                'isInWarningState':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': false,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': false,
                         },
-                    'name':
+                'name':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': 'Climate control unit',
-                            'maxLength': 63,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': 'Climate control unit',
+                          'maxLength': 63,
                         },
-                    'onOffMode':
+                'onOffMode':
                         {
-                            'settable': true,
-                            'requiresReboot': false,
-                            'value': 'on',
-                            'values':
+                          'settable': true,
+                          'requiresReboot': false,
+                          'value': 'on',
+                          'values':
                                 [
-                                    'off',
-                                    'on',
+                                  'off',
+                                  'on',
                                 ],
                         },
-                    'operationMode':
+                'operationMode':
                         {
-                            'settable': true,
-                            'requiresReboot': false,
-                            'value': 'heating',
-                            'values':
+                          'settable': true,
+                          'requiresReboot': false,
+                          'value': 'heating',
+                          'values':
                                 [
-                                    'heating',
-                                    'cooling',
-                                    'auto',
+                                  'heating',
+                                  'cooling',
+                                  'auto',
                                 ],
                         },
-                    'sensoryData':
+                'sensoryData':
                         {
-                            'settable': false,
-                            'ref': '#sensoryData',
-                            'value':
+                          'settable': false,
+                          'ref': '#sensoryData',
+                          'value':
                                 {
-                                    'leavingWaterTemperature':
+                                  'leavingWaterTemperature':
                                         {
-                                            'settable': false,
-                                            'requiresReboot': false,
-                                            'value': 35,
-                                            'maxValue': 127,
-                                            'minValue': -127,
-                                            'stepValue': 1,
+                                          'settable': false,
+                                          'requiresReboot': false,
+                                          'value': 35,
+                                          'maxValue': 127,
+                                          'minValue': -127,
+                                          'stepValue': 1,
                                         },
-                                    'outdoorTemperature':
+                                  'outdoorTemperature':
                                         {
-                                            'settable': false,
-                                            'requiresReboot': false,
-                                            'value': 11,
-                                            'maxValue': 127,
-                                            'minValue': -127,
-                                            'stepValue': 1,
+                                          'settable': false,
+                                          'requiresReboot': false,
+                                          'value': 11,
+                                          'maxValue': 127,
+                                          'minValue': -127,
+                                          'stepValue': 1,
                                         },
                                 },
                         },
-                    'setpointMode':
+                'setpointMode':
                         {
-                            'settable': false,
-                            'requiresReboot': true,
-                            'value': 'weatherDependent',
-                            'values':
+                          'settable': false,
+                          'requiresReboot': true,
+                          'value': 'weatherDependent',
+                          'values':
                                 [
-                                    'fixed',
-                                    'weatherDependentHeatingFixedCooling',
-                                    'weatherDependent',
+                                  'fixed',
+                                  'weatherDependentHeatingFixedCooling',
+                                  'weatherDependent',
                                 ],
                         },
-                    'temperatureControl':
+                'temperatureControl':
                         {
-                            'settable': true,
-                            'ref': '#temperatureControl',
-                            'value':
+                          'settable': true,
+                          'ref': '#temperatureControl',
+                          'value':
                                 {
-                                    'operationModes':
+                                  'operationModes':
                                         {
-                                            'auto':
+                                          'auto':
                                                 {
-                                                    'setpoints':
+                                                  'setpoints':
                                                         {
-                                                            'leavingWaterOffset':
+                                                          'leavingWaterOffset':
                                                                 {
-                                                                    'settable': true,
-                                                                    'requiresReboot': false,
-                                                                    'value': 0,
-                                                                    'maxValue': 10,
-                                                                    'minValue': -10,
-                                                                    'stepValue': 1,
+                                                                  'settable': true,
+                                                                  'requiresReboot': false,
+                                                                  'value': 0,
+                                                                  'maxValue': 10,
+                                                                  'minValue': -10,
+                                                                  'stepValue': 1,
                                                                 },
                                                         },
                                                 },
-                                            'cooling':
+                                          'cooling':
                                                 {
-                                                    'setpoints':
+                                                  'setpoints':
                                                         {
-                                                            'leavingWaterOffset':
+                                                          'leavingWaterOffset':
                                                                 {
-                                                                    'settable': true,
-                                                                    'requiresReboot': false,
-                                                                    'value': 0,
-                                                                    'maxValue': 10,
-                                                                    'minValue': -10,
-                                                                    'stepValue': 1,
+                                                                  'settable': true,
+                                                                  'requiresReboot': false,
+                                                                  'value': 0,
+                                                                  'maxValue': 10,
+                                                                  'minValue': -10,
+                                                                  'stepValue': 1,
                                                                 },
                                                         },
                                                 },
-                                            'heating':
+                                          'heating':
                                                 {
-                                                    'setpoints':
+                                                  'setpoints':
                                                         {
-                                                            'leavingWaterOffset':
+                                                          'leavingWaterOffset':
                                                                 {
-                                                                    'settable': true,
-                                                                    'requiresReboot': false,
-                                                                    'value': 0,
-                                                                    'maxValue': 10,
-                                                                    'minValue': -10,
-                                                                    'stepValue': 1,
-                                                                },
-                                                        },
-                                                },
-                                        },
-                                },
-                        },
-                },
-                {
-                    'embeddedId': 'domesticHotWaterTank',
-                    'managementPointType': 'domesticHotWaterTank',
-                    'managementPointCategory': 'primary',
-                    'consumptionData':
-                        {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'ref': '#consumptionData',
-                            'value':
-                                {
-                                    'electrical':
-                                        {
-                                            'heating':
-                                                {
-                                                    'd':
-                                                        [
-                                                            0,
-                                                            0,
-                                                            1,
-                                                            0,
-                                                            2,
-                                                            1,
-                                                            1,
-                                                            0,
-                                                            1,
-                                                            3,
-                                                            0,
-                                                            1,
-                                                            0,
-                                                            0,
-                                                            1,
-                                                            1,
-                                                            2,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                        ],
-                                                    'w':
-                                                        [
-                                                            10,
-                                                            11,
-                                                            11,
-                                                            10,
-                                                            12,
-                                                            11,
-                                                            9,
-                                                            11,
-                                                            10,
-                                                            4,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                        ],
-                                                    'm':
-                                                        [
-                                                            429,
-                                                            372,
-                                                            385,
-                                                            344,
-                                                            335,
-                                                            322,
-                                                            311,
-                                                            342,
-                                                            486,
-                                                            365,
-                                                            393,
-                                                            441,
-                                                            522,
-                                                            330,
-                                                            370,
-                                                            344,
-                                                            319,
-                                                            301,
-                                                            272,
-                                                            275,
-                                                            301,
-                                                            14,
-                                                            null,
-                                                            null,
-                                                        ],
-                                                },
-                                        },
-                                },
-                        },
-                    'errorCode':
-                        {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': '',
-                            'maxLength': 16,
-                        },
-                    'heatupMode':
-                        {
-                            'settable': false,
-                            'requiresReboot': true,
-                            'value': 'reheatOnly',
-                            'values':
-                                [
-                                    'reheatOnly',
-                                    'reheatSchedule',
-                                    'scheduleOnly',
-                                ],
-                        },
-                    'isHolidayModeActive':
-                        {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': false,
-                        },
-                    'isInEmergencyState':
-                        {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': false,
-                        },
-                    'isInErrorState':
-                        {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': false,
-                        },
-                    'isInInstallerState':
-                        {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': false,
-                        },
-                    'isInWarningState':
-                        {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': false,
-                        },
-                    'isPowerfulModeActive':
-                        {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': false,
-                        },
-                    'name':
-                        {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': 'Hot water tank unit',
-                            'maxLength': 63,
-                        },
-                    'onOffMode':
-                        {
-                            'settable': true,
-                            'requiresReboot': false,
-                            'value': 'on',
-                            'values':
-                                [
-                                    'off',
-                                    'on',
-                                ],
-                        },
-                    'operationMode':
-                        {
-                            'settable': false,
-                            'value': 'heating',
-                            'values':
-                                [
-                                    'heating',
-                                ],
-                        },
-                    'powerfulMode':
-                        {
-                            'settable': true,
-                            'requiresReboot': false,
-                            'value': 'off',
-                            'values':
-                                [
-                                    'off',
-                                    'on',
-                                ],
-                        },
-                    'sensoryData':
-                        {
-                            'settable': false,
-                            'ref': '#sensoryData',
-                            'value':
-                                {
-                                    'tankTemperature':
-                                        {
-                                            'settable': false,
-                                            'requiresReboot': false,
-                                            'value': 45,
-                                            'maxValue': 127,
-                                            'minValue': -127,
-                                            'stepValue': 1,
-                                        },
-                                },
-                        },
-                    'setpointMode':
-                        {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': 'fixed',
-                            'values':
-                                [
-                                    'fixed',
-                                    'weatherDependent',
-                                ],
-                        },
-                    'temperatureControl':
-                        {
-                            'settable': true,
-                            'ref': '#temperatureControl',
-                            'value':
-                                {
-                                    'operationModes':
-                                        {
-                                            'heating':
-                                                {
-                                                    'setpoints':
-                                                        {
-                                                            'domesticHotWaterTemperature':
-                                                                {
-                                                                    'settable': true,
-                                                                    'requiresReboot': false,
-                                                                    'value': 47,
-                                                                    'maxValue': 60,
-                                                                    'minValue': 30,
-                                                                    'stepValue': 1,
+                                                                  'settable': true,
+                                                                  'requiresReboot': false,
+                                                                  'value': 0,
+                                                                  'maxValue': 10,
+                                                                  'minValue': -10,
+                                                                  'stepValue': 1,
                                                                 },
                                                         },
                                                 },
                                         },
                                 },
                         },
-                },
-                {
-                    'embeddedId': 'indoorUnitHydro',
-                    'managementPointType': 'indoorUnitHydro',
-                    'managementPointCategory': 'secondary',
-                    'modelInfo':
+              },
+              {
+                'embeddedId': 'domesticHotWaterTank',
+                'managementPointType': 'domesticHotWaterTank',
+                'managementPointCategory': 'primary',
+                'consumptionData':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': 'EBBX16DF9W',
-                            'maxLength': 16,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'ref': '#consumptionData',
+                          'value':
+                                {
+                                  'electrical':
+                                        {
+                                          'heating':
+                                                {
+                                                  'd':
+                                                        [
+                                                          0,
+                                                          0,
+                                                          1,
+                                                          0,
+                                                          2,
+                                                          1,
+                                                          1,
+                                                          0,
+                                                          1,
+                                                          3,
+                                                          0,
+                                                          1,
+                                                          0,
+                                                          0,
+                                                          1,
+                                                          1,
+                                                          2,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                        ],
+                                                  'w':
+                                                        [
+                                                          10,
+                                                          11,
+                                                          11,
+                                                          10,
+                                                          12,
+                                                          11,
+                                                          9,
+                                                          11,
+                                                          10,
+                                                          4,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                          null,
+                                                        ],
+                                                  'm':
+                                                        [
+                                                          429,
+                                                          372,
+                                                          385,
+                                                          344,
+                                                          335,
+                                                          322,
+                                                          311,
+                                                          342,
+                                                          486,
+                                                          365,
+                                                          393,
+                                                          441,
+                                                          522,
+                                                          330,
+                                                          370,
+                                                          344,
+                                                          319,
+                                                          301,
+                                                          272,
+                                                          275,
+                                                          301,
+                                                          14,
+                                                          null,
+                                                          null,
+                                                        ],
+                                                },
+                                        },
+                                },
                         },
-                    'name':
+                'errorCode':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': 'Indoor Hydro Unit',
-                            'maxLength': 63,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': '',
+                          'maxLength': 16,
                         },
-                    'softwareVersion':
+                'heatupMode':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': '0792',
-                            'maxLength': 16,
+                          'settable': false,
+                          'requiresReboot': true,
+                          'value': 'reheatOnly',
+                          'values':
+                                [
+                                  'reheatOnly',
+                                  'reheatSchedule',
+                                  'scheduleOnly',
+                                ],
                         },
-                },
-                {
-                    'embeddedId': 'outdoorUnit',
-                    'managementPointType': 'outdoorUnit',
-                    'managementPointCategory': 'secondary',
-                    'name':
+                'isHolidayModeActive':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': 'Outdoor Unit',
-                            'maxLength': 63,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': false,
                         },
-                    'softwareVersion':
+                'isInEmergencyState':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': '802B',
-                            'maxLength': 16,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': false,
                         },
-                },
-                {
-                    'embeddedId': 'userInterface',
-                    'managementPointType': 'userInterface',
-                    'managementPointCategory': 'secondary',
-                    'modelInfo':
+                'isInErrorState':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': 'EBBX16DF9W',
-                            'maxLength': 16,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': false,
                         },
-                    'name':
+                'isInInstallerState':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': 'User Interface',
-                            'maxLength': 63,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': false,
                         },
-                    'softwareVersion':
+                'isInWarningState':
                         {
-                            'settable': false,
-                            'requiresReboot': false,
-                            'value': '7.4.0',
-                            'maxLength': 16,
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': false,
                         },
-                },
+                'isPowerfulModeActive':
+                        {
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': false,
+                        },
+                'name':
+                        {
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': 'Hot water tank unit',
+                          'maxLength': 63,
+                        },
+                'onOffMode':
+                        {
+                          'settable': true,
+                          'requiresReboot': false,
+                          'value': 'on',
+                          'values':
+                                [
+                                  'off',
+                                  'on',
+                                ],
+                        },
+                'operationMode':
+                        {
+                          'settable': false,
+                          'value': 'heating',
+                          'values':
+                                [
+                                  'heating',
+                                ],
+                        },
+                'powerfulMode':
+                        {
+                          'settable': true,
+                          'requiresReboot': false,
+                          'value': 'off',
+                          'values':
+                                [
+                                  'off',
+                                  'on',
+                                ],
+                        },
+                'sensoryData':
+                        {
+                          'settable': false,
+                          'ref': '#sensoryData',
+                          'value':
+                                {
+                                  'tankTemperature':
+                                        {
+                                          'settable': false,
+                                          'requiresReboot': false,
+                                          'value': 45,
+                                          'maxValue': 127,
+                                          'minValue': -127,
+                                          'stepValue': 1,
+                                        },
+                                },
+                        },
+                'setpointMode':
+                        {
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': 'fixed',
+                          'values':
+                                [
+                                  'fixed',
+                                  'weatherDependent',
+                                ],
+                        },
+                'temperatureControl':
+                        {
+                          'settable': true,
+                          'ref': '#temperatureControl',
+                          'value':
+                                {
+                                  'operationModes':
+                                        {
+                                          'heating':
+                                                {
+                                                  'setpoints':
+                                                        {
+                                                          'domesticHotWaterTemperature':
+                                                                {
+                                                                  'settable': true,
+                                                                  'requiresReboot': false,
+                                                                  'value': 47,
+                                                                  'maxValue': 60,
+                                                                  'minValue': 30,
+                                                                  'stepValue': 1,
+                                                                },
+                                                        },
+                                                },
+                                        },
+                                },
+                        },
+              },
+              {
+                'embeddedId': 'indoorUnitHydro',
+                'managementPointType': 'indoorUnitHydro',
+                'managementPointCategory': 'secondary',
+                'modelInfo':
+                        {
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': 'EBBX16DF9W',
+                          'maxLength': 16,
+                        },
+                'name':
+                        {
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': 'Indoor Hydro Unit',
+                          'maxLength': 63,
+                        },
+                'softwareVersion':
+                        {
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': '0792',
+                          'maxLength': 16,
+                        },
+              },
+              {
+                'embeddedId': 'outdoorUnit',
+                'managementPointType': 'outdoorUnit',
+                'managementPointCategory': 'secondary',
+                'name':
+                        {
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': 'Outdoor Unit',
+                          'maxLength': 63,
+                        },
+                'softwareVersion':
+                        {
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': '802B',
+                          'maxLength': 16,
+                        },
+              },
+              {
+                'embeddedId': 'userInterface',
+                'managementPointType': 'userInterface',
+                'managementPointCategory': 'secondary',
+                'modelInfo':
+                        {
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': 'EBBX16DF9W',
+                          'maxLength': 16,
+                        },
+                'name':
+                        {
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': 'User Interface',
+                          'maxLength': 63,
+                        },
+                'softwareVersion':
+                        {
+                          'settable': false,
+                          'requiresReboot': false,
+                          'value': '7.4.0',
+                          'maxLength': 16,
+                        },
+              },
             ],
-        'embeddedId': '',
-        'timestamp': '2024-10-02T09:29:40.484Z',
+      'embeddedId': '',
+      'timestamp': '2024-10-02T09:29:40.484Z',
     };

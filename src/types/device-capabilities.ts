@@ -3,7 +3,7 @@
  * These interfaces define the structure of detected device capabilities.
  */
 
-import { DaikinOperationModes } from './daikin-enums';
+import type { DaikinOperationModes } from './daikin-enums';
 
 /**
  * Represents all detected capabilities of a Daikin device.
