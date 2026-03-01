@@ -121,7 +121,8 @@ dist
 
 /.idea/
 .DS_Store
-test/hbConfig/
+test/hbConfig/*
+!test/hbConfig/config.sample.json
 
 # Test files with sensitive data
 test/mobile-tokens.json
