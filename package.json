@@ -7,7 +7,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git://github.com/mp-consulting/homebridge-daikin-cloud.git"
+    "url": "git+https://github.com/mp-consulting/homebridge-daikin-cloud.git"
   },
   "bugs": {
     "url": "https://github.com/mp-consulting/homebridge-daikin-cloud/issues"
@@ -56,5 +56,10 @@
   "funding": {
     "type": "paypal",
     "url": "https://paypal.me/mickaelpalma"
-  }
+  },
+  "files": [
+    "dist",
+    "homebridge-ui",
+    "config.schema.json"
+  ]
 }
