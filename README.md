@@ -6,6 +6,8 @@
 
 A [Homebridge](https://homebridge.io) plugin that integrates Daikin air conditioning units via the Daikin Cloud (Onecta) API, allowing you to control your devices through Apple HomeKit.
 
+> Originally based on [homebridge-daikin-cloud](https://github.com/JeroenVdb/homebridge-daikin-cloud) by [Jeroen Van den Berghe](https://github.com/JeroenVdb), licensed under the Apache License 2.0. This fork has been substantially rewritten by [MP Consulting](https://github.com/mp-consulting).
+
 ![HomeKit Controls](images/homekit-controls.jpeg) ![HomeKit Settings](images/homekit-settings.jpeg)
 
 ## Features
@@ -237,4 +239,4 @@ For development workflows and coding conventions, see [CLAUDE.md](CLAUDE.md).
 
 ## License
 
-[Apache-2.0](LICENSE)
+The original work by [Jeroen Van den Berghe](https://github.com/JeroenVdb) is licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). Modifications and new code by [MP Consulting](https://github.com/mp-consulting) are licensed under the [MIT License](https://opensource.org/licenses/MIT). See the [LICENSE](LICENSE) file for full details.
