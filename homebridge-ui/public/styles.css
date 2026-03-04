@@ -105,6 +105,18 @@
     color: var(--bs-danger-text-emphasis);
 }
 
+/* Device meta row */
+.device-meta {
+    font-size: 0.75rem;
+    color: var(--bs-tertiary-color);
+    opacity: 0.55;
+}
+
+.device-meta-sep {
+    margin: 0 0.4rem;
+    opacity: 0.4;
+}
+
 /* Device Toggle Labels */
 .device-toggle-label.visible {
     color: var(--bs-success);

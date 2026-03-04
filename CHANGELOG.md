@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.9] - 2026-03-04
+
+### Changed
+
+- **Config UI**: Device list now shows ON/OFF badge before the name, Online/Offline badge pushed to the far right, and grey meta labels (Room, Outdoor, Mode, Model) on a subtle second line
+- **Config UI**: Added GitHub and npm footer links
+- **Config UI**: Auth status token timer moved before the Connected badge in the header
+
 ## [1.3.8] - 2026-03-04
 
 ### Changed

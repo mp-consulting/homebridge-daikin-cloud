@@ -840,25 +840,25 @@ const Devices = {
     const powerOn = device.powerState === 'on';
     const mode = device.operationMode ? Utils.capitalize(device.operationMode) : '-';
     const features = device.features?.length
-      ? `<div class="mt-2">${device.features.map(f => `<span class="badge bg-secondary me-1">${f}</span>`).join('')}</div>`
+      ? device.features.map(f => `<span class="badge bg-secondary bg-opacity-50 me-1">${f}</span>`).join('')
       : '';
+
+    const meta = [
+      device.roomTemp ? `<span class="device-meta-item">Room: <span class="text-body-secondary">${Utils.escapeHtml(device.roomTemp)}</span></span>` : '',
+      device.outdoorTemp ? `<span class="device-meta-item">Outdoor: <span class="text-body-secondary">${Utils.escapeHtml(device.outdoorTemp)}</span></span>` : '',
+      `<span class="device-meta-item">Mode: <span class="text-body-secondary">${Utils.escapeHtml(mode)}</span></span>`,
+      `<span class="device-meta-item">Model: <span class="text-body-secondary">${Utils.escapeHtml(device.model)}</span></span>`,
+    ].filter(Boolean).join('<span class="device-meta-sep">·</span>');
 
     return `
             <div class="list-group-item">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div class="fw-semibold">${Utils.escapeHtml(device.name)}</div>
-                    <div class="d-flex gap-1">
-                        <span class="device-power ${powerOn ? 'power-on' : 'power-off'}">${powerOn ? 'ON' : 'OFF'}</span>
-                        <span class="device-status ${online ? 'online' : 'offline'}">${online ? 'Online' : 'Offline'}</span>
-                    </div>
+                <div class="d-flex align-items-center">
+                    <span class="device-power ${powerOn ? 'power-on' : 'power-off'} me-2">${powerOn ? 'ON' : 'OFF'}</span>
+                    <span class="fw-semibold">${Utils.escapeHtml(device.name)}</span>
+                    ${features ? `<div class="ms-2">${features}</div>` : ''}
+                    <span class="device-status ${online ? 'online' : 'offline'} ms-auto">${online ? 'Online' : 'Offline'}</span>
                 </div>
-                <div class="d-flex flex-wrap gap-3 small text-muted">
-                    ${device.roomTemp ? `<span><strong>Room:</strong> ${Utils.escapeHtml(device.roomTemp)}</span>` : ''}
-                    ${device.outdoorTemp ? `<span><strong>Outdoor:</strong> ${Utils.escapeHtml(device.outdoorTemp)}</span>` : ''}
-                    <span><strong>Mode:</strong> ${Utils.escapeHtml(mode)}</span>
-                    <span><strong>Model:</strong> ${Utils.escapeHtml(device.model)}</span>
-                </div>
-                ${features}
+                <div class="device-meta mt-1">${meta}</div>
             </div>`;
   },
 
