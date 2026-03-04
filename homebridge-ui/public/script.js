@@ -825,7 +825,7 @@ const Devices = {
   handleError(result) {
     if (result.message?.includes('Not authenticated')) {
       El.devicesEmpty.innerHTML = `
-                <div class="fs-1 mb-2 opacity-50">🔐</div>
+                <i class="bi bi-lock fs-1 mb-2 opacity-50 d-block text-center"></i>
                 <p class="mb-1">Please authenticate first</p>
                 <p class="text-muted small">Go to Authentication tab to connect.</p>`;
       DOM.show(El.devicesEmpty);

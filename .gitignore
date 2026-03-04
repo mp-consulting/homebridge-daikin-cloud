@@ -50,3 +50,4 @@ tmp/
 # BMad agent files
 _bmad/
 _bmad-output/
+homebridge-ui/public/lib/
