@@ -40,5 +40,8 @@ export const RETRY_MAX_DELAY_MS = 10000;
 /** HTTP request timeout (milliseconds) */
 export const HTTP_REQUEST_TIMEOUT_MS = 30000;
 
+/** Minimum delay between consecutive write (PATCH) requests to prevent burst rate limiting (milliseconds) */
+export const WRITE_INTER_REQUEST_DELAY_MS = 400;
+
 /** Daikin WebSocket URL for real-time updates */
 export const DAIKIN_WEBSOCKET_URL = 'wss://wsapi.onecta.daikineurope.com';

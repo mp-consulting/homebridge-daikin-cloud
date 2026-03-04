@@ -18,6 +18,7 @@ import {
   RETRY_BASE_DELAY_MS,
   RETRY_MAX_DELAY_MS,
   HTTP_REQUEST_TIMEOUT_MS,
+  WRITE_INTER_REQUEST_DELAY_MS,
 } from '../constants';
 
 export class RateLimitedError extends Error {
@@ -44,6 +45,9 @@ export class ApiTimeoutError extends Error {
 export class DaikinApi {
   private blockedUntil = 0;
   private refreshPromise: Promise<void> | null = null;
+  // Serializes write requests to prevent burst rate limiting when HomeKit fires
+  // concurrent commands (e.g. a scene targeting multiple devices simultaneously).
+  private writeQueue: Promise<unknown> = Promise.resolve();
 
   constructor(
         private readonly oauth: OAuthProvider,
@@ -164,9 +168,26 @@ export class DaikinApi {
     dataPath?: string,
   ): Promise<void> {
     const urlPath = `/v1/gateway-devices/${deviceId}/management-points/${embeddedId}/characteristics/${dataPoint}`;
-    // Include path in body if provided (matches mobile app format)
     const body = dataPath ? { value, path: dataPath } : { value };
-    await this.request(urlPath, 'PATCH', body);
+    await this.enqueueWrite(() => this.request(urlPath, 'PATCH', body));
+  }
+
+  /**
+   * Serializes write requests through a queue with a fixed inter-request delay.
+   * Prevents burst rate limiting when HomeKit scenes send simultaneous commands
+   * to multiple devices — each write waits for the previous to complete before
+   * executing, then holds for WRITE_INTER_REQUEST_DELAY_MS before releasing the next.
+   */
+  private enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
+    const queued = this.writeQueue
+      .catch(() => {})
+      .then(() => fn())
+      .then(
+        async (val) => { await this.sleep(WRITE_INTER_REQUEST_DELAY_MS); return val; },
+        async (err) => { await this.sleep(WRITE_INTER_REQUEST_DELAY_MS); throw err; },
+      );
+    this.writeQueue = queued.catch(() => {});
+    return queued;
   }
 
   /**
