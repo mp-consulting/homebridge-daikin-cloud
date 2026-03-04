@@ -183,8 +183,14 @@ export class DaikinApi {
       .catch(() => {})
       .then(() => fn())
       .then(
-        async (val) => { await this.sleep(WRITE_INTER_REQUEST_DELAY_MS); return val; },
-        async (err) => { await this.sleep(WRITE_INTER_REQUEST_DELAY_MS); throw err; },
+        async (val) => {
+          await this.sleep(WRITE_INTER_REQUEST_DELAY_MS);
+          return val;
+        },
+        async (err) => {
+          await this.sleep(WRITE_INTER_REQUEST_DELAY_MS);
+          throw err;
+        },
       );
     this.writeQueue = queued.catch(() => {});
     return queued;
