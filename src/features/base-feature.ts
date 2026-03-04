@@ -7,7 +7,6 @@
 
 import type { CharacteristicValue, PlatformAccessory, Service, Logger } from 'homebridge';
 import type { DaikinCloudAccessoryContext, DaikinCloudPlatform } from '../platform';
-import { DaikinCloudRepo } from '../api/daikin-cloud.repository';
 
 /**
  * Abstract base class for feature modules.
@@ -160,12 +159,8 @@ export abstract class BaseFeature {
         }
         this.platform.forceUpdateDevices();
       } catch (e) {
-        this.log.error(
-          `[${this.name}] Failed to set ${dataPoint}:`,
-          e,
-          JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4),
-        );
-        throw e;
+        this.log.warn(`[${this.name}] Failed to set ${dataPoint}: ${e instanceof Error ? e.message : e}`);
+        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
       }
     }
 }

@@ -128,3 +128,5 @@ test/hbConfig/*
 test/mobile-tokens.json
 test/*.tokens.json
 *.tokenset
+
+tmp/

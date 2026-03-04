@@ -9,6 +9,13 @@ import { EventEmitter } from 'node:events';
 import type { GatewayDevice, ManagementPoint, WebSocketDeviceUpdate } from './daikin-types';
 import type { DaikinApi } from './daikin-api';
 
+export class DeviceOfflineError extends Error {
+  constructor(deviceId: string) {
+    super(`Device ${deviceId} is offline (cloud connection down)`);
+    this.name = 'DeviceOfflineError';
+  }
+}
+
 export interface DeviceDataPoint {
     value: unknown;
     values?: string[];
@@ -112,6 +119,11 @@ export class DaikinCloudDevice extends EventEmitter {
   ): Promise<void> {
     let path: string | undefined;
     let value: unknown;
+
+    // Check if device cloud connection is up before attempting write
+    if (this.rawData.isCloudConnectionUp?.value === false) {
+      throw new DeviceOfflineError(this.rawData.id);
+    }
 
     // Determine which overload was used
     if (valueOrUndefined !== undefined) {

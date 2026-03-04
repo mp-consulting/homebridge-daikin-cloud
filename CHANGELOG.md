@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.7] - 2026-03-04
+
+### Fixed
+
+- **Proper HAP error handling for offline devices**: Set handlers now throw `HapStatusError(SERVICE_COMMUNICATION_FAILURE)` instead of raw errors, so HomeKit shows "No Response" and Homebridge no longer logs "This plugin threw an error from the characteristic" warnings
+- **Device offline guard**: `setData()` now checks `isCloudConnectionUp` before making API calls, avoiding wasted requests and rate limit consumption when a device's cloud connection is down
+- **Reduced log noise**: Replaced verbose error logging (full device JSON dump on every failed write) with concise warning messages
+
+### Changed
+
+- Refactored set handlers in `ClimateControlService` and `HotWaterTankService` to use a shared `setDeviceData()` helper that centralizes error handling and `forceUpdateDevices()` calls
+
 ## [1.3.6] - 2026-02-21
 
 ### Fixed

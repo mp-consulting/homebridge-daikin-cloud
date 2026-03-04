@@ -1,6 +1,5 @@
 import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
 import type { DaikinCloudAccessoryContext, DaikinCloudPlatform } from '../platform';
-import { DaikinCloudRepo } from '../api/daikin-cloud.repository';
 import {
   DaikinControlModes,
   DaikinFanDirectionHorizontalModes,
@@ -116,6 +115,21 @@ export class ClimateControlService {
     this.featureManager.setupFeatures();
   }
 
+  /**
+   * Execute a device write operation with proper HAP error handling.
+   * Catches errors, logs a warning, and throws HapStatusError(SERVICE_COMMUNICATION_FAILURE)
+   * so HomeKit shows "No Response" instead of Homebridge logging "plugin threw an error".
+   */
+  private async setDeviceData(characteristic: string, operation: () => Promise<void>): Promise<void> {
+    try {
+      await operation();
+      this.platform.forceUpdateDevices();
+    } catch (e) {
+      this.platform.log.warn(`[${this.name}] Failed to set ${characteristic}: ${e instanceof Error ? e.message : e}`);
+      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+  }
+
   addOrUpdateCharacteristicRotationSpeed() {
     if (!this.service) {
       throw Error('Service not initialized');
@@ -149,15 +163,11 @@ export class ClimateControlService {
   }
 
   async handleActiveStateSet(value: CharacteristicValue) {
-    this.platform.log.debug(`[${this.name}] SET ActiveState, state: ${value}`);
     const state = value as boolean;
-    try {
+    this.platform.log.debug(`[${this.name}] SET ActiveState, state: ${value}`);
+    await this.setDeviceData('ActiveState', async () => {
       await this.accessory.context.device.setData(this.managementPointId, 'onOffMode', state ? DaikinOnOffModes.ON : DaikinOnOffModes.OFF, undefined);
-      this.platform.forceUpdateDevices();
-    } catch (e) {
-      this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
-      throw e;
-    }
+    });
   }
 
   async handleCurrentTemperatureGet(): Promise<CharacteristicValue> {
@@ -186,13 +196,9 @@ export class ClimateControlService {
   async handleCoolingThresholdTemperatureSet(value: CharacteristicValue) {
     const temperature = Math.round(value as number * 2) / 2;
     this.platform.log.debug(`[${this.name}] SET CoolingThresholdTemperature, temperature to: ${temperature}`);
-    try {
+    await this.setDeviceData('CoolingThresholdTemperature', async () => {
       await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`, temperature);
-      this.platform.forceUpdateDevices();
-    } catch (e) {
-      this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
-      throw e;
-    }
+    });
   }
 
   async handleRotationSpeedGet(): Promise<CharacteristicValue> {
@@ -204,14 +210,10 @@ export class ClimateControlService {
   async handleRotationSpeedSet(value: CharacteristicValue) {
     const speed = value as number;
     this.platform.log.debug(`[${this.name}] SET RotationSpeed, speed to: ${speed}`);
-    try {
+    await this.setDeviceData('RotationSpeed', async () => {
       await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/currentMode`, 'fixed');
       await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`, speed);
-      this.platform.forceUpdateDevices();
-    } catch (e) {
-      this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
-      throw e;
-    }
+    });
   }
 
   async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {
@@ -228,15 +230,11 @@ export class ClimateControlService {
   }
 
   async handleHeatingThresholdTemperatureSet(value: CharacteristicValue) {
-    try {
-      const temperature = Math.round(value as number * 2) / 2;
-      this.platform.log.debug(`[${this.name}] SET HeatingThresholdTemperature, temperature to: ${temperature}`);
+    const temperature = Math.round(value as number * 2) / 2;
+    this.platform.log.debug(`[${this.name}] SET HeatingThresholdTemperature, temperature to: ${temperature}`);
+    await this.setDeviceData('HeatingThresholdTemperature', async () => {
       await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`, temperature);
-      this.platform.forceUpdateDevices();
-    } catch (e) {
-      this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
-      throw e;
-    }
+    });
   }
 
   async handleTargetHeaterCoolerStateGet(): Promise<CharacteristicValue> {
@@ -276,23 +274,18 @@ export class ClimateControlService {
         break;
     }
 
-    try {
-      this.platform.log.debug(`[${this.name}] SET TargetHeaterCoolerState, daikinOperationMode to: ${daikinOperationMode}`);
+    this.platform.log.debug(`[${this.name}] SET TargetHeaterCoolerState, daikinOperationMode to: ${daikinOperationMode}`);
+    await this.setDeviceData('TargetHeaterCoolerState', async () => {
       await this.accessory.context.device.setData(this.managementPointId, 'operationMode', daikinOperationMode, undefined);
       await this.accessory.context.device.setData(this.managementPointId, 'onOffMode', DaikinOnOffModes.ON, undefined);
-      this.platform.forceUpdateDevices();
-    } catch (e) {
-      this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
-      throw e;
-    }
+    });
   }
 
   async handleSwingModeSet(value: CharacteristicValue) {
-    try {
-      const swingMode = value as number;
-      const daikinSwingMode = swingMode === 1 ? DaikinFanDirectionHorizontalModes.SWING : DaikinFanDirectionHorizontalModes.STOP;
-      this.platform.log.debug(`[${this.name}] SET SwingMode, swingmode to: ${swingMode}/${daikinSwingMode}`);
-
+    const swingMode = value as number;
+    const daikinSwingMode = swingMode === 1 ? DaikinFanDirectionHorizontalModes.SWING : DaikinFanDirectionHorizontalModes.STOP;
+    this.platform.log.debug(`[${this.name}] SET SwingMode, swingmode to: ${swingMode}/${daikinSwingMode}`);
+    await this.setDeviceData('SwingMode', async () => {
       if (this.hasSwingModeHorizontalFeature()) {
         await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/horizontal/currentMode`, daikinSwingMode);
       }
@@ -300,12 +293,7 @@ export class ClimateControlService {
       if (this.hasSwingModeVerticalFeature()) {
         await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/vertical/currentMode`, daikinSwingMode);
       }
-
-      this.platform.forceUpdateDevices();
-    } catch (e) {
-      this.platform.log.error('Failed to set', e, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4));
-      throw e;
-    }
+    });
   }
 
   async handleSwingModeGet(): Promise<CharacteristicValue> {
@@ -390,12 +378,9 @@ export class ClimateControlService {
       }
 
 
-      const deviceDesc = JSON.stringify(
-        DaikinCloudRepo.maskSensitiveCloudDeviceData(this.accessory.context.device.desc), null, 4,
-      );
       throw new Error(
         `Could not determine the TemperatureControlSetpoint for operationMode: ${operationMode}, `
-        + `setpointMode: ${setpointMode}, controlMode: ${controlMode}, for device: ${deviceDesc}`,
+        + `setpointMode: ${setpointMode}, controlMode: ${controlMode}, deviceId: ${this.accessory.UUID}`,
       );
     }
 
