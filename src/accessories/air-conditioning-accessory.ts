@@ -20,4 +20,8 @@ export class AirConditioningAccessory extends BaseAccessory {
     this.service = new ClimateControlService(this.platform, this.accessory, climateControlEmbeddedId);
     this.logCapabilities(climateControlEmbeddedId);
   }
+
+  protected override refreshValues(): void {
+    this.service.refreshValues();
+  }
 }

@@ -147,6 +147,7 @@ export class DaikinCloudDevice extends EventEmitter {
   updateRawData(newData: GatewayDevice): void {
     this.rawData = newData;
     this.lastUpdated = new Date();
+    this.emit('updated');
   }
 
   /**

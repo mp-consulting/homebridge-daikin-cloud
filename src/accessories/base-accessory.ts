@@ -36,9 +36,19 @@ export class BaseAccessory {
           this.platform.log.debug(
             `[API Syncing] Updated ${name} (${uuid}), LastUpdated: ${lastUpdated}`,
           );
+          this.refreshValues();
         };
         this.accessory.context.device.on('updated', updateListener);
         this.platform.registerDeviceListener(this.accessory, updateListener);
+  }
+
+  /**
+   * Push current device state to HAP characteristics via updateValue().
+   * Called after every poll/WebSocket update so HomeKit always has an accurate
+   * view of device state. Subclasses override this to push their characteristics.
+   */
+  protected refreshValues(): void {
+    // Default no-op; subclasses override.
   }
 
   private printDeviceInfo(modelInfo: string) {

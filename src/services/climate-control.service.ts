@@ -130,6 +130,99 @@ export class ClimateControlService {
     }
   }
 
+  /**
+   * Push current device state to all HAP characteristics via updateValue().
+   * Called after every poll/WebSocket update so HomeKit has an accurate view of
+   * device state. An accurate HAP cache means HomeKit can self-filter redundant
+   * scene commands before they ever reach onSet.
+   */
+  refreshValues(): void {
+    if (!this.service) {
+      return;
+    }
+    try {
+      const onOff = this.accessory.context.device.getData(this.managementPointId, 'onOffMode', undefined).value;
+      const operationMode = this.getCurrentOperationMode();
+      const isOn = onOff === DaikinOnOffModes.ON;
+
+      this.service.getCharacteristic(this.platform.Characteristic.Active)
+        .updateValue(isOn ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE);
+
+      let currentState: number;
+      if (!isOn) {
+        currentState = this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE;
+      } else if (operationMode === DaikinOperationModes.COOLING) {
+        currentState = this.platform.Characteristic.CurrentHeaterCoolerState.COOLING;
+      } else if (operationMode === DaikinOperationModes.HEATING) {
+        currentState = this.platform.Characteristic.CurrentHeaterCoolerState.HEATING;
+      } else {
+        currentState = this.platform.Characteristic.CurrentHeaterCoolerState.IDLE;
+      }
+      this.service.getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)
+        .updateValue(currentState);
+
+      let targetState: number;
+      switch (operationMode) {
+        case DaikinOperationModes.COOLING:
+          targetState = this.platform.Characteristic.TargetHeaterCoolerState.COOL;
+          break;
+        case DaikinOperationModes.HEATING:
+          targetState = this.platform.Characteristic.TargetHeaterCoolerState.HEAT;
+          break;
+        default:
+          targetState = this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
+      }
+      this.service.getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
+        .updateValue(targetState);
+
+      const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/' + this.getCurrentControlMode()).value as number | undefined;
+      this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
+        .updateValue(typeof temperature === 'number' && isFinite(temperature) ? temperature : DEFAULT_ROOM_TEMPERATURE);
+
+      const coolingTemp = this.accessory.context.device.getData(
+        this.managementPointId, 'temperatureControl',
+        `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`,
+      ).value as number | undefined;
+      if (coolingTemp !== undefined) {
+        this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature)
+          .updateValue(typeof coolingTemp === 'number' && isFinite(coolingTemp) ? coolingTemp : 25);
+      }
+
+      const heatingTemp = this.accessory.context.device.getData(
+        this.managementPointId, 'temperatureControl',
+        `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`,
+      ).value as number | undefined;
+      if (heatingTemp !== undefined) {
+        this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature)
+          .updateValue(typeof heatingTemp === 'number' && isFinite(heatingTemp) ? heatingTemp : DEFAULT_ROOM_TEMPERATURE);
+      }
+
+      const speed = this.accessory.context.device.getData(
+        this.managementPointId, 'fanControl',
+        `/operationModes/${operationMode}/fanSpeed/modes/fixed`,
+      ).value as number | undefined;
+      if (speed !== undefined) {
+        this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+          .updateValue(typeof speed === 'number' && isFinite(speed) ? speed : 1);
+      }
+
+      if (this.hasSwingModeFeature()) {
+        const verticalSwingMode = this.hasSwingModeVerticalFeature()
+          ? this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanDirection/vertical/currentMode`).value
+          : null;
+        const horizontalSwingMode = this.hasSwingModeHorizontalFeature()
+          ? this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanDirection/horizontal/currentMode`).value
+          : null;
+        const swingEnabled = horizontalSwingMode !== DaikinFanDirectionHorizontalModes.STOP
+          && verticalSwingMode !== DaikinFanDirectionVerticalModes.STOP;
+        this.service.getCharacteristic(this.platform.Characteristic.SwingMode)
+          .updateValue(swingEnabled ? this.platform.Characteristic.SwingMode.SWING_ENABLED : this.platform.Characteristic.SwingMode.SWING_DISABLED);
+      }
+    } catch (e) {
+      this.platform.log.debug(`[${this.name}] refreshValues error: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
   addOrUpdateCharacteristicRotationSpeed() {
     if (!this.service) {
       throw Error('Service not initialized');

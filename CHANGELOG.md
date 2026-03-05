@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.12] - 2026-03-05
+
+### Changed
+
+- **HAP characteristic sync after every poll**: `updateRawData()` now emits the `updated` event (previously only WebSocket updates did), and all services push current device state to HAP via `updateValue()` after every poll or WebSocket update — HomeKit always sees an accurate state, which allows it to self-filter redundant scene commands before they reach `onSet`
+
 ## [1.3.11] - 2026-03-05
 
 ### Fixed

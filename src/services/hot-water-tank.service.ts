@@ -108,6 +108,61 @@ export class HotWaterTankService {
     }
   }
 
+  /**
+   * Push current device state to all HAP characteristics via updateValue().
+   * Called after every poll/WebSocket update so HomeKit has an accurate view of
+   * device state.
+   */
+  refreshValues(): void {
+    try {
+      const onOff = this.accessory.context.device.getData(this.managementPointId, 'onOffMode', undefined).value;
+      const operationMode = this.accessory.context.device.getData(this.managementPointId, 'operationMode', undefined).value as DaikinOperationModes;
+      const isOff = onOff === DaikinOnOffModes.OFF;
+
+      let currentState: number;
+      if (isOff) {
+        currentState = this.platform.Characteristic.CurrentHeatingCoolingState.OFF;
+      } else {
+        currentState = this.platform.Characteristic.CurrentHeatingCoolingState.HEAT;
+      }
+      this.hotWaterTankService.getCharacteristic(this.platform.Characteristic.CurrentHeatingCoolingState)
+        .updateValue(currentState);
+
+      let targetState: number;
+      if (isOff) {
+        targetState = this.platform.Characteristic.TargetHeatingCoolingState.OFF;
+      } else {
+        switch (operationMode) {
+          case DaikinOperationModes.COOLING:
+            targetState = this.platform.Characteristic.TargetHeatingCoolingState.COOL;
+            break;
+          case DaikinOperationModes.HEATING:
+            targetState = this.platform.Characteristic.TargetHeatingCoolingState.HEAT;
+            break;
+          default:
+            targetState = this.platform.Characteristic.TargetHeatingCoolingState.AUTO;
+        }
+      }
+      this.hotWaterTankService.getCharacteristic(this.platform.Characteristic.TargetHeatingCoolingState)
+        .updateValue(targetState);
+
+      const tankTemp = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/tankTemperature').value as number | undefined;
+      this.hotWaterTankService.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
+        .updateValue(typeof tankTemp === 'number' && isFinite(tankTemp) ? tankTemp : DEFAULT_HOT_WATER_TEMPERATURE);
+
+      const targetTemp = this.accessory.context.device.getData(
+        this.managementPointId, 'temperatureControl',
+        '/operationModes/heating/setpoints/domesticHotWaterTemperature',
+      ).value as number | undefined;
+      if (targetTemp !== undefined) {
+        this.hotWaterTankService.getCharacteristic(this.platform.Characteristic.TargetTemperature)
+          .updateValue(typeof targetTemp === 'number' && isFinite(targetTemp) ? targetTemp : DEFAULT_HOT_WATER_TARGET_TEMPERATURE);
+      }
+    } catch (e) {
+      this.platform.log.debug(`[${this.name}] refreshValues error: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
   async handleHotWaterTankCurrentHeatingCoolingStateGet(): Promise<CharacteristicValue> {
     const state = this.accessory.context.device.getData(this.managementPointId, 'onOffMode', undefined).value;
     this.platform.log.debug(`[${this.name}] GET ActiveState, state: ${state}, last update: ${this.accessory.context.device.getLastUpdated()}`);

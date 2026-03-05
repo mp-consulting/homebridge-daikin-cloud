@@ -32,4 +32,9 @@ export class AlthermaAccessory extends BaseAccessory {
       this.platform.log.warn(`[${this.name}] No domestic hot water tank management point found`);
     }
   }
+
+  protected override refreshValues(): void {
+    this.service?.refreshValues();
+    this.hotWaterTankService?.refreshValues();
+  }
 }
