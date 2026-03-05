@@ -172,6 +172,11 @@ export class HotWaterTankService {
     this.platform.log.debug(`[${this.name}] SET TargetHeatingCoolingState, OperationMode to: ${value}`);
 
     if (operationMode === this.platform.Characteristic.TargetHeatingCoolingState.OFF) {
+      const current = this.accessory.context.device.getData(this.managementPointId, 'onOffMode', undefined).value;
+      if (current === DaikinOnOffModes.OFF) {
+        this.platform.log.debug(`[${this.name}] SET TargetHeatingCoolingState skipped — already off`);
+        return;
+      }
       await this.setDeviceData('TargetHeatingCoolingState', async () => {
         await this.accessory.context.device.setData(this.managementPointId, 'onOffMode', DaikinOnOffModes.OFF, undefined);
       });

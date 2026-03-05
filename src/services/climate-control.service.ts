@@ -163,10 +163,15 @@ export class ClimateControlService {
   }
 
   async handleActiveStateSet(value: CharacteristicValue) {
-    const state = value as boolean;
+    const desired = value as boolean;
+    const current = this.accessory.context.device.getData(this.managementPointId, 'onOffMode', undefined).value;
+    if ((current === DaikinOnOffModes.ON) === desired) {
+      this.platform.log.debug(`[${this.name}] SET ActiveState skipped — already ${desired ? 'on' : 'off'}`);
+      return;
+    }
     this.platform.log.debug(`[${this.name}] SET ActiveState, state: ${value}`);
     await this.setDeviceData('ActiveState', async () => {
-      await this.accessory.context.device.setData(this.managementPointId, 'onOffMode', state ? DaikinOnOffModes.ON : DaikinOnOffModes.OFF, undefined);
+      await this.accessory.context.device.setData(this.managementPointId, 'onOffMode', desired ? DaikinOnOffModes.ON : DaikinOnOffModes.OFF, undefined);
     });
   }
 
