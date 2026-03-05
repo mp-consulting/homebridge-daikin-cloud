@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.14] - 2026-03-05
+
+### Fixed
+
+- **HomeKit scene shows "Failed" then recovers**: The global write queue serialized all PATCH requests across all devices, causing a scene with 4 devices × 6 writes each to take ~10+ seconds — exceeding HomeKit's timeout. Replaced the single global queue with per-device queues so each device's writes are serialized independently while different devices write in parallel. Scene execution time drops from ~10s to ~3s.
+
 ## [1.3.13] - 2026-03-05
 
 ### Fixed

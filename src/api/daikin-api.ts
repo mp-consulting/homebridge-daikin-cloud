@@ -45,9 +45,9 @@ export class ApiTimeoutError extends Error {
 export class DaikinApi {
   private blockedUntil = 0;
   private refreshPromise: Promise<void> | null = null;
-  // Serializes write requests to prevent burst rate limiting when HomeKit fires
-  // concurrent commands (e.g. a scene targeting multiple devices simultaneously).
-  private writeQueue: Promise<unknown> = Promise.resolve();
+  // Per-device write queues: serializes PATCH requests for each device independently,
+  // so multiple devices can write in parallel while each device's writes are ordered.
+  private writeQueues: Map<string, Promise<unknown>> = new Map();
 
   constructor(
         private readonly oauth: OAuthProvider,
@@ -169,17 +169,17 @@ export class DaikinApi {
   ): Promise<void> {
     const urlPath = `/v1/gateway-devices/${deviceId}/management-points/${embeddedId}/characteristics/${dataPoint}`;
     const body = dataPath ? { value, path: dataPath } : { value };
-    await this.enqueueWrite(() => this.request(urlPath, 'PATCH', body));
+    await this.enqueueWriteForDevice(deviceId, () => this.request(urlPath, 'PATCH', body));
   }
 
   /**
-   * Serializes write requests through a queue with a fixed inter-request delay.
-   * Prevents burst rate limiting when HomeKit scenes send simultaneous commands
-   * to multiple devices — each write waits for the previous to complete before
-   * executing, then holds for WRITE_INTER_REQUEST_DELAY_MS before releasing the next.
+   * Serializes write requests per device through a queue with a fixed inter-request delay.
+   * Each device has its own queue so writes for different devices run in parallel,
+   * while writes for the same device are ordered and rate-limited.
    */
-  private enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
-    const queued = this.writeQueue
+  private enqueueWriteForDevice<T>(deviceId: string, fn: () => Promise<T>): Promise<T> {
+    const current = this.writeQueues.get(deviceId) ?? Promise.resolve();
+    const queued = current
       .catch(() => {})
       .then(() => fn())
       .then(
@@ -192,7 +192,7 @@ export class DaikinApi {
           throw err;
         },
       );
-    this.writeQueue = queued.catch(() => {});
+    this.writeQueues.set(deviceId, queued.catch(() => {}));
     return queued;
   }
 
