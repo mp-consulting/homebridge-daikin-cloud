@@ -256,7 +256,8 @@ export class ClimateControlService {
   }
 
   async handleActiveStateSet(value: CharacteristicValue) {
-    const desired = value as boolean;
+    // HAP sends Active as 0 (INACTIVE) or 1 (ACTIVE), not a boolean
+    const desired = value === this.platform.Characteristic.Active.ACTIVE;
     const current = this.accessory.context.device.getData(this.managementPointId, 'onOffMode', undefined).value;
     if ((current === DaikinOnOffModes.ON) === desired) {
       this.platform.log.debug(`[${this.name}] SET ActiveState skipped — already ${desired ? 'on' : 'off'}`);
@@ -375,7 +376,10 @@ export class ClimateControlService {
     this.platform.log.debug(`[${this.name}] SET TargetHeaterCoolerState, daikinOperationMode to: ${daikinOperationMode}`);
     await this.setDeviceData('TargetHeaterCoolerState', async () => {
       await this.accessory.context.device.setData(this.managementPointId, 'operationMode', daikinOperationMode, undefined);
-      await this.accessory.context.device.setData(this.managementPointId, 'onOffMode', DaikinOnOffModes.ON, undefined);
+      // Note: onOffMode is intentionally NOT set here — the Active characteristic
+      // exclusively controls on/off. iOS always sends Active=1 alongside a mode
+      // change, so forcing onOffMode=ON here races against a concurrent Active=0
+      // (e.g. a "turn off" scene) and can leave devices ON.
     });
   }
 

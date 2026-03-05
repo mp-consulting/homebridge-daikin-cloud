@@ -254,16 +254,13 @@ export class HotWaterTankService {
 
     this.platform.log.debug(`[${this.name}] SET TargetHeatingCoolingState, daikinOperationMode to: ${daikinOperationMode}`);
     await this.setDeviceData('TargetHeatingCoolingState', async () => {
-      // turn on the device as well because there is no specific on/off characteristic in
-      // Homebridge, while targetState/operationMode and onOffMode are separate with the Daikin API
-      await this.accessory.context.device.setData(this.managementPointId, 'onOffMode', DaikinOnOffModes.ON, undefined);
-
       const operationMode = this.accessory.context.device.getData(this.managementPointId, 'operationMode', undefined);
       if (operationMode.settable === false) {
         this.platform.log.warn(`[${this.name}] SET TargetHeatingCoolingState is not possible because operationMode isn't settable`, operationMode);
         return;
       }
-
+      // Note: onOffMode is intentionally NOT set here — the TargetHeatingCoolingState.OFF
+      // branch above handles turning off, and iOS sends Active=1 alongside a mode change.
       await this.accessory.context.device.setData(this.managementPointId, 'operationMode', daikinOperationMode, undefined);
     });
   }

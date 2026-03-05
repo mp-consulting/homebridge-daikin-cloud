@@ -262,21 +262,22 @@ test('DaikinCloudAirConditioningAccessory Setters', async () => {
 
   const homebridgeAccessory = new AlthermaAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
 
+  // Device starts 'on'; setting Active=1 (already on) is skipped by the idempotency guard
   await homebridgeAccessory.service?.handleActiveStateSet(1);
-  expect(setDataSpy).toHaveBeenNthCalledWith(1, 'climateControlMainZone', 'onOffMode', 'on', undefined);
+  expect(setDataSpy).toHaveBeenCalledTimes(0);
 
   await homebridgeAccessory.service?.handleActiveStateSet(0);
-  expect(setDataSpy).toHaveBeenNthCalledWith(2, 'climateControlMainZone', 'onOffMode', 'off', undefined);
+  expect(setDataSpy).toHaveBeenNthCalledWith(1, 'climateControlMainZone', 'onOffMode', 'off', undefined);
 
   await homebridgeAccessory.service?.handleCoolingThresholdTemperatureSet(21);
-  expect(setDataSpy).toHaveBeenNthCalledWith(3, 'climateControlMainZone', 'temperatureControl', '/operationModes/cooling/setpoints/roomTemperature', 21);
+  expect(setDataSpy).toHaveBeenNthCalledWith(2, 'climateControlMainZone', 'temperatureControl', '/operationModes/cooling/setpoints/roomTemperature', 21);
 
   await homebridgeAccessory.service?.handleHeatingThresholdTemperatureSet(25);
-  expect(setDataSpy).toHaveBeenNthCalledWith(4, 'climateControlMainZone', 'temperatureControl', '/operationModes/heating/setpoints/roomTemperature', 25);
+  expect(setDataSpy).toHaveBeenNthCalledWith(3, 'climateControlMainZone', 'temperatureControl', '/operationModes/heating/setpoints/roomTemperature', 25);
 
+  // TargetHeaterCoolerState only sets operationMode; onOffMode is controlled exclusively by Active
   await homebridgeAccessory.service?.handleTargetHeaterCoolerStateSet(1);
-  expect(setDataSpy).toHaveBeenNthCalledWith(5, 'climateControlMainZone', 'operationMode', 'heating', undefined);
-  expect(setDataSpy).toHaveBeenNthCalledWith(6, 'climateControlMainZone', 'onOffMode', 'on', undefined);
+  expect(setDataSpy).toHaveBeenNthCalledWith(4, 'climateControlMainZone', 'operationMode', 'heating', undefined);
 
 
 });

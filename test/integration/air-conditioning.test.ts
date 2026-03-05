@@ -352,48 +352,49 @@ test('DaikinCloudAirConditioningAccessory Setters', async () => {
 
   const homebridgeAccessory = new AirConditioningAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
 
+  // Device starts 'on'; setting Active=1 (already on) is skipped by the idempotency guard
   await homebridgeAccessory.service.handleActiveStateSet(1);
-  expect(setDataSpy).toHaveBeenNthCalledWith(1, 'climateControl', 'onOffMode', 'on', undefined);
+  expect(setDataSpy).toHaveBeenCalledTimes(0);
 
   await homebridgeAccessory.service.handleActiveStateSet(0);
-  expect(setDataSpy).toHaveBeenNthCalledWith(2, 'climateControl', 'onOffMode', 'off', undefined);
+  expect(setDataSpy).toHaveBeenNthCalledWith(1, 'climateControl', 'onOffMode', 'off', undefined);
 
   await homebridgeAccessory.service.handleCoolingThresholdTemperatureSet(21);
-  expect(setDataSpy).toHaveBeenNthCalledWith(3, 'climateControl', 'temperatureControl', '/operationModes/cooling/setpoints/roomTemperature', 21);
+  expect(setDataSpy).toHaveBeenNthCalledWith(2, 'climateControl', 'temperatureControl', '/operationModes/cooling/setpoints/roomTemperature', 21);
 
   await homebridgeAccessory.service.handleRotationSpeedSet(50);
-  expect(setDataSpy).toHaveBeenNthCalledWith(4, 'climateControl', 'fanControl', '/operationModes/heating/fanSpeed/currentMode', 'fixed');
-  expect(setDataSpy).toHaveBeenNthCalledWith(5, 'climateControl', 'fanControl', '/operationModes/heating/fanSpeed/modes/fixed', 50);
+  expect(setDataSpy).toHaveBeenNthCalledWith(3, 'climateControl', 'fanControl', '/operationModes/heating/fanSpeed/currentMode', 'fixed');
+  expect(setDataSpy).toHaveBeenNthCalledWith(4, 'climateControl', 'fanControl', '/operationModes/heating/fanSpeed/modes/fixed', 50);
 
   await homebridgeAccessory.service.handleHeatingThresholdTemperatureSet(25);
-  expect(setDataSpy).toHaveBeenNthCalledWith(6, 'climateControl', 'temperatureControl', '/operationModes/heating/setpoints/roomTemperature', 25);
+  expect(setDataSpy).toHaveBeenNthCalledWith(5, 'climateControl', 'temperatureControl', '/operationModes/heating/setpoints/roomTemperature', 25);
 
+  // TargetHeaterCoolerState only sets operationMode; onOffMode is controlled exclusively by Active
   await homebridgeAccessory.service.handleTargetHeaterCoolerStateSet(1);
-  expect(setDataSpy).toHaveBeenNthCalledWith(7, 'climateControl', 'operationMode', 'heating', undefined);
-  expect(setDataSpy).toHaveBeenNthCalledWith(8, 'climateControl', 'onOffMode', 'on', undefined);
+  expect(setDataSpy).toHaveBeenNthCalledWith(6, 'climateControl', 'operationMode', 'heating', undefined);
 
   await homebridgeAccessory.service.handleSwingModeSet(1);
-  expect(setDataSpy).toHaveBeenNthCalledWith(9, 'climateControl', 'fanControl', '/operationModes/heating/fanDirection/horizontal/currentMode', 'swing');
-  expect(setDataSpy).toHaveBeenNthCalledWith(10, 'climateControl', 'fanControl', '/operationModes/heating/fanDirection/vertical/currentMode', 'swing');
+  expect(setDataSpy).toHaveBeenNthCalledWith(7, 'climateControl', 'fanControl', '/operationModes/heating/fanDirection/horizontal/currentMode', 'swing');
+  expect(setDataSpy).toHaveBeenNthCalledWith(8, 'climateControl', 'fanControl', '/operationModes/heating/fanDirection/vertical/currentMode', 'swing');
 
   // Feature-based setters via FeatureManager
   const powerfulFeature = homebridgeAccessory.service.featureManager.getFeature(PowerfulModeFeature);
   await powerfulFeature!.handleSet(true);
-  expect(setDataSpy).toHaveBeenNthCalledWith(11, 'climateControl', 'powerfulMode', 'on', undefined);
+  expect(setDataSpy).toHaveBeenNthCalledWith(9, 'climateControl', 'powerfulMode', 'on', undefined);
 
   const econoFeature = homebridgeAccessory.service.featureManager.getFeature(EconoModeFeature);
   await econoFeature!.handleSet(true);
-  expect(setDataSpy).toHaveBeenNthCalledWith(12, 'climateControl', 'econoMode', 'on', undefined);
+  expect(setDataSpy).toHaveBeenNthCalledWith(10, 'climateControl', 'econoMode', 'on', undefined);
 
   const streamerFeature = homebridgeAccessory.service.featureManager.getFeature(StreamerModeFeature);
   await streamerFeature!.handleSet(true);
-  expect(setDataSpy).toHaveBeenNthCalledWith(13, 'climateControl', 'streamerMode', 'on', undefined);
+  expect(setDataSpy).toHaveBeenNthCalledWith(11, 'climateControl', 'streamerMode', 'on', undefined);
 
   const outdoorSilentFeature = homebridgeAccessory.service.featureManager.getFeature(OutdoorSilentModeFeature);
   await outdoorSilentFeature!.handleSet(true);
-  expect(setDataSpy).toHaveBeenNthCalledWith(14, 'climateControl', 'outdoorSilentMode', 'on', undefined);
+  expect(setDataSpy).toHaveBeenNthCalledWith(12, 'climateControl', 'outdoorSilentMode', 'on', undefined);
 
   const indoorSilentFeature = homebridgeAccessory.service.featureManager.getFeature(IndoorSilentModeFeature);
   await indoorSilentFeature!.handleSet(true);
-  expect(setDataSpy).toHaveBeenNthCalledWith(15, 'climateControl', 'fanControl', '/operationModes/heating/fanSpeed/currentMode', 'quiet');
+  expect(setDataSpy).toHaveBeenNthCalledWith(13, 'climateControl', 'fanControl', '/operationModes/heating/fanSpeed/currentMode', 'quiet');
 });

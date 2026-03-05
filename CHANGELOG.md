@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.13] - 2026-03-05
+
+### Fixed
+
+- **Scene turning off active devices then re-activating them**: `handleTargetHeaterCoolerStateSet` was unconditionally enqueuing `onOffMode=ON` after setting the operation mode. In a "turn off all" scene, HomeKit fires both `TargetHeaterCoolerState` and `Active=INACTIVE` simultaneously; the `Active=INACTIVE` write was landing in the queue before the deferred `onOffMode=ON` write, causing some devices to end up ON. The operation mode handler now only sets `operationMode` — `onOffMode` is controlled exclusively by the `Active` characteristic, which iOS always sends alongside any mode change.
+- **Idempotency guard never firing**: `value as boolean` cast did not convert HAP's numeric `0`/`1` to a JavaScript boolean, so the strict `===` comparison against a boolean always returned `false`. Fixed to `value === Characteristic.Active.ACTIVE`.
+
 ## [1.3.12] - 2026-03-05
 
 ### Changed
