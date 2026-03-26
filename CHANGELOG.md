@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.17] - 2026-03-26
+
+### Fixed
+
+- **Mobile-app authentication fails with error 206001 "Account Pending Registration"**: Accounts created via social login or with incomplete registration fields were permanently locked out. The plugin now detects Gigya error `206001` and automatically completes the pending registration via `accounts.register` with `finalizeRegistration`, using existing profile data when available and deriving name from email as a fallback. Closes #3.
+
+### Changed
+
+- **Refactored Gigya request helpers**: Extracted shared POST headers, SDK params, and login token validation into reusable helpers (`gigyaPostHeaders`, `gigyaSdkParams`, `extractLoginToken`) to reduce duplication across Gigya endpoints.
+
 ## [1.3.16] - 2026-03-26
 
 ### Changed

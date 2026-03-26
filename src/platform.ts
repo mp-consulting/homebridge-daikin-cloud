@@ -159,6 +159,10 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         this.log.error(`[Error] ${error}`);
       });
 
+      this.controller.on('log', (message) => {
+        this.log.info(message);
+      });
+
       // WebSocket event handlers
       this.controller.on('websocket_connected', () => {
         this.log.info('[WebSocket] Connected - receiving real-time updates');

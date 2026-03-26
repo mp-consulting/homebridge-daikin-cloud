@@ -49,6 +49,7 @@ export class DaikinCloudController extends EventEmitter {
         mobileConfig,
         (tokenSet) => this.emit('token_update', tokenSet),
         (error) => this.emit('error', error.message),
+        (message) => this.emit('log', message),
       );
       this.oauth = this.mobileOAuth;
     } else {

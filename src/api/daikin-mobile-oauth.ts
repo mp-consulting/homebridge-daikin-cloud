@@ -24,6 +24,9 @@ interface GigyaLoginResult {
     errorCode: number;
     errorMessage?: string;
     errorDetails?: string;
+    regToken?: string;
+    data?: { profile?: Record<string, string> };
+    profile?: { firstName?: string; lastName?: string };
     sessionInfo?: {
         login_token: string;
     };
@@ -38,6 +41,7 @@ export class DaikinMobileOAuth {
         private readonly config: MobileClientConfig,
         private readonly onTokenUpdate?: (tokenSet: TokenSet) => void,
         private readonly onError?: (error: Error) => void,
+        private readonly onLog?: (message: string) => void,
   ) {
     this.loadFromFile();
   }
@@ -181,6 +185,42 @@ export class DaikinMobileOAuth {
   // Private authentication methods
   // =========================================================================
 
+  private get gigyaPostHeaders(): Record<string, string> {
+    return {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Origin': 'https://id.daikin.eu',
+      'Referer': 'https://id.daikin.eu/',
+      'Cookie': this.cookies,
+    };
+  }
+
+  private get gigyaSdkParams(): Record<string, string> {
+    return {
+      targetEnv: 'jssdk',
+      include: 'profile,data,emails,subscriptions,preferences,',
+      APIKey: DAIKIN_MOBILE_CONFIG.apiKey,
+      source: 'showScreenSet',
+      sdk: 'js_latest',
+      authMode: 'cookie',
+      pageURL: 'https://id.daikin.eu/cdc/onecta/oidc/registration-login.html?gig_client_id=' + DAIKIN_MOBILE_CONFIG.clientId,
+      sdkBuild: '18305',
+      format: 'json',
+    };
+  }
+
+  private extractLoginToken(result: GigyaLoginResult, context: string): string {
+    if (result.errorCode !== 0) {
+      throw new Error(context + ' (' + result.errorCode + '): '
+        + (result.errorMessage || result.errorDetails));
+    }
+
+    if (!result.sessionInfo?.login_token) {
+      throw new Error('No login_token in ' + context + ' response');
+    }
+
+    return result.sessionInfo.login_token;
+  }
+
   private generatePKCE(): PKCEPair {
     const verifier = crypto.randomBytes(32).toString('base64url');
     const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
@@ -277,49 +317,91 @@ export class DaikinMobileOAuth {
 
   private async gigyaLogin(): Promise<string> {
     const params = new URLSearchParams({
+      ...this.gigyaSdkParams,
       loginID: this.config.email,
       password: this.config.password,
       sessionExpiration: '31536000',
-      targetEnv: 'jssdk',
-      include: 'profile,data,emails,subscriptions,preferences,',
       includeUserInfo: 'true',
       loginMode: 'standard',
       lang: 'en',
       riskContext: this.generateRiskContext(),
-      APIKey: DAIKIN_MOBILE_CONFIG.apiKey,
-      source: 'showScreenSet',
-      sdk: 'js_latest',
-      authMode: 'cookie',
-      pageURL: 'https://id.daikin.eu/cdc/onecta/oidc/registration-login.html?gig_client_id=' + DAIKIN_MOBILE_CONFIG.clientId,
-      sdkBuild: '18305',
-      format: 'json',
     });
 
     const response = await this.httpsRequest(
       DAIKIN_MOBILE_CONFIG.gigyaBaseUrl + '/accounts.login',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Origin': 'https://id.daikin.eu',
-          'Referer': 'https://id.daikin.eu/',
-          'Cookie': this.cookies,
-        },
-      },
+      { method: 'POST', headers: this.gigyaPostHeaders },
       params.toString(),
     );
 
     const result = JSON.parse(response.body) as GigyaLoginResult;
 
-    if (result.errorCode !== 0) {
-      throw new Error('Login failed (' + result.errorCode + '): ' + (result.errorMessage || result.errorDetails));
+    if (result.errorCode === 206001) {
+      this.onLog?.('Account has pending registration (206001). Attempting to complete registration automatically...');
+      if (result.sessionInfo?.login_token) {
+        return result.sessionInfo.login_token;
+      }
+      if (result.regToken) {
+        return await this.completePendingRegistration(result.regToken, result.data, result.profile);
+      }
     }
 
-    if (!result.sessionInfo?.login_token) {
-      throw new Error('No login_token in response');
+    return this.extractLoginToken(result, 'Login failed');
+  }
+
+  private async completePendingRegistration(
+    regToken: string,
+    existingData?: { profile?: Record<string, string> },
+    existingProfile?: { firstName?: string; lastName?: string },
+  ): Promise<string> {
+    const customProfile = existingData?.profile || {};
+    const countryResidence = customProfile.countryResidence || 'US';
+    const communicationLanguage = customProfile.communicationLanguage || 'en';
+
+    // Use existing name fields, or derive from email as last resort
+    let firstName = existingProfile?.firstName;
+    let lastName = existingProfile?.lastName;
+
+    if (!firstName || !lastName) {
+      const emailUser = this.config.email.split('@')[0];
+      const nameParts = emailUser.split(/[._-]/);
+      firstName = firstName || (nameParts[0]
+        ? nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1)
+        : 'User');
+      lastName = lastName || (nameParts.length > 1
+        ? nameParts[nameParts.length - 1].charAt(0).toUpperCase() + nameParts[nameParts.length - 1].slice(1)
+        : 'Account');
+      this.onLog?.('Using derived name for registration: ' + firstName + ' ' + lastName
+        + '. You can update your name in the Daikin Onecta app.');
     }
 
-    return result.sessionInfo.login_token;
+    this.onLog?.('Completing pending registration with countryResidence=' + countryResidence
+      + ', communicationLanguage=' + communicationLanguage);
+    this.onLog?.('Note: Privacy notice consent (privacy.PrivacyNotice.onecta) will be accepted automatically.');
+
+    const params = new URLSearchParams({
+      ...this.gigyaSdkParams,
+      regToken,
+      email: this.config.email,
+      password: this.config.password,
+      profile: JSON.stringify({ firstName, lastName }),
+      data: JSON.stringify({ profile: { countryResidence, communicationLanguage } }),
+      preferences: JSON.stringify({
+        'privacy.PrivacyNotice.onecta': { isConsentGranted: true },
+      }),
+      finalizeRegistration: 'true',
+    });
+
+    const response = await this.httpsRequest(
+      DAIKIN_MOBILE_CONFIG.gigyaBaseUrl + '/accounts.register',
+      { method: 'POST', headers: this.gigyaPostHeaders },
+      params.toString(),
+    );
+
+    const result = JSON.parse(response.body) as GigyaLoginResult;
+    const loginToken = this.extractLoginToken(result, 'Registration completion failed');
+
+    this.onLog?.('Pending registration completed successfully.');
+    return loginToken;
   }
 
   private async authorizeWithToken(context: string, loginToken: string): Promise<string> {
