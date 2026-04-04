@@ -188,7 +188,7 @@ npm run watch
 ### Configuration Schema
 
 Configuration is managed via Homebridge UI:
-- `homebridge-ui/` directory contains custom UI
+- Uses Homebridge custom UI framework (`homebridge-ui/`) for plugin configuration management
 - Config schema defined in `package.json`
 - Validation in [src/config/config-manager.ts](src/config/config-manager.ts)
 
