@@ -13,7 +13,7 @@
     "url": "https://github.com/mp-consulting/homebridge-daikin-cloud/issues"
   },
   "engines": {
-    "node": ">=18.15.0",
+    "node": "^20.18.0 || ^22.10.0 || ^24.0.0",
     "homebridge": ">=1.5.0 || ^2.0.0-beta.0"
   },
   "main": "dist/src/index.js",
