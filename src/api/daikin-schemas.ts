@@ -124,7 +124,7 @@ export function validateData<T>(schema: z.ZodSchema<T>, data: unknown, context?:
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessages = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
-      throw new Error(`Validation failed${context ? ` for ${context}` : ''}: ${errorMessages}`);
+      throw new Error(`Validation failed${context ? ` for ${context}` : ''}: ${errorMessages}`, { cause: error });
     }
     throw error;
   }

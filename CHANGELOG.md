@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.20] - 2026-04-17
+
+### Changed
+
+- **Dependencies**: Updated all dependencies to latest versions, including major bumps for `zod` (3→4), `@homebridge/plugin-ui-utils` (1→2), `eslint` (9→10), `typescript` (5→6), and `@types/node` (24→25)
+
+### Fixed
+
+- **Error handling**: Attach original error as `cause` when re-throwing in SSL generation, OAuth callback URL parsing, token exchange, and Zod validation, complying with the new `preserve-caught-error` ESLint rule and preserving the original stack trace
+
 ## [1.3.19] - 2026-04-04
 
 ### Changed

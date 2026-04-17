@@ -84,7 +84,7 @@ const SSLUtils = {
         cert: fs.readFileSync(certPath, 'utf8'),
       };
     } catch (error) {
-      throw new Error(`Failed to generate SSL certificate: ${error.message}`);
+      throw new Error(`Failed to generate SSL certificate: ${error.message}`, { cause: error });
     }
   },
 };
@@ -655,7 +655,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
         code = url.searchParams.get('code');
         state = url.searchParams.get('state');
       } catch (e) {
-        throw new Error('Invalid callback URL format');
+        throw new Error('Invalid callback URL format', { cause: e });
       }
     }
 
@@ -689,7 +689,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
         expiresAt: tokenSet.expires_at ? new Date(tokenSet.expires_at * 1000).toISOString() : null,
       };
     } catch (error) {
-      throw new Error(`Token exchange failed: ${error.message}`);
+      throw new Error(`Token exchange failed: ${error.message}`, { cause: error });
     }
   }
 
