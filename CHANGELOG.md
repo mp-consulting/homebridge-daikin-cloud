@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.21] - 2026-04-17
+
+### Fixed
+
+- **Zod 4 migration**: Pass explicit key schema to `z.record()` calls and rename `ZodError.errors` to `ZodError.issues` — tsc errors that blocked the v1.3.20 npm publish
+
 ## [1.3.20] - 2026-04-17
 
 ### Changed

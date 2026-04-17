@@ -28,8 +28,8 @@ export const ManagementPointSchema = z.object({
   }).optional(),
   temperatureControl: z.object({
     value: z.object({
-      operationModes: z.record(z.object({
-        setpoints: z.record(z.object({
+      operationModes: z.record(z.string(), z.object({
+        setpoints: z.record(z.string(), z.object({
           value: z.number(),
           minValue: z.number().optional(),
           maxValue: z.number().optional(),
@@ -56,10 +56,10 @@ export const ManagementPointSchema = z.object({
   }).optional(),
   fanControl: z.object({
     value: z.object({
-      operationModes: z.record(z.object({
+      operationModes: z.record(z.string(), z.object({
         fanSpeed: z.object({
           currentMode: z.object({ value: z.string() }).optional(),
-          modes: z.record(z.object({ value: z.number().optional() })).optional(),
+          modes: z.record(z.string(), z.object({ value: z.number().optional() })).optional(),
         }).optional(),
         fanDirection: z.object({
           horizontal: z.object({ currentMode: z.object({ value: z.string() }).optional() }).optional(),
@@ -123,7 +123,7 @@ export function validateData<T>(schema: z.ZodSchema<T>, data: unknown, context?:
     return schema.parse(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const errorMessages = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+      const errorMessages = error.issues.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
       throw new Error(`Validation failed${context ? ` for ${context}` : ''}: ${errorMessages}`, { cause: error });
     }
     throw error;
@@ -136,6 +136,6 @@ export function safeValidateData<T>(schema: z.ZodSchema<T>, data: unknown): { su
   if (result.success) {
     return { success: true, data: result.data };
   }
-  const errorMessages = result.error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+  const errorMessages = result.error.issues.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
   return { success: false, error: errorMessages };
 }
