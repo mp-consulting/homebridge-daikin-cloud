@@ -15,21 +15,31 @@ export const TokenSetSchema = z.object({
   scope: z.string().optional(),
 });
 
+// Daikin "characteristic" objects always carry extra metadata Zod would
+// otherwise strip: ref, settable, values, minValue/maxValue/stepValue, unit,
+// maxLength… Several of these are read at runtime (e.g. setProps ranges for
+// HomeKit sliders, settable checks before writes), and silent strip-out has
+// caused real bugs (RotationSpeed → 400 INVALID_CHARACTERISTIC_VALUE because
+// fixed.minValue/maxValue/stepValue were dropped). Wrap every inner object
+// that mirrors a Daikin characteristic with .loose() so unknown keys survive.
+// scripts/check-schema-drift.ts asserts this by diffing raw vs parsed.
+const chr = <T extends z.ZodRawShape>(shape: T) => z.object(shape).loose();
+
 // Management Point Schema
-export const ManagementPointSchema = z.object({
+export const ManagementPointSchema = chr({
   embeddedId: z.string(),
   managementPointType: z.string(),
-  name: z.object({ value: z.string() }).optional(),
-  modelInfo: z.object({ value: z.string() }).optional(),
-  onOffMode: z.object({ value: z.string() }).optional(),
-  operationMode: z.object({
+  name: chr({ value: z.string() }).optional(),
+  modelInfo: chr({ value: z.string() }).optional(),
+  onOffMode: chr({ value: z.string() }).optional(),
+  operationMode: chr({
     value: z.string(),
     values: z.array(z.string()).optional(),
   }).optional(),
-  temperatureControl: z.object({
-    value: z.object({
-      operationModes: z.record(z.string(), z.object({
-        setpoints: z.record(z.string(), z.object({
+  temperatureControl: chr({
+    value: chr({
+      operationModes: z.record(z.string(), chr({
+        setpoints: z.record(z.string(), chr({
           value: z.number(),
           minValue: z.number().optional(),
           maxValue: z.number().optional(),
@@ -38,56 +48,66 @@ export const ManagementPointSchema = z.object({
       })),
     }),
   }).optional(),
-  sensoryData: z.object({
-    value: z.object({
-      roomTemperature: z.object({
+  sensoryData: chr({
+    value: chr({
+      roomTemperature: chr({
         value: z.number(),
         unit: z.string().optional(),
       }).optional(),
-      outdoorTemperature: z.object({
+      outdoorTemperature: chr({
         value: z.number(),
         unit: z.string().optional(),
       }).optional(),
-      leavingWaterTemperature: z.object({
+      leavingWaterTemperature: chr({
         value: z.number(),
         unit: z.string().optional(),
       }).optional(),
     }),
   }).optional(),
-  fanControl: z.object({
-    value: z.object({
-      operationModes: z.record(z.string(), z.object({
-        fanSpeed: z.object({
-          currentMode: z.object({ value: z.string() }).optional(),
-          modes: z.record(z.string(), z.object({ value: z.number().optional() })).optional(),
+  fanControl: chr({
+    value: chr({
+      operationModes: z.record(z.string(), chr({
+        fanSpeed: chr({
+          currentMode: chr({
+            value: z.string(),
+            values: z.array(z.string()).optional(),
+            settable: z.boolean().optional(),
+          }).optional(),
+          modes: z.record(z.string(), chr({
+            value: z.number().optional(),
+            minValue: z.number().optional(),
+            maxValue: z.number().optional(),
+            stepValue: z.number().optional(),
+            settable: z.boolean().optional(),
+          })).optional(),
         }).optional(),
-        fanDirection: z.object({
-          horizontal: z.object({ currentMode: z.object({ value: z.string() }).optional() }).optional(),
-          vertical: z.object({ currentMode: z.object({ value: z.string() }).optional() }).optional(),
+        fanDirection: chr({
+          horizontal: chr({ currentMode: chr({ value: z.string() }).optional() }).optional(),
+          vertical: chr({ currentMode: chr({ value: z.string() }).optional() }).optional(),
         }).optional(),
       })),
     }),
   }).optional(),
-  powerfulMode: z.object({ value: z.string() }).optional(),
-  econoMode: z.object({ value: z.string() }).optional(),
-  streamerMode: z.object({ value: z.string() }).optional(),
-  holidayMode: z.object({
-    value: z.object({
+  powerfulMode: chr({ value: z.string() }).optional(),
+  econoMode: chr({ value: z.string() }).optional(),
+  streamerMode: chr({ value: z.string() }).optional(),
+  holidayMode: chr({
+    value: chr({
       enabled: z.boolean(),
       startDate: z.string().optional(),
       endDate: z.string().optional(),
     }),
   }).optional(),
-}).passthrough(); // Allow additional properties
+});
 
 // Gateway Device Schema
-export const GatewayDeviceSchema = z.object({
+export const GatewayDeviceSchema = chr({
   id: z.string(),
   deviceModel: z.string().optional(),
   type: z.string().optional(),
-  isCloudConnectionUp: z.object({ value: z.boolean() }).optional(),
+  isCloudConnectionUp: chr({ value: z.boolean() }).optional(),
   managementPoints: z.array(ManagementPointSchema),
-}).passthrough(); // Allow additional properties
+});
 
 // Configuration Validation Schema
 export const DaikinControllerConfigSchema = z.object({

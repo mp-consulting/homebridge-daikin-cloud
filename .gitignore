@@ -13,6 +13,9 @@ node_modules/
 /test/hbConfig/*
 !/test/hbConfig/config.sample.json
 
+# Live fixtures dumped by scripts/check-schema-drift.ts — contain real device IDs
+/test/fixtures/live/
+
 # TypeScript
 *.tsbuildinfo
 
