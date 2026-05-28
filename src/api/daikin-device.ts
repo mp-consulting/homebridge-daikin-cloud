@@ -153,6 +153,13 @@ export class DaikinCloudDevice extends EventEmitter {
   /**
      * Apply a WebSocket update to the device's raw data
      * This updates the in-memory data without making an API call
+     *
+     * Daikin sends PARTIAL sub-trees on WebSocket — e.g. a fanControl push for a
+     * single operationMode/fanDirection/vertical path. A naive
+     * `characteristic.value = data.value` assignment would wipe out every other
+     * operation mode and sibling path, leaving GET handlers reading undefined
+     * until the next full poll. Deep-merge object values so partial pushes
+     * augment instead of replace; primitives and arrays still replace.
      */
   applyWebSocketUpdate(update: WebSocketDeviceUpdate): void {
     const managementPoint = this.getManagementPoint(update.embeddedId);
@@ -172,7 +179,7 @@ export class DaikinCloudDevice extends EventEmitter {
 
     // Update the characteristic with new data
     if (data.value !== undefined) {
-      characteristic.value = data.value;
+      characteristic.value = mergeValue(characteristic.value, data.value);
     }
     if (data.values !== undefined) {
       characteristic.values = data.values;
@@ -237,4 +244,25 @@ export class DaikinCloudDevice extends EventEmitter {
 
     return { value: current };
   }
+}
+
+/**
+ * Deep-merge a partial WebSocket value into the existing in-memory value.
+ * Plain objects merge key-by-key; arrays and primitives replace. Without this,
+ * a partial fanControl push for cooling/vertical wipes heating/auto/dry/fanOnly
+ * out of memory until the next full poll. See applyWebSocketUpdate.
+ */
+function mergeValue(existing: unknown, incoming: unknown): unknown {
+  if (!isPlainObject(existing) || !isPlainObject(incoming)) {
+    return incoming;
+  }
+  const merged: Record<string, unknown> = { ...existing };
+  for (const key of Object.keys(incoming)) {
+    merged[key] = mergeValue(merged[key], incoming[key]);
+  }
+  return merged;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
