@@ -92,6 +92,67 @@ test('DaikinCloudPlatform with new Aircondition accessory', async () => {
   expect(registerPlatformAccessoriesSpy).toHaveBeenCalledWith('@mp-consulting/homebridge-daikin-cloud', 'DaikinCloud', expect.anything());
 });
 
+test('DaikinCloudPlatform excludes device when raw device ID is in excludedDevicesByDeviceId', async () => {
+  const mockDevice = {
+    getId: () => 'efd08509-2edb-41d0-a9ab-ce913323d811',
+    getDescription: () => ({ deviceModel: 'Airco' }),
+    getData: () => 'MOCK_DATE',
+    desc: { managementPoints: [{ embeddedId: 'climateControl', managementPointType: 'climateControl' }] },
+  } as unknown as DaikinCloudDevice;
+
+  MockDaikinCloudController.mockImplementation(function(this: any) {
+    this.getCloudDevices = vi.fn().mockResolvedValue([mockDevice]);
+    this.isAuthenticated = vi.fn().mockReturnValue(true);
+    this.on = vi.fn();
+    this.updateAllDeviceData = vi.fn().mockResolvedValue(undefined);
+  });
+
+  const api = new HomebridgeAPI();
+  const registerSpy = vi.spyOn(api, 'registerPlatformAccessories');
+
+  const config = new MockPlatformConfig(true);
+  // The custom UI saves the raw Daikin device ID (the value returned by device.getId()).
+  (config as any).excludedDevicesByDeviceId = ['efd08509-2edb-41d0-a9ab-ce913323d811'];
+
+  new DaikinCloudPlatform(new Logger(), config, api);
+  api.signalFinished();
+  await vi.advanceTimersByTimeAsync(100);
+
+  expect(AirConditioningAccessory).not.toHaveBeenCalled();
+  expect(registerSpy).not.toHaveBeenCalled();
+});
+
+test('DaikinCloudPlatform excludes device when HAP UUID is in excludedDevicesByDeviceId (backwards compatibility)', async () => {
+  const deviceId = 'efd08509-2edb-41d0-a9ab-ce913323d811';
+  const mockDevice = {
+    getId: () => deviceId,
+    getDescription: () => ({ deviceModel: 'Airco' }),
+    getData: () => 'MOCK_DATE',
+    desc: { managementPoints: [{ embeddedId: 'climateControl', managementPointType: 'climateControl' }] },
+  } as unknown as DaikinCloudDevice;
+
+  MockDaikinCloudController.mockImplementation(function(this: any) {
+    this.getCloudDevices = vi.fn().mockResolvedValue([mockDevice]);
+    this.isAuthenticated = vi.fn().mockReturnValue(true);
+    this.on = vi.fn();
+    this.updateAllDeviceData = vi.fn().mockResolvedValue(undefined);
+  });
+
+  const api = new HomebridgeAPI();
+  const registerSpy = vi.spyOn(api, 'registerPlatformAccessories');
+  const hapUuid = api.hap.uuid.generate(deviceId);
+
+  const config = new MockPlatformConfig(true);
+  (config as any).excludedDevicesByDeviceId = [hapUuid];
+
+  new DaikinCloudPlatform(new Logger(), config, api);
+  api.signalFinished();
+  await vi.advanceTimersByTimeAsync(100);
+
+  expect(AirConditioningAccessory).not.toHaveBeenCalled();
+  expect(registerSpy).not.toHaveBeenCalled();
+});
+
 test('DaikinCloudPlatform with new Altherma accessory', async () => {
   const mockDevice = {
     getId: () => 'MOCK_ID',

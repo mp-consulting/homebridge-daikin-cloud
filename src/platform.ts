@@ -237,15 +237,16 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
   private createDevices(devices: DaikinCloudDevice[]) {
     for (const device of devices) {
       try {
-        const uuid = this.api.hap.uuid.generate(device.getId());
+        const deviceId = device.getId();
+        const uuid = this.api.hap.uuid.generate(deviceId);
         const deviceModel: string = device.getDescription().deviceModel;
 
         const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
 
         this.log.debug('Create Device', deviceModel, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(device.desc), null, 4));
 
-        if (this.isExcludedDevice(this.config.excludedDevicesByDeviceId, uuid)) {
-          this.log.info(`[Platform] Device with id ${uuid} is excluded, don't add accessory`);
+        if (this.isExcludedDevice(this.config.excludedDevicesByDeviceId, deviceId, uuid)) {
+          this.log.info(`[Platform] Device ${deviceModel} (id: ${deviceId}) is excluded, don't add accessory`);
           if (existingAccessory) {
             this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
           }
@@ -253,7 +254,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         }
 
         if (existingAccessory) {
-          this.log.info('[Platform] Restoring existing accessory from cache:', existingAccessory.displayName);
+          this.log.info(`[Platform] Restoring existing accessory from cache: ${existingAccessory.displayName} (id: ${deviceId})`);
 
           // Remove old event listener before reassigning device
           this.removeDeviceListener(existingAccessory);
@@ -268,7 +269,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
           const climateControlEmbeddedId = device.desc.managementPoints.find(mp => mp.managementPointType === 'climateControl')?.embeddedId || 'climateControl';
           const nameData = device.getData(climateControlEmbeddedId, 'name', undefined).value as string | undefined;
           const displayName = StringUtils.isEmpty(nameData) ? deviceModel : nameData!;
-          this.log.info('[Platform] Adding new accessory, deviceModel:', displayName);
+          this.log.info(`[Platform] Adding new accessory: ${displayName} (id: ${deviceId})`);
           const accessory = new this.api.platformAccessory<DaikinCloudAccessoryContext>(displayName, uuid);
           accessory.context.device = device;
 
@@ -357,8 +358,14 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     }
   }
 
-  private isExcludedDevice(excludedDevicesByDeviceId: Array<string>, deviceId: string): boolean {
-    return typeof excludedDevicesByDeviceId !== 'undefined' && excludedDevicesByDeviceId.includes(deviceId);
+  private isExcludedDevice(excludedDevicesByDeviceId: Array<string> | undefined, deviceId: string, uuid: string): boolean {
+    if (!excludedDevicesByDeviceId || excludedDevicesByDeviceId.length === 0) {
+      return false;
+    }
+    // The custom UI saves raw Daikin device IDs (the value returned by device.getId()),
+    // but previous releases compared against the HAP-generated UUID. Accept either form
+    // so existing configs keep working and new exclusions from the UI take effect.
+    return excludedDevicesByDeviceId.includes(deviceId) || excludedDevicesByDeviceId.includes(uuid);
   }
 
   private getPrivacyFriendlyConfig(config: PlatformConfig): object {
