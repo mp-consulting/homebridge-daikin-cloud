@@ -92,7 +92,7 @@ test('DaikinCloudPlatform with new Aircondition accessory', async () => {
   expect(registerPlatformAccessoriesSpy).toHaveBeenCalledWith('@mp-consulting/homebridge-daikin-cloud', 'DaikinCloud', expect.anything());
 });
 
-test('DaikinCloudPlatform excludes device when raw device ID is in excludedDevicesByDeviceId', async () => {
+test('DaikinCloudPlatform excludes device when its raw Daikin device ID is in excludedDevicesByDeviceId', async () => {
   const mockDevice = {
     getId: () => 'efd08509-2edb-41d0-a9ab-ce913323d811',
     getDescription: () => ({ deviceModel: 'Airco' }),
@@ -122,10 +122,9 @@ test('DaikinCloudPlatform excludes device when raw device ID is in excludedDevic
   expect(registerSpy).not.toHaveBeenCalled();
 });
 
-test('DaikinCloudPlatform excludes device when HAP UUID is in excludedDevicesByDeviceId (backwards compatibility)', async () => {
-  const deviceId = 'efd08509-2edb-41d0-a9ab-ce913323d811';
+test('DaikinCloudPlatform registers the accessory when its raw device ID is NOT in excludedDevicesByDeviceId', async () => {
   const mockDevice = {
-    getId: () => deviceId,
+    getId: () => 'efd08509-2edb-41d0-a9ab-ce913323d811',
     getDescription: () => ({ deviceModel: 'Airco' }),
     getData: () => 'MOCK_DATE',
     desc: { managementPoints: [{ embeddedId: 'climateControl', managementPointType: 'climateControl' }] },
@@ -140,17 +139,17 @@ test('DaikinCloudPlatform excludes device when HAP UUID is in excludedDevicesByD
 
   const api = new HomebridgeAPI();
   const registerSpy = vi.spyOn(api, 'registerPlatformAccessories');
-  const hapUuid = api.hap.uuid.generate(deviceId);
 
   const config = new MockPlatformConfig(true);
-  (config as any).excludedDevicesByDeviceId = [hapUuid];
+  // A HAP UUID in the config must NOT match — only raw Daikin device IDs are honoured.
+  (config as any).excludedDevicesByDeviceId = [api.hap.uuid.generate('efd08509-2edb-41d0-a9ab-ce913323d811')];
 
   new DaikinCloudPlatform(new Logger(), config, api);
   api.signalFinished();
   await vi.advanceTimersByTimeAsync(100);
 
-  expect(AirConditioningAccessory).not.toHaveBeenCalled();
-  expect(registerSpy).not.toHaveBeenCalled();
+  expect(AirConditioningAccessory).toHaveBeenCalled();
+  expect(registerSpy).toHaveBeenCalled();
 });
 
 test('DaikinCloudPlatform with new Altherma accessory', async () => {

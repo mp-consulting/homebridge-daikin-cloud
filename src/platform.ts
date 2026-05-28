@@ -245,7 +245,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
 
         this.log.debug('Create Device', deviceModel, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(device.desc), null, 4));
 
-        if (this.isExcludedDevice(this.config.excludedDevicesByDeviceId, deviceId, uuid)) {
+        if (this.isExcludedDevice(this.config.excludedDevicesByDeviceId, deviceId)) {
           this.log.info(`[Platform] Device ${deviceModel} (id: ${deviceId}) is excluded, don't add accessory`);
           if (existingAccessory) {
             this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
@@ -358,14 +358,8 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     }
   }
 
-  private isExcludedDevice(excludedDevicesByDeviceId: Array<string> | undefined, deviceId: string, uuid: string): boolean {
-    if (!excludedDevicesByDeviceId || excludedDevicesByDeviceId.length === 0) {
-      return false;
-    }
-    // The custom UI saves raw Daikin device IDs (the value returned by device.getId()),
-    // but previous releases compared against the HAP-generated UUID. Accept either form
-    // so existing configs keep working and new exclusions from the UI take effect.
-    return excludedDevicesByDeviceId.includes(deviceId) || excludedDevicesByDeviceId.includes(uuid);
+  private isExcludedDevice(excludedDevicesByDeviceId: Array<string> | undefined, deviceId: string): boolean {
+    return Array.isArray(excludedDevicesByDeviceId) && excludedDevicesByDeviceId.includes(deviceId);
   }
 
   private getPrivacyFriendlyConfig(config: PlatformConfig): object {

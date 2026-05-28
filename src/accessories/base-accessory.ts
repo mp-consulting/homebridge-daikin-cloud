@@ -52,12 +52,17 @@ export class BaseAccessory {
   }
 
   private printDeviceInfo(modelInfo: string) {
-    this.platform.log.info('[Platform] Device found with id: ' + this.accessory.UUID);
-    this.platform.log.info('[Platform]     id: ' + this.accessory.UUID);
+    // Log the raw Daikin device ID — this is the value the custom UI saves into
+    // excludedDevicesByDeviceId, so users picking IDs out of the log get a match.
+    // The HAP UUID is logged too for diagnostic purposes only.
+    const deviceId = this.accessory.context.device.getId();
+    this.platform.log.info('[Platform] Device found with id: ' + deviceId);
+    this.platform.log.info('[Platform]     id: ' + deviceId);
     this.platform.log.info('[Platform]     name: ' + this.accessory.displayName);
     this.platform.log.info('[Platform]     last updated: ' + this.accessory.context.device.getLastUpdated());
     this.platform.log.info('[Platform]     modelInfo: ' + modelInfo);
     this.platform.log.info('[Platform]     deviceModel: ' + this.accessory.context.device.getDescription().deviceModel);
+    this.platform.log.debug('[Platform]     HAP UUID: ' + this.accessory.UUID);
   }
 
   /**
