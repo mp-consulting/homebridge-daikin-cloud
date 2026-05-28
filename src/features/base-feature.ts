@@ -138,6 +138,26 @@ export abstract class BaseFeature {
     }
 
     /**
+     * Push current device state to the switch's On characteristic.
+     * Called after every poll / WebSocket update so HomeKit reflects state
+     * changes initiated from the Daikin app without waiting for the next onGet.
+     * No-op if the switch service isn't registered (feature unsupported/disabled).
+     */
+    refresh(): void {
+      if (!this.switchService) {
+        return;
+      }
+      void Promise.resolve(this.handleGet()).then(
+        (value) => {
+          this.switchService?.getCharacteristic(this.platform.Characteristic.On).updateValue(value);
+        },
+        // handleGet is just a getData read in practice — but guard against custom
+        // implementations throwing so one bad feature can't break the refresh loop.
+        (err) => this.log.debug(`[${this.name}] ${this.featureName} refresh failed: ${err instanceof Error ? err.message : err}`),
+      );
+    }
+
+    /**
      * Get device data from the Daikin Cloud.
      */
     protected getData(dataPoint: string, path?: string): unknown {

@@ -386,7 +386,7 @@ describe('UpdateMapper', () => {
     });
 
     describe('unhandled characteristics', () => {
-      it('should log debug message for unknown characteristic', () => {
+      it('returns success=false without logging — refreshValues will pick it up from in-memory state', () => {
         const { accessory } = createMockAccessory('HeaterCooler');
         const update: DeviceUpdate = {
           deviceId: 'device-1',
@@ -397,7 +397,11 @@ describe('UpdateMapper', () => {
 
         const result = mapper.applyUpdate(accessory, update);
         expect(result.success).toBe(false);
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        // No "Unhandled characteristic" log — that was misleading noise. The
+        // 'updated' event listener triggers refreshValues which reads fresh
+        // in-memory state for every characteristic, so missing a fast-path
+        // mapping here is not an error.
+        expect(mockLogger.debug).not.toHaveBeenCalledWith(
           expect.stringContaining('Unhandled characteristic'),
         );
       });

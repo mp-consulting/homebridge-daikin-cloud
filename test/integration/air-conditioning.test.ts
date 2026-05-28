@@ -62,7 +62,8 @@ test.each<Array<string | string | any | DeviceState>>([
       targetHeaterCoolerState: 1,
       coolingThresholdTemperature: 25,
       heatingThresholdTemperature: 22,
-      rotationSpeed: 2,
+      // dx4 fanSpeed.modes.fixed: value=2, maxValue=5 → 40% in HomeKit
+      rotationSpeed: 40,
       swingMode: 0,
       powerfulMode: false,
       econoMode: false,
@@ -83,7 +84,8 @@ test.each<Array<string | string | any | DeviceState>>([
       targetHeaterCoolerState: 2,
       coolingThresholdTemperature: 17,
       heatingThresholdTemperature: 17,
-      rotationSpeed: 3,
+      // dx23 fanSpeed.modes.fixed: value=3, maxValue=3 → 100% in HomeKit
+      rotationSpeed: 100,
       swingMode: 1,
       powerfulMode: undefined,
       econoMode: undefined,
@@ -104,7 +106,8 @@ test.each<Array<string | string | any | DeviceState>>([
       targetHeaterCoolerState: 1,
       coolingThresholdTemperature: 25,
       heatingThresholdTemperature: 13,
-      rotationSpeed: 4,
+      // dx23-2 fanSpeed.modes.fixed: value=4, maxValue=5 → 80% in HomeKit
+      rotationSpeed: 80,
       swingMode: 0,
       powerfulMode: false,
       econoMode: undefined,
@@ -125,7 +128,8 @@ test.each<Array<string | string | any | DeviceState>>([
       targetHeaterCoolerState: 2,
       coolingThresholdTemperature: 23.5,
       heatingThresholdTemperature: undefined,
-      rotationSpeed: 1,
+      // unknown fanSpeed.modes.fixed: value=1, maxValue=3 → 33% in HomeKit
+      rotationSpeed: 33,
       swingMode: 1,
       powerfulMode: undefined,
       econoMode: undefined,
@@ -146,7 +150,8 @@ test.each<Array<string | string | any | DeviceState>>([
       targetHeaterCoolerState: 2,
       coolingThresholdTemperature: 26.1,
       heatingThresholdTemperature: undefined,
-      rotationSpeed: 1,
+      // unknown2 fanSpeed.modes.fixed: value=1, maxValue=3 → 33% in HomeKit
+      rotationSpeed: 33,
       swingMode: 1,
       powerfulMode: undefined,
       econoMode: undefined,
@@ -315,7 +320,8 @@ test('DaikinCloudAirConditioningAccessory Getters', async () => {
   expect(await homebridgeAccessory.service.handleActiveStateGet()).toEqual(true);
   expect(await homebridgeAccessory.service.handleCurrentTemperatureGet()).toEqual(25);
   expect(await homebridgeAccessory.service.handleCoolingThresholdTemperatureGet()).toEqual(25);
-  expect(await homebridgeAccessory.service.handleRotationSpeedGet()).toEqual(2);
+  // dx4 heating fanSpeed.modes.fixed = 2 / maxValue 5 → 40% in HomeKit
+  expect(await homebridgeAccessory.service.handleRotationSpeedGet()).toEqual(40);
   expect(await homebridgeAccessory.service.handleHeatingThresholdTemperatureGet()).toEqual(22);
   expect(await homebridgeAccessory.service.handleTargetHeaterCoolerStateGet()).toEqual(1);
   expect(await homebridgeAccessory.service.handleSwingModeGet()).toEqual(0);
@@ -364,8 +370,9 @@ test('DaikinCloudAirConditioningAccessory Setters', async () => {
 
   // dx4-airco in heating mode already has fanSpeed.currentMode = 'fixed',
   // so the setter only updates the speed value (no redundant currentMode write).
+  // 50% of maxValue 5 = 2.5 → rounds to 3 → device speed 3.
   await homebridgeAccessory.service.handleRotationSpeedSet(50);
-  expect(setDataSpy).toHaveBeenNthCalledWith(3, 'climateControl', 'fanControl', '/operationModes/heating/fanSpeed/modes/fixed', 50);
+  expect(setDataSpy).toHaveBeenNthCalledWith(3, 'climateControl', 'fanControl', '/operationModes/heating/fanSpeed/modes/fixed', 3);
 
   await homebridgeAccessory.service.handleHeatingThresholdTemperatureSet(25);
   expect(setDataSpy).toHaveBeenNthCalledWith(4, 'climateControl', 'temperatureControl', '/operationModes/heating/setpoints/roomTemperature', 25);

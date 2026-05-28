@@ -77,6 +77,17 @@ export class FeatureManager {
   }
 
   /**
+     * Push current device state to every feature switch's On characteristic.
+     * Called from ClimateControlService.refreshValues after a poll/WebSocket
+     * update so HomeKit reflects mode changes initiated from the Daikin app.
+     */
+  refreshAll(): void {
+    for (const feature of this.features) {
+      feature.refresh();
+    }
+  }
+
+  /**
      * Get a specific feature by class type.
      */
   getFeature<T extends BaseFeature>(

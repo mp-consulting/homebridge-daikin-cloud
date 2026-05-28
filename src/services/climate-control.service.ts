@@ -197,13 +197,14 @@ export class ClimateControlService {
           .updateValue(typeof heatingTemp === 'number' && isFinite(heatingTemp) ? heatingTemp : DEFAULT_ROOM_TEMPERATURE);
       }
 
-      const speed = this.accessory.context.device.getData(
+      const fanSpeedData = this.accessory.context.device.getData(
         this.managementPointId, 'fanControl',
         `/operationModes/${operationMode}/fanSpeed/modes/fixed`,
-      ).value as number | undefined;
-      if (speed !== undefined) {
+      );
+      if (fanSpeedData.value !== undefined) {
+        const percent = deviceSpeedToPercent(fanSpeedData.value as number, fanSpeedData.maxValue);
         this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed)
-          .updateValue(typeof speed === 'number' && isFinite(speed) ? speed : 1);
+          .updateValue(percent);
       }
 
       if (this.hasSwingModeFeature()) {
@@ -218,6 +219,11 @@ export class ClimateControlService {
         this.service.getCharacteristic(this.platform.Characteristic.SwingMode)
           .updateValue(swingEnabled ? this.platform.Characteristic.SwingMode.SWING_ENABLED : this.platform.Characteristic.SwingMode.SWING_DISABLED);
       }
+
+      // Push feature switches (PowerfulMode, EconoMode, etc.) so toggling
+      // these from the Daikin app reaches HomeKit on the next WebSocket update
+      // instead of waiting for the user to open the Home app.
+      this.featureManager.refreshAll();
     } catch (e) {
       this.platform.log.debug(`[${this.name}] refreshValues error: ${e instanceof Error ? e.message : e}`);
     }
@@ -235,19 +241,30 @@ export class ClimateControlService {
     const fanControl = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`);
 
     if (fanControl.value !== undefined) {
+      // Daikin units expose a small integer fan-speed scale (typically 1-5 or 1-3).
+      // iOS Home renders RotationSpeed as a 0-100% slider regardless of setProps,
+      // so we keep the characteristic in percentage space and map both directions:
+      // device 5/5 → HomeKit 100% (full bar), device 1/5 → 20%, etc.
+      // minStep = 100/maxValue gives the discrete positions that round-trip cleanly.
+      //
+      // Order matters: setProps FIRST to widen any narrow range left over from a
+      // prior session (e.g. an old build that capped at maxValue=5). Otherwise the
+      // updateValue below trips HAP's validateUserInput. minValue=0 (not stepPercent)
+      // keeps HAP happy when the cached value is below stepPercent — the slider's
+      // 0 position is harmless since percentToDeviceSpeed clamps writes up to the
+      // device minValue anyway.
       const rotationChar = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
-      // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-      const rotationValue = typeof fanControl.value === 'number' ? fanControl.value : 1;
-      const clampedRotationValue = Math.max(0, Math.min(100, rotationValue));
-      rotationChar.updateValue(clampedRotationValue);
+      const stepPercent = percentStep(fanControl.maxValue);
+      const percent = deviceSpeedToPercent(fanControl.value as number, fanControl.maxValue);
       rotationChar
         .setProps({
-          minStep: fanControl.stepValue,
-          minValue: fanControl.minValue,
-          maxValue: fanControl.maxValue,
+          minStep: stepPercent,
+          minValue: 0,
+          maxValue: 100,
         })
         .onGet(this.handleRotationSpeedGet.bind(this))
         .onSet(this.handleRotationSpeedSet.bind(this));
+      rotationChar.updateValue(percent);
     } else {
       this.service.removeCharacteristic(this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed));
     }
@@ -305,15 +322,17 @@ export class ClimateControlService {
   }
 
   async handleRotationSpeedGet(): Promise<CharacteristicValue> {
-    const speed = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`).value as number | undefined;
-    this.platform.log.debug(`[${this.name}] GET RotationSpeed, speed: ${speed}, last update: ${this.accessory.context.device.getLastUpdated()}`);
-    return typeof speed === 'number' && isFinite(speed) ? speed : 1;
+    const fanSpeedData = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`);
+    const speed = fanSpeedData.value as number | undefined;
+    const percent = typeof speed === 'number' && isFinite(speed)
+      ? deviceSpeedToPercent(speed, fanSpeedData.maxValue)
+      : percentStep(fanSpeedData.maxValue);
+    this.platform.log.debug(`[${this.name}] GET RotationSpeed, device speed: ${speed} → ${percent}%, last update: ${this.accessory.context.device.getLastUpdated()}`);
+    return percent;
   }
 
   async handleRotationSpeedSet(value: CharacteristicValue) {
-    const speed = value as number;
     const operationMode = this.getCurrentOperationMode();
-    this.platform.log.debug(`[${this.name}] SET RotationSpeed, speed to: ${speed}`);
 
     // Skip if the current operation mode doesn't support a fixed fan speed.
     // Without this check, we'd PATCH a non-existent path and the Daikin API would
@@ -324,6 +343,9 @@ export class ClimateControlService {
       return;
     }
 
+    const deviceSpeed = percentToDeviceSpeed(value as number, fixedFanSpeed.minValue, fixedFanSpeed.maxValue);
+    this.platform.log.debug(`[${this.name}] SET RotationSpeed, ${value}% → device speed ${deviceSpeed}`);
+
     const currentMode = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/currentMode`);
     const allowedModes = (currentMode.values ?? []) as string[];
 
@@ -333,7 +355,7 @@ export class ClimateControlService {
       if (currentMode.value !== DaikinFanSpeedModes.FIXED && allowedModes.includes(DaikinFanSpeedModes.FIXED)) {
         await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/currentMode`, DaikinFanSpeedModes.FIXED);
       }
-      await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/modes/fixed`, speed);
+      await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/modes/fixed`, deviceSpeed);
     });
   }
 
@@ -520,16 +542,12 @@ export class ClimateControlService {
     // getData() returns { value: undefined } when the path is missing — checking the
     // wrapper for truthiness always succeeds. We need to confirm the value itself is set.
     const verticalSwing = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/vertical/currentMode`);
-    const supported = verticalSwing.value !== undefined;
-    this.platform.log.debug(`[${this.name}] hasSwingModeFeature, verticalSwing: ${supported}`);
-    return supported;
+    return verticalSwing.value !== undefined;
   }
 
   hasSwingModeHorizontalFeature() {
     const horizontalSwing = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/horizontal/currentMode`);
-    const supported = horizontalSwing.value !== undefined;
-    this.platform.log.debug(`[${this.name}] hasSwingModeFeature, horizontalSwing: ${supported}`);
-    return supported;
+    return horizontalSwing.value !== undefined;
   }
 
   hasSwingModeFeature() {
@@ -583,4 +601,30 @@ export class ClimateControlService {
   hasFanOnlyOperationModeFeature() {
     return this.hasOperationMode(DaikinOperationModes.FAN_ONLY);
   }
+}
+
+// Daikin's fan speed scale (e.g. 1..5) → HomeKit's 0..100% percentage slider.
+// Pulled to module scope so refreshValues / addOrUpdate / get / set use the
+// same math and the same fallback for missing maxValue.
+const DEFAULT_FAN_MAX = 5;
+
+function percentStep(maxValue: number | undefined): number {
+  return 100 / (maxValue && maxValue > 0 ? maxValue : DEFAULT_FAN_MAX);
+}
+
+function deviceSpeedToPercent(speed: number, maxValue: number | undefined): number {
+  const max = maxValue && maxValue > 0 ? maxValue : DEFAULT_FAN_MAX;
+  const percent = Math.round((speed / max) * 100);
+  return Math.max(0, Math.min(100, percent));
+}
+
+function percentToDeviceSpeed(
+  percent: number,
+  minValue: number | undefined,
+  maxValue: number | undefined,
+): number {
+  const min = minValue && minValue > 0 ? minValue : 1;
+  const max = maxValue && maxValue > 0 ? maxValue : DEFAULT_FAN_MAX;
+  const raw = Math.round((percent / 100) * max);
+  return Math.max(min, Math.min(max, raw));
 }

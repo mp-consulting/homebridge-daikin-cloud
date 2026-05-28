@@ -73,7 +73,10 @@ export class UpdateMapper {
         break;
 
       default:
-        this.logger.debug(`[UpdateMapper] Unhandled characteristic: ${update.characteristicName}`);
+        // No fast-path mapping — refreshValues (driven by the same 'updated'
+        // event) will pick this up from in-memory state on the next refresh.
+        // No log needed; "unhandled" here just means "no shortcut", not an error.
+        break;
     }
 
     result.success = result.updated.length > 0;

@@ -69,13 +69,16 @@ describe('ClimateControlService — SwingMode support detection', () => {
 });
 
 describe('ClimateControlService — RotationSpeed setter', () => {
+  // dx4 fanSpeed.modes.fixed → minValue:1, maxValue:5, stepValue:1.
+  // HomeKit sends a 0-100 percentage; we round to the nearest device speed.
+  // 60% → 3, 40% → 2, 100% → 5.
   it('skips the redundant currentMode write when currentMode is already "fixed" (dx4 heating)', async () => {
     const { service, setDataMock } = buildService(dx4Airco);
     setDataMock.mockClear();
 
-    await service.handleRotationSpeedSet(3);
+    // 60% of 5 = 3 → device speed 3.
+    await service.handleRotationSpeedSet(60);
 
-    // Only one write expected: the new fixed speed value.
     expect(setDataMock).toHaveBeenCalledTimes(1);
     expect(setDataMock).toHaveBeenCalledWith(
       'climateControl',
@@ -87,12 +90,12 @@ describe('ClimateControlService — RotationSpeed setter', () => {
 
   it('writes currentMode then the speed when the device is not yet in fixed mode', async () => {
     const fixture = JSON.parse(JSON.stringify(dx4Airco));
-    // Pre-set the operation mode to auto where currentMode is 'auto' by default.
     fixture.managementPoints[1].operationMode.value = 'auto';
     const { service, setDataMock } = buildService(fixture);
     setDataMock.mockClear();
 
-    await service.handleRotationSpeedSet(2);
+    // 40% of 5 = 2 → device speed 2.
+    await service.handleRotationSpeedSet(40);
 
     expect(setDataMock).toHaveBeenCalledTimes(2);
     expect(setDataMock).toHaveBeenNthCalledWith(
@@ -111,18 +114,68 @@ describe('ClimateControlService — RotationSpeed setter', () => {
     );
   });
 
+  it('maps 100% to the device max (5 on dx4)', async () => {
+    const { service, setDataMock } = buildService(dx4Airco);
+    setDataMock.mockClear();
+
+    await service.handleRotationSpeedSet(100);
+
+    expect(setDataMock).toHaveBeenCalledWith(
+      'climateControl',
+      'fanControl',
+      '/operationModes/heating/fanSpeed/modes/fixed',
+      5,
+    );
+  });
+
+  it('clamps low percentages to the device minValue', async () => {
+    const { service, setDataMock } = buildService(dx4Airco);
+    setDataMock.mockClear();
+
+    // 5% of 5 ≈ 0 → clamped up to minValue=1.
+    await service.handleRotationSpeedSet(5);
+
+    expect(setDataMock).toHaveBeenCalledWith(
+      'climateControl',
+      'fanControl',
+      '/operationModes/heating/fanSpeed/modes/fixed',
+      1,
+    );
+  });
+
   it('skips any write when the current operation mode does not support a fixed fan speed (dry on dx4)', async () => {
     const fixture = JSON.parse(JSON.stringify(dx4Airco));
-    // dry on dx4 only allows currentMode 'auto' and has no modes.fixed
     delete fixture.managementPoints[1].fanControl.value.operationModes.dry.fanSpeed.modes;
     fixture.managementPoints[1].operationMode.value = 'dry';
 
     const { service, setDataMock } = buildService(fixture);
     setDataMock.mockClear();
 
-    await service.handleRotationSpeedSet(2);
+    await service.handleRotationSpeedSet(60);
 
-    // No API write should be issued, preventing a guaranteed-fail PATCH against Daikin.
     expect(setDataMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('ClimateControlService — RotationSpeed getter', () => {
+  it('returns the device speed mapped to a percentage of maxValue (dx4 heating)', async () => {
+    const { service } = buildService(dx4Airco);
+    // dx4 heating fanSpeed.modes.fixed.value = 2, maxValue = 5 → 40%.
+    await expect(service.handleRotationSpeedGet()).resolves.toBe(40);
+  });
+});
+
+describe('ClimateControlService — RotationSpeed characteristic setup', () => {
+  it('sets minValue=0 (not stepPercent) so HAP never warns about cached values below the new range', () => {
+    const { accessory } = buildService(dx4Airco);
+    const heaterCooler = accessory.getService(Service.HeaterCooler);
+    const rotationChar = heaterCooler!.getCharacteristic(Characteristic.RotationSpeed);
+
+    // dx4 maxValue=5 → stepPercent=20. minValue MUST be 0 (or below stepPercent)
+    // or HAP's setProps validation fires "<cached> exceeded minimum of 20" against
+    // any pre-existing characteristic value left over from a prior build.
+    expect(rotationChar.props.minValue).toBe(0);
+    expect(rotationChar.props.maxValue).toBe(100);
+    expect(rotationChar.props.minStep).toBe(20);
   });
 });
