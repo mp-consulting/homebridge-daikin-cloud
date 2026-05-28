@@ -216,6 +216,11 @@ npm run watch
 
 # Run tests
 npm test
+
+# Check for Daikin API schema drift (fetches live devices, diffs raw vs Zod-parsed,
+# reports any silently-stripped fields). Add --dump-fixtures to also write per-device
+# fixtures to test/fixtures/live/ for offline debugging.
+npm run schema:check
 ```
 
 ### Code Quality

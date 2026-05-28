@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.22] - 2026-05-28
+
+### Fixed
+
+- **RotationSpeed 400 errors**: Zod 4 silently stripped `minValue`/`maxValue`/`stepValue` from `fanSpeed.modes.*` because the schema only declared `value`. `setProps` then ran with `undefined` ranges, the iOS slider kept its 0-100 default, and Daikin rejected values like 36/93/100 with `INVALID_CHARACTERISTIC_VALUE`. Schema now wraps every nested characteristic object with a `chr()` helper (`z.object(...).loose()`) so unknown metadata Daikin returns (`settable`, `ref`, `unit`, `values`, …) survives parsing across the board.
+- **WebSocket data destruction**: `applyWebSocketUpdate` now deep-merges partial sub-trees instead of replacing whole `value` objects. Daikin pushes characteristics like `fanControl` with only the changed `operationMode`/sub-path — the previous assignment-style update wiped every sibling out of memory until the next 5-min poll, causing `hasSwingModeFeature` to flap and HomeKit setters to silently skip writes with `value === undefined`.
+- **RotationSpeed slider display**: Device fan speed (typically 1-5) is now mapped to HomeKit's 0-100 percentage in both directions, so max device speed shows as a full slider bar instead of "5%". `setProps` is also called before `updateValue` (and uses `minValue: 0`) so stale characteristic state from a prior session can't trip HAP's `validateUserInput` on plugin reload.
+- **Feature switches not pushed from the Daikin app**: PowerfulMode, EconoMode, StreamerMode, OutdoorSilentMode, IndoorSilentMode and the dry/fan-only mode switches now push their state to HomeKit on every WebSocket update via a new `BaseFeature.refresh()` / `FeatureManager.refreshAll()`. Toggling these in the Onecta app now reflects in the Home app immediately instead of waiting for the next user-initiated GET.
+
+### Added
+
+- **Schema-drift checker** (`npm run schema:check`): fetches live devices from Daikin Cloud, diffs the raw payload against the Zod-parsed result, and reports every silently-stripped key path. `--dump-fixtures` additionally writes per-device fixtures to `test/fixtures/live/` (gitignored). Catches the class of bug that hid the RotationSpeed 400 for months.
+
+### Changed
+
+- **Less log spam**: dropped per-axis `hasSwingModeFeature` debug logs that fired multiple times on every WebSocket-driven refresh, and silenced `[UpdateMapper] Unhandled characteristic: <name>` — the `refreshValues` path already covers every characteristic from in-memory state on each `'updated'` event, so missing a fast-path mapping is not an error.
+
 ## [1.3.21] - 2026-04-17
 
 ### Fixed
