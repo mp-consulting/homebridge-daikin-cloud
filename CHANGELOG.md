@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.23] - 2026-05-28
+
+### Fixed
+
+- **Auto mode showing stale setpoint in the Daikin app**: HomeKit HeaterCooler exposes Auto as a temperature range (heating threshold + cooling threshold), while Daikin's auto operationMode uses a single setpoint. The threshold setters now also mirror the heating/cooling midpoint to `/operationModes/auto/setpoints/roomTemperature` whenever the device exposes one, so the Daikin app reflects the HomeKit choice instead of keeping a stale value (e.g. "auto 25°" after setting HomeKit to 19-21°). Best-effort: failures (Altherma's `weatherDependentHeatingFixedCooling` doesn't resolve a setpoint for auto, etc.) silently skip the sync — the primary heating/cooling write still succeeds.
+- **CI lint**: a debug template literal in `handleRotationSpeedGet` exceeded the 160-char `max-len` rule. Local builds passed only because of a stale `.eslintcache`; CI caught it on the v1.3.22 release. The line is split now.
+
 ## [1.3.22] - 2026-05-28
 
 ### Fixed
