@@ -318,6 +318,7 @@ export class ClimateControlService {
     this.platform.log.debug(`[${this.name}] SET CoolingThresholdTemperature, temperature to: ${temperature}`);
     await this.setDeviceData('CoolingThresholdTemperature', async () => {
       await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`, temperature);
+      await this.syncAutoSetpointIfSupported({ cooling: temperature });
     });
   }
 
@@ -327,7 +328,10 @@ export class ClimateControlService {
     const percent = typeof speed === 'number' && isFinite(speed)
       ? deviceSpeedToPercent(speed, fanSpeedData.maxValue)
       : percentStep(fanSpeedData.maxValue);
-    this.platform.log.debug(`[${this.name}] GET RotationSpeed, device speed: ${speed} → ${percent}%, last update: ${this.accessory.context.device.getLastUpdated()}`);
+    this.platform.log.debug(
+      `[${this.name}] GET RotationSpeed, device speed: ${speed} → ${percent}%, ` +
+        `last update: ${this.accessory.context.device.getLastUpdated()}`,
+    );
     return percent;
   }
 
@@ -377,7 +381,75 @@ export class ClimateControlService {
     this.platform.log.debug(`[${this.name}] SET HeatingThresholdTemperature, temperature to: ${temperature}`);
     await this.setDeviceData('HeatingThresholdTemperature', async () => {
       await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`, temperature);
+      await this.syncAutoSetpointIfSupported({ heating: temperature });
     });
+  }
+
+  /**
+   * Daikin's auto operationMode uses a SINGLE setpoint, not a range like
+   * HomeKit's HeaterCooler (heating threshold + cooling threshold). Without
+   * this sync the Daikin app keeps showing whatever auto setpoint was there
+   * when the device was last in auto mode, regardless of what the user picks
+   * in HomeKit. Mirror the midpoint of the current heating/cooling thresholds
+   * to /operationModes/auto/setpoints/roomTemperature whenever either
+   * threshold is set, so the Daikin app and HomeKit stay in sync.
+   *
+   * No-op when the device doesn't expose an auto setpoint (e.g. devices
+   * without an auto operationMode at all).
+   */
+  private async syncAutoSetpointIfSupported(
+    overrides: { heating?: number; cooling?: number } = {},
+  ): Promise<void> {
+    // Best-effort. Failures here (e.g. getSetpoint throwing for Altherma's
+    // weatherDependentHeatingFixedCooling + leavingWaterTemperature combo, or
+    // any PATCH error) must not propagate — the primary heating/cooling write
+    // already succeeded by this point, and a missing auto-sync just leaves
+    // the Daikin app showing a slightly stale auto setpoint.
+    try {
+      const autoSetpointKey = this.getSetpoint(DaikinOperationModes.AUTO);
+      const autoPath = `/operationModes/${DaikinOperationModes.AUTO}/setpoints/${autoSetpointKey}`;
+      const autoData = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', autoPath);
+      if (autoData.value === undefined) {
+        return;
+      }
+
+      const heatingKey = this.getSetpoint(DaikinOperationModes.HEATING);
+      const coolingKey = this.getSetpoint(DaikinOperationModes.COOLING);
+      const heating = overrides.heating ?? (this.accessory.context.device.getData(
+        this.managementPointId, 'temperatureControl',
+        `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${heatingKey}`,
+      ).value as number | undefined);
+      const cooling = overrides.cooling ?? (this.accessory.context.device.getData(
+        this.managementPointId, 'temperatureControl',
+        `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${coolingKey}`,
+      ).value as number | undefined);
+      if (typeof heating !== 'number' || typeof cooling !== 'number') {
+        return;
+      }
+
+      // Midpoint rounded to nearest 0.5° — matches the step used by the
+      // heating/cooling setters above, and the stepValue Daikin returns.
+      let midpoint = Math.round(heating + cooling) / 2;
+      if (typeof autoData.minValue === 'number') {
+        midpoint = Math.max(autoData.minValue, midpoint);
+      }
+      if (typeof autoData.maxValue === 'number') {
+        midpoint = Math.min(autoData.maxValue, midpoint);
+      }
+
+      if (typeof autoData.value === 'number' && Math.abs(autoData.value - midpoint) < 0.01) {
+        return;
+      }
+
+      this.platform.log.debug(
+        `[${this.name}] SYNC AutoSetpoint, heating=${heating} cooling=${cooling} → auto=${midpoint}`,
+      );
+      await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', autoPath, midpoint);
+    } catch (e) {
+      this.platform.log.debug(
+        `[${this.name}] AutoSetpoint sync skipped: ${e instanceof Error ? e.message : e}`,
+      );
+    }
   }
 
   async handleTargetHeaterCoolerStateGet(): Promise<CharacteristicValue> {

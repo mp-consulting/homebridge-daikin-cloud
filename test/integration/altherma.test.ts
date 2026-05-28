@@ -269,15 +269,20 @@ test('DaikinCloudAirConditioningAccessory Setters', async () => {
   await homebridgeAccessory.service?.handleActiveStateSet(0);
   expect(setDataSpy).toHaveBeenNthCalledWith(1, 'climateControlMainZone', 'onOffMode', 'off', undefined);
 
+  // Cooling-set fires the auto-sync (override cooling=21 + device heating=22 → midpoint 21.5).
   await homebridgeAccessory.service?.handleCoolingThresholdTemperatureSet(21);
   expect(setDataSpy).toHaveBeenNthCalledWith(2, 'climateControlMainZone', 'temperatureControl', '/operationModes/cooling/setpoints/roomTemperature', 21);
+  expect(setDataSpy).toHaveBeenNthCalledWith(3, 'climateControlMainZone', 'temperatureControl', '/operationModes/auto/setpoints/roomTemperature', expect.any(Number));
 
+  // Heating-set's auto-sync skips silently because althermaHeatPump's
+  // cooling.setpoints is empty (no roomTemperature to read back) — the
+  // sync needs both sides defined or it can't compute a midpoint.
   await homebridgeAccessory.service?.handleHeatingThresholdTemperatureSet(25);
-  expect(setDataSpy).toHaveBeenNthCalledWith(3, 'climateControlMainZone', 'temperatureControl', '/operationModes/heating/setpoints/roomTemperature', 25);
+  expect(setDataSpy).toHaveBeenNthCalledWith(4, 'climateControlMainZone', 'temperatureControl', '/operationModes/heating/setpoints/roomTemperature', 25);
 
   // TargetHeaterCoolerState only sets operationMode; onOffMode is controlled exclusively by Active
   await homebridgeAccessory.service?.handleTargetHeaterCoolerStateSet(1);
-  expect(setDataSpy).toHaveBeenNthCalledWith(4, 'climateControlMainZone', 'operationMode', 'heating', undefined);
+  expect(setDataSpy).toHaveBeenNthCalledWith(5, 'climateControlMainZone', 'operationMode', 'heating', undefined);
 
 
 });

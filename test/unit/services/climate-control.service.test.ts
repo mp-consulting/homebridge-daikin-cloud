@@ -165,6 +165,64 @@ describe('ClimateControlService — RotationSpeed getter', () => {
   });
 });
 
+describe('ClimateControlService — Auto setpoint sync', () => {
+  // HomeKit HeaterCooler uses two thresholds (heating + cooling = a range).
+  // Daikin's auto operationMode uses ONE setpoint. Without an explicit sync the
+  // Daikin app keeps showing whatever auto setpoint it had before. The setter
+  // now mirrors the midpoint of the new heating/cooling pair to
+  // /operationModes/auto/setpoints/roomTemperature.
+  it('writes the heating/cooling midpoint to the auto setpoint on cooling-threshold change (dx4)', async () => {
+    const { service, setDataMock } = buildService(dx4Airco);
+    setDataMock.mockClear();
+
+    // dx4 heating setpoint = 22, cooling setpoint = 25, auto setpoint exists.
+    // Set cooling to 21 → midpoint = (22 + 21) / 2 = 21.5.
+    await service.handleCoolingThresholdTemperatureSet(21);
+
+    expect(setDataMock).toHaveBeenCalledWith(
+      'climateControl', 'temperatureControl',
+      '/operationModes/cooling/setpoints/roomTemperature', 21,
+    );
+    expect(setDataMock).toHaveBeenCalledWith(
+      'climateControl', 'temperatureControl',
+      '/operationModes/auto/setpoints/roomTemperature', 21.5,
+    );
+  });
+
+  it('writes the heating/cooling midpoint on heating-threshold change (dx4)', async () => {
+    const { service, setDataMock } = buildService(dx4Airco);
+    setDataMock.mockClear();
+
+    // dx4 cooling = 25, set heating to 19 → midpoint = (19 + 25) / 2 = 22.
+    await service.handleHeatingThresholdTemperatureSet(19);
+
+    expect(setDataMock).toHaveBeenCalledWith(
+      'climateControl', 'temperatureControl',
+      '/operationModes/heating/setpoints/roomTemperature', 19,
+    );
+    expect(setDataMock).toHaveBeenCalledWith(
+      'climateControl', 'temperatureControl',
+      '/operationModes/auto/setpoints/roomTemperature', 22,
+    );
+  });
+
+  it('skips the auto sync write when the device exposes no auto setpoint', async () => {
+    const fixture = JSON.parse(JSON.stringify(dx4Airco));
+    delete fixture.managementPoints[1].temperatureControl.value.operationModes.auto;
+    const { service, setDataMock } = buildService(fixture);
+    setDataMock.mockClear();
+
+    await service.handleCoolingThresholdTemperatureSet(21);
+
+    // Only the cooling write should fire — no auto write at all.
+    expect(setDataMock).toHaveBeenCalledTimes(1);
+    expect(setDataMock).toHaveBeenCalledWith(
+      'climateControl', 'temperatureControl',
+      '/operationModes/cooling/setpoints/roomTemperature', 21,
+    );
+  });
+});
+
 describe('ClimateControlService — RotationSpeed characteristic setup', () => {
   it('sets minValue=0 (not stepPercent) so HAP never warns about cached values below the new range', () => {
     const { accessory } = buildService(dx4Airco);
