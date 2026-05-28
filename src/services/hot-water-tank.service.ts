@@ -317,7 +317,8 @@ export class HotWaterTankService {
 
   hasPowerfulModeFeature() {
     const powerfulMode = this.accessory.context.device.getData(this.managementPointId, 'powerfulMode', undefined);
-    this.platform.log.debug(`[${this.name}] hasPowerfulModeFeature, powerfulMode: ${Boolean(powerfulMode)}`);
-    return Boolean(powerfulMode);
+    const supported = powerfulMode.value !== undefined;
+    this.platform.log.debug(`[${this.name}] hasPowerfulModeFeature, powerfulMode: ${supported}`);
+    return supported;
   }
 }

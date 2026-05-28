@@ -22,9 +22,12 @@ export class OutdoorSilentModeFeature extends BaseFeature {
   }
 
   isSupported(): boolean {
-    const outdoorSilentMode = this.getData('outdoorSilentMode');
-    this.log.debug(`[${this.name}] hasOutdoorSilentModeFeature: ${Boolean(outdoorSilentMode)}`);
-    return Boolean(outdoorSilentMode);
+    // device.getData() returns { value: undefined } when the characteristic is missing,
+    // so Boolean(data) is always true. Check the inner value to detect real support.
+    const outdoorSilentMode = this.getData('outdoorSilentMode') as { value?: unknown } | undefined;
+    const supported = outdoorSilentMode?.value !== undefined;
+    this.log.debug(`[${this.name}] hasOutdoorSilentModeFeature: ${supported}`);
+    return supported;
   }
 
   async handleGet(): Promise<CharacteristicValue> {

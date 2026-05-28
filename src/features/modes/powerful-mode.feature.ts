@@ -22,9 +22,12 @@ export class PowerfulModeFeature extends BaseFeature {
   }
 
   isSupported(): boolean {
-    const powerfulMode = this.getData('powerfulMode');
-    this.log.debug(`[${this.name}] hasPowerfulModeFeature: ${Boolean(powerfulMode)}`);
-    return Boolean(powerfulMode);
+    // device.getData() returns { value: undefined } when the characteristic is missing,
+    // so Boolean(data) is always true. Check the inner value to detect real support.
+    const powerfulMode = this.getData('powerfulMode') as { value?: unknown } | undefined;
+    const supported = powerfulMode?.value !== undefined;
+    this.log.debug(`[${this.name}] hasPowerfulModeFeature: ${supported}`);
+    return supported;
   }
 
   async handleGet(): Promise<CharacteristicValue> {

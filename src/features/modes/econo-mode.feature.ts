@@ -22,9 +22,12 @@ export class EconoModeFeature extends BaseFeature {
   }
 
   isSupported(): boolean {
-    const econoMode = this.getData('econoMode');
-    this.log.debug(`[${this.name}] hasEconoModeFeature: ${Boolean(econoMode)}`);
-    return Boolean(econoMode);
+    // device.getData() returns { value: undefined } when the characteristic is missing,
+    // so Boolean(data) is always true. Check the inner value to detect real support.
+    const econoMode = this.getData('econoMode') as { value?: unknown } | undefined;
+    const supported = econoMode?.value !== undefined;
+    this.log.debug(`[${this.name}] hasEconoModeFeature: ${supported}`);
+    return supported;
   }
 
   async handleGet(): Promise<CharacteristicValue> {

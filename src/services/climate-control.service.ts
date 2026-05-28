@@ -228,9 +228,13 @@ export class ClimateControlService {
       throw Error('Service not initialized');
     }
 
+    // getData() returns { value: undefined } when the path is missing — checking the
+    // wrapper for truthiness always succeeds, so the characteristic was being added
+    // (with undefined min/max/step) even for devices that don't support a fixed fan
+    // speed in the current operation mode. Setting it would then fail at the API.
     const fanControl = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`);
 
-    if (fanControl) {
+    if (fanControl.value !== undefined) {
       const rotationChar = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
       // Set value within default HomeKit range first to avoid warning when setProps narrows the range
       const rotationValue = typeof fanControl.value === 'number' ? fanControl.value : 1;
@@ -308,10 +312,28 @@ export class ClimateControlService {
 
   async handleRotationSpeedSet(value: CharacteristicValue) {
     const speed = value as number;
+    const operationMode = this.getCurrentOperationMode();
     this.platform.log.debug(`[${this.name}] SET RotationSpeed, speed to: ${speed}`);
+
+    // Skip if the current operation mode doesn't support a fixed fan speed.
+    // Without this check, we'd PATCH a non-existent path and the Daikin API would
+    // respond with a 422 (visible to the user as "No Response" in HomeKit).
+    const fixedFanSpeed = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/modes/fixed`);
+    if (fixedFanSpeed.value === undefined) {
+      this.platform.log.debug(`[${this.name}] SET RotationSpeed skipped — operationMode ${operationMode} does not support fixed fan speed`);
+      return;
+    }
+
+    const currentMode = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/currentMode`);
+    const allowedModes = (currentMode.values ?? []) as string[];
+
     await this.setDeviceData('RotationSpeed', async () => {
-      await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/currentMode`, 'fixed');
-      await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`, speed);
+      // Only switch currentMode to 'fixed' when needed (and when supported). Some
+      // operation modes (e.g. dry on some units) restrict currentMode to 'auto' only.
+      if (currentMode.value !== DaikinFanSpeedModes.FIXED && allowedModes.includes(DaikinFanSpeedModes.FIXED)) {
+        await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/currentMode`, DaikinFanSpeedModes.FIXED);
+      }
+      await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/modes/fixed`, speed);
     });
   }
 
@@ -495,19 +517,23 @@ export class ClimateControlService {
   }
 
   hasSwingModeVerticalFeature() {
+    // getData() returns { value: undefined } when the path is missing — checking the
+    // wrapper for truthiness always succeeds. We need to confirm the value itself is set.
     const verticalSwing = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/vertical/currentMode`);
-    this.platform.log.debug(`[${this.name}] hasSwingModeFeature, verticalSwing: ${Boolean(verticalSwing)}`);
-    return Boolean(verticalSwing);
+    const supported = verticalSwing.value !== undefined;
+    this.platform.log.debug(`[${this.name}] hasSwingModeFeature, verticalSwing: ${supported}`);
+    return supported;
   }
 
   hasSwingModeHorizontalFeature() {
     const horizontalSwing = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/horizontal/currentMode`);
-    this.platform.log.debug(`[${this.name}] hasSwingModeFeature, horizontalSwing: ${Boolean(horizontalSwing)}`);
-    return Boolean(horizontalSwing);
+    const supported = horizontalSwing.value !== undefined;
+    this.platform.log.debug(`[${this.name}] hasSwingModeFeature, horizontalSwing: ${supported}`);
+    return supported;
   }
 
   hasSwingModeFeature() {
-    return Boolean(this.hasSwingModeVerticalFeature() || this.hasSwingModeHorizontalFeature());
+    return this.hasSwingModeVerticalFeature() || this.hasSwingModeHorizontalFeature();
   }
 
   hasPowerfulModeFeature() {

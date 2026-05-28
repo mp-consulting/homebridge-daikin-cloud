@@ -22,9 +22,12 @@ export class StreamerModeFeature extends BaseFeature {
   }
 
   isSupported(): boolean {
-    const streamerMode = this.getData('streamerMode');
-    this.log.debug(`[${this.name}] hasStreamerModeFeature: ${Boolean(streamerMode)}`);
-    return Boolean(streamerMode);
+    // device.getData() returns { value: undefined } when the characteristic is missing,
+    // so Boolean(data) is always true. Check the inner value to detect real support.
+    const streamerMode = this.getData('streamerMode') as { value?: unknown } | undefined;
+    const supported = streamerMode?.value !== undefined;
+    this.log.debug(`[${this.name}] hasStreamerModeFeature: ${supported}`);
+    return supported;
   }
 
   async handleGet(): Promise<CharacteristicValue> {
