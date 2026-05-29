@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.24] - 2026-05-29
+
+### Added
+
+- **Auto fan mode switch** (`showAutoFanMode`): exposes Daikin's automatic fan-speed mode as a HomeKit switch. HomeKit's HeaterCooler `RotationSpeed` is a single 0-100% slider with no native concept of an "Auto" fan mode, so Auto is surfaced as its own switch next to the manual speed slider and the existing Indoor quiet switch. Turning it ON sets `fanSpeed/currentMode` to `auto`; OFF returns it to `fixed` (manual). The switch only appears when the current operation mode advertises both `auto` and `fixed`, moving the speed slider flips it back off, and it stays mutually exclusive with the Indoor quiet switch via the existing `FeatureManager.refreshAll()` refresh path. Honors both the per-feature toggle and the legacy `showExtraFeatures` flag.
+
 ## [1.3.23] - 2026-05-28
 
 ### Fixed
