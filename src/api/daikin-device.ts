@@ -138,6 +138,15 @@ export class DaikinCloudDevice extends EventEmitter {
 
     // Call API with path in the body (not the URL) - matches mobile app format
     await this.api.updateDevice(this.rawData.id, managementPointId, dataPoint, value, path);
+
+    // Optimistically reflect the write in the in-memory cache so getData returns
+    // the new value immediately, instead of the stale one until the next poll
+    // (up to forceUpdateDelay / the polling interval away). Without this, switches
+    // that derive their state from a data point — e.g. the Auto fan mode switch
+    // reading fanSpeed/currentMode — keep showing the old state after a related
+    // change (moving the fan speed slider flips currentMode to 'fixed', but the
+    // switch stayed on). The next full poll reconciles any drift.
+    this.applyLocalWrite(managementPointId, dataPoint, value, path);
     this.lastUpdated = new Date();
   }
 
@@ -209,6 +218,55 @@ export class DaikinCloudDevice extends EventEmitter {
 
   private getManagementPoint(embeddedId: string): ManagementPoint | undefined {
     return this.rawData.managementPoints?.find(mp => mp.embeddedId === embeddedId);
+  }
+
+  /**
+     * Optimistically write a value into the in-memory cache after a successful
+     * setData, so subsequent getData calls see it without waiting for a poll.
+     * Navigates exactly like navigatePath (descending through Daikin's
+     * { value: { ... } } wrapping) and sets the leaf's `value`. No-op if the
+     * path can't be resolved — the next full poll will provide the real value.
+     */
+  private applyLocalWrite(
+    managementPointId: string,
+    dataPoint: string,
+    value: unknown,
+    path: string | undefined,
+  ): void {
+    const managementPoint = this.getManagementPoint(managementPointId);
+    if (!managementPoint) {
+      return;
+    }
+
+    const data = managementPoint[dataPoint];
+    if (!data || typeof data !== 'object') {
+      return;
+    }
+
+    if (!path) {
+      (data as Record<string, unknown>).value = value;
+      return;
+    }
+
+    const parts = path.split('/').filter(p => p);
+    let current: unknown = data;
+    for (const part of parts) {
+      if (current === null || current === undefined) {
+        return;
+      }
+      if (typeof current === 'object' && 'value' in (current as object)) {
+        current = (current as { value: unknown }).value;
+      }
+      if (typeof current === 'object' && current !== null && part in current) {
+        current = (current as Record<string, unknown>)[part];
+      } else {
+        return;
+      }
+    }
+
+    if (typeof current === 'object' && current !== null && 'value' in current) {
+      (current as Record<string, unknown>).value = value;
+    }
   }
 
   private navigatePath(data: unknown, path: string): DeviceDataPoint {

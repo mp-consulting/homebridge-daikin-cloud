@@ -178,7 +178,7 @@ test.each<Array<string | string | any | DeviceState>>([
   const mockApi = {
     updateDevice: vi.fn().mockResolvedValue(undefined),
   } as unknown as DaikinApi;
-  const device = new DaikinCloudDevice(deviceJson as any, mockApi);
+  const device = new DaikinCloudDevice(JSON.parse(JSON.stringify(deviceJson)) as any, mockApi);
 
   vi.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
     return [device];
@@ -197,37 +197,34 @@ test.each<Array<string | string | any | DeviceState>>([
 
   const homebridgeAccessory = new AirConditioningAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
 
+  // Read-only assertions FIRST: setData now optimistically updates the in-memory
+  // cache, so a setter run before a getter would change what the getter sees
+  // (e.g. moving the fan speed slider flips Auto fan mode off). Verify the initial
+  // device state up front, then exercise the setters separately below.
   if (typeof state.activeState !== 'undefined') {
     expect(await homebridgeAccessory.service.handleActiveStateGet()).toBe(state.activeState);
-    await expect(homebridgeAccessory.service.handleActiveStateSet(1)).resolves.not.toThrow();
-    await expect(homebridgeAccessory.service.handleActiveStateSet(0)).resolves.not.toThrow();
   }
 
   expect(await homebridgeAccessory.service.handleCurrentTemperatureGet()).toBe(state.currentTemperature);
 
   if (typeof state.coolingThresholdTemperature !== 'undefined') {
     expect(await homebridgeAccessory.service.handleCoolingThresholdTemperatureGet()).toBe(state.coolingThresholdTemperature);
-    await expect(homebridgeAccessory.service.handleCoolingThresholdTemperatureSet(21)).resolves.not.toThrow();
   }
 
   if (typeof state.heatingThresholdTemperature !== 'undefined') {
     expect(await homebridgeAccessory.service.handleHeatingThresholdTemperatureGet()).toBe(state.heatingThresholdTemperature);
-    await expect(homebridgeAccessory.service.handleHeatingThresholdTemperatureSet(25)).resolves.not.toThrow();
   }
 
   if (typeof state.rotationSpeed !== 'undefined') {
     expect(await homebridgeAccessory.service.handleRotationSpeedGet()).toBe(state.rotationSpeed);
-    await expect(homebridgeAccessory.service.handleRotationSpeedSet(50)).resolves.not.toThrow();
   }
 
   if (typeof state.targetHeaterCoolerState !== 'undefined') {
     expect(await homebridgeAccessory.service.handleTargetHeaterCoolerStateGet()).toBe(state.targetHeaterCoolerState);
-    await expect(homebridgeAccessory.service.handleTargetHeaterCoolerStateSet(1)).resolves.not.toThrow();
   }
 
   if (typeof state.swingMode !== 'undefined') {
     expect(await homebridgeAccessory.service.handleSwingModeGet()).toBe(state.swingMode);
-    await expect(homebridgeAccessory.service.handleSwingModeSet(1)).resolves.not.toThrow();
   }
 
   if (typeof state.powerfulMode !== 'undefined') {
@@ -277,6 +274,27 @@ test.each<Array<string | string | any | DeviceState>>([
     expect(feature).toBeDefined();
     expect(await feature!.handleGet()).toBe(state.fanOnlyOperationMode);
   }
+
+  // Setters should not throw (run after all read-only assertions above).
+  if (typeof state.activeState !== 'undefined') {
+    await expect(homebridgeAccessory.service.handleActiveStateSet(1)).resolves.not.toThrow();
+    await expect(homebridgeAccessory.service.handleActiveStateSet(0)).resolves.not.toThrow();
+  }
+  if (typeof state.coolingThresholdTemperature !== 'undefined') {
+    await expect(homebridgeAccessory.service.handleCoolingThresholdTemperatureSet(21)).resolves.not.toThrow();
+  }
+  if (typeof state.heatingThresholdTemperature !== 'undefined') {
+    await expect(homebridgeAccessory.service.handleHeatingThresholdTemperatureSet(25)).resolves.not.toThrow();
+  }
+  if (typeof state.rotationSpeed !== 'undefined') {
+    await expect(homebridgeAccessory.service.handleRotationSpeedSet(50)).resolves.not.toThrow();
+  }
+  if (typeof state.targetHeaterCoolerState !== 'undefined') {
+    await expect(homebridgeAccessory.service.handleTargetHeaterCoolerStateSet(1)).resolves.not.toThrow();
+  }
+  if (typeof state.swingMode !== 'undefined') {
+    await expect(homebridgeAccessory.service.handleSwingModeSet(1)).resolves.not.toThrow();
+  }
 });
 
 test.each<Array<string | string | any>>([
@@ -284,7 +302,7 @@ test.each<Array<string | string | any>>([
   ['dx23', 'climateControl', dx23Airco],
 ])('Create DaikinCloudAirConditioningAccessory with %s device, showExtraFeatures disabled', async (name, climateControlEmbeddedId, deviceJson) => {
   const mockApi = { updateDevice: vi.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
-  const device = new DaikinCloudDevice(deviceJson as any, mockApi);
+  const device = new DaikinCloudDevice(JSON.parse(JSON.stringify(deviceJson)) as any, mockApi);
 
   vi.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
     return [device];
@@ -320,7 +338,7 @@ test.each<Array<string | string | any>>([
 
 test('DaikinCloudAirConditioningAccessory Getters', async () => {
   const mockApi = { updateDevice: vi.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
-  const device = new DaikinCloudDevice(dx4Airco as any, mockApi);
+  const device = new DaikinCloudDevice(JSON.parse(JSON.stringify(dx4Airco)) as any, mockApi);
 
   vi.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
     return [device];
@@ -359,7 +377,7 @@ test('DaikinCloudAirConditioningAccessory Getters', async () => {
 
 test('DaikinCloudAirConditioningAccessory Setters', async () => {
   const mockApi = { updateDevice: vi.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
-  const device = new DaikinCloudDevice(dx4Airco as any, mockApi);
+  const device = new DaikinCloudDevice(JSON.parse(JSON.stringify(dx4Airco)) as any, mockApi);
 
   vi.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
     return [device];

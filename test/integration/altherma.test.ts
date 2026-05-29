@@ -158,7 +158,7 @@ test.each<Array<string | string | any | DeviceState>>([
   ],
 ])('Create DaikinCloudThermostatAccessory with %s device', async (name, climateControlEmbeddedId, deviceJson, state) => {
   const mockApi = { updateDevice: vi.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
-  const device = new DaikinCloudDevice(deviceJson as any, mockApi);
+  const device = new DaikinCloudDevice(JSON.parse(JSON.stringify(deviceJson)) as any, mockApi);
 
   vi.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
     return [device];
@@ -222,7 +222,7 @@ test.each<Array<string | string | any | DeviceState>>([
 
 test('DaikinCloudAirConditioningAccessory Getters', async () => {
   const mockApi = { updateDevice: vi.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
-  const device = new DaikinCloudDevice(althermaHeatPump as any, mockApi);
+  const device = new DaikinCloudDevice(JSON.parse(JSON.stringify(althermaHeatPump)) as any, mockApi);
 
   vi.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
     return [device];
@@ -245,7 +245,7 @@ test('DaikinCloudAirConditioningAccessory Getters', async () => {
 
 test('DaikinCloudAirConditioningAccessory Setters', async () => {
   const mockApi = { updateDevice: vi.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
-  const device = new DaikinCloudDevice(althermaHeatPump as any, mockApi);
+  const device = new DaikinCloudDevice(JSON.parse(JSON.stringify(althermaHeatPump)) as any, mockApi);
 
   vi.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
     return [device];
