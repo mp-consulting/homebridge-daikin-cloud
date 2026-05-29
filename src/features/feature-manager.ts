@@ -17,6 +17,7 @@ import {
   OutdoorSilentModeFeature,
   IndoorSilentModeFeature,
   AutoFanModeFeature,
+  OscillationModeFeature,
   DryOperationModeFeature,
   FanOnlyOperationModeFeature,
 } from './modes';
@@ -40,6 +41,7 @@ const FEATURE_CLASSES: FeatureConstructor[] = [
   OutdoorSilentModeFeature,
   IndoorSilentModeFeature,
   AutoFanModeFeature,
+  OscillationModeFeature,
   DryOperationModeFeature,
   FanOnlyOperationModeFeature,
 ];

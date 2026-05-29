@@ -24,10 +24,14 @@ A [Homebridge](https://homebridge.io) plugin that integrates Daikin air conditio
   - Outdoor silent mode (`showOutdoorSilentMode`)
   - Indoor quiet mode (`showIndoorSilentMode`)
   - Auto fan mode (`showAutoFanMode`)
+  - Oscillation switch (`showOscillationSwitch`)
   - Dry mode (`showDryMode`)
   - Fan only mode (`showFanOnlyMode`)
+- **Separate Fan Tile** (`showSeparateFanControl`): Expose fan speed and oscillation as a standalone Fan tile, so both stay visible even when the accessory is grouped into a single tile in the Home app
 
 > **Note**: HomeKit doesn't natively support all Daikin operation modes. Extra features appear as switches in the Home app. Enable them individually in the plugin settings UI.
+>
+> **Grouped tiles**: When you group the air conditioner into a single tile in the Home app, Apple hides the built-in fan speed slider and swing toggle (they're still reachable by opening the device directly). The **Oscillation switch** and **Separate Fan Tile** options work around this by exposing those controls as their own tiles, which remain visible when grouped.
 
 ## Authentication Methods
 
@@ -128,6 +132,8 @@ Add the platform to your Homebridge `config.json`:
 | `showOutdoorSilentMode` | boolean | `false` | Show Outdoor Silent mode switch |
 | `showIndoorSilentMode` | boolean | `false` | Show Indoor Silent mode switch |
 | `showAutoFanMode` | boolean | `false` | Show Auto fan mode switch (toggles fan speed between auto and manual) |
+| `showOscillationSwitch` | boolean | `false` | Show fan oscillation (swing) as a separate switch (stays visible when the accessory is grouped into a single tile) |
+| `showSeparateFanControl` | boolean | `false` | Expose fan speed and oscillation as a standalone Fan tile (stays visible when the accessory is grouped into a single tile) |
 | `showDryMode` | boolean | `false` | Show Dry mode switch |
 | `showFanOnlyMode` | boolean | `false` | Show Fan Only mode switch |
 

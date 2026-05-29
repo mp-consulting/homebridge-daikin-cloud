@@ -46,9 +46,13 @@ export interface PluginConfig {
     showOutdoorSilentMode?: boolean;
     showIndoorSilentMode?: boolean;
     showAutoFanMode?: boolean;
+    showOscillationSwitch?: boolean;
     showDryMode?: boolean;
     showFanOnlyMode?: boolean;
     showExtraFeatures?: boolean; // Legacy
+
+    // Standalone Fan (Fanv2) service exposing fan speed + oscillation as its own tile
+    showSeparateFanControl?: boolean;
 
     // WebSocket
     enableWebSocket?: boolean;
@@ -66,6 +70,7 @@ export interface NormalizedConfig {
         outdoorSilentMode: boolean;
         indoorSilentMode: boolean;
         autoFanMode: boolean;
+        oscillationMode: boolean;
         dryMode: boolean;
         fanOnlyMode: boolean;
     };
@@ -194,6 +199,7 @@ export class ConfigManager {
       outdoorSilentMode: this.config.showOutdoorSilentMode ?? legacy,
       indoorSilentMode: this.config.showIndoorSilentMode ?? legacy,
       autoFanMode: this.config.showAutoFanMode ?? legacy,
+      oscillationMode: this.config.showOscillationSwitch ?? legacy,
       dryMode: this.config.showDryMode ?? legacy,
       fanOnlyMode: this.config.showFanOnlyMode ?? legacy,
     };

@@ -100,6 +100,20 @@
         "default": false,
         "description": "Expose extra features like Streamer, Econo, and Powerful modes as HomeKit switches (only if supported by your device)"
       },
+      "showOscillationSwitch": {
+        "title": "Show Oscillation Switch",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Expose fan oscillation (swing) as a separate HomeKit switch. Useful because the built-in swing control disappears when the accessory is grouped into a single tile in the Home app."
+      },
+      "showSeparateFanControl": {
+        "title": "Show Separate Fan Tile",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Expose fan speed and oscillation as a standalone Fan tile (in addition to the air conditioner). The fan slider and oscillation stay visible even when the accessory is grouped into a single tile in the Home app."
+      },
       "excludedDevicesByDeviceId": {
         "title": "Excluded Devices",
         "type": "array",
@@ -188,7 +202,9 @@
       "expandable": true,
       "expanded": false,
       "items": [
-        "showExtraFeatures"
+        "showExtraFeatures",
+        "showOscillationSwitch",
+        "showSeparateFanControl"
       ]
     },
     {

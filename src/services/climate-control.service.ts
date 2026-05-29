@@ -26,6 +26,7 @@ export class ClimateControlService {
 
   private readonly name: string;
   private readonly service?: Service;
+  private fanService?: Service;
   readonly featureManager: FeatureManager;
 
   constructor(
@@ -113,6 +114,78 @@ export class ClimateControlService {
 
     // Set up optional feature switches (PowerfulMode, EconoMode, etc.)
     this.featureManager.setupFeatures();
+
+    // Set up the optional standalone Fan service (fan speed + oscillation tile)
+    this.setupSeparateFanService();
+  }
+
+  /**
+   * Optional standalone Fan (Fanv2) service.
+   *
+   * HomeKit hides the HeaterCooler's RotationSpeed slider and SwingMode toggle
+   * when the accessory is grouped into a single tile in the Home app — they're
+   * only reachable by opening the device directly. Exposing a separate Fanv2
+   * service gives the fan speed slider and oscillation toggle their own tile that
+   * stays visible even when grouped.
+   *
+   * Gated behind the `showSeparateFanControl` config option, and only added when
+   * the device actually exposes a fixed fan speed and/or a swing mode. The fan's
+   * Active characteristic mirrors the unit on/off state, and its RotationSpeed /
+   * SwingMode reuse the same handlers as the HeaterCooler so both services stay
+   * in sync.
+   */
+  setupSeparateFanService(): void {
+    if (!this.service) {
+      return;
+    }
+
+    const subtype = 'separate_fan';
+    const existing = this.accessory.getServiceById(this.platform.Service.Fanv2, subtype);
+
+    const fanControl = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`);
+    const hasFanSpeed = fanControl.value !== undefined;
+    const hasSwing = this.hasSwingModeFeature();
+    const enabled = this.platform.config.showSeparateFanControl === true;
+
+    if (!enabled || (!hasFanSpeed && !hasSwing)) {
+      if (existing) {
+        this.platform.log.debug(`[${this.name}] Removing separate Fan service`);
+        this.accessory.removeService(existing);
+      }
+      this.fanService = undefined;
+      return;
+    }
+
+    const fanName = `${this.name} Fan`;
+    this.platform.log.debug(`[${this.name}] Adding separate Fan service`);
+    this.fanService = existing || this.accessory.addService(this.platform.Service.Fanv2, fanName, subtype);
+    this.fanService.setCharacteristic(this.platform.Characteristic.Name, fanName);
+    this.fanService.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
+    this.fanService.setCharacteristic(this.platform.Characteristic.ConfiguredName, fanName);
+
+    // Active mirrors the unit on/off (same handlers as the HeaterCooler Active).
+    this.fanService.getCharacteristic(this.platform.Characteristic.Active)
+      .onGet(this.handleActiveStateGet.bind(this))
+      .onSet(this.handleActiveStateSet.bind(this));
+
+    if (hasFanSpeed) {
+      this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+        .setProps({
+          minStep: percentStep(fanControl.maxValue),
+          minValue: 0,
+          maxValue: 100,
+        })
+        .onGet(this.handleRotationSpeedGet.bind(this))
+        .onSet(this.handleRotationSpeedSet.bind(this));
+    } else {
+      this.fanService.removeCharacteristic(this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed));
+    }
+
+    if (hasSwing) {
+      this.fanService.getCharacteristic(this.platform.Characteristic.SwingMode)
+        .onGet(this.handleSwingModeGet.bind(this))
+        .onSet(this.handleSwingModeSet.bind(this));
+    }
   }
 
   /**
@@ -146,6 +219,8 @@ export class ClimateControlService {
       const isOn = onOff === DaikinOnOffModes.ON;
 
       this.service.getCharacteristic(this.platform.Characteristic.Active)
+        .updateValue(isOn ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE);
+      this.fanService?.getCharacteristic(this.platform.Characteristic.Active)
         .updateValue(isOn ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE);
 
       let currentState: number;
@@ -205,6 +280,9 @@ export class ClimateControlService {
         const percent = deviceSpeedToPercent(fanSpeedData.value as number, fanSpeedData.maxValue);
         this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed)
           .updateValue(percent);
+        if (this.fanService?.testCharacteristic(this.platform.Characteristic.RotationSpeed)) {
+          this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed).updateValue(percent);
+        }
       }
 
       if (this.hasSwingModeFeature()) {
@@ -217,6 +295,8 @@ export class ClimateControlService {
         const swingEnabled = horizontalSwingMode !== DaikinFanDirectionHorizontalModes.STOP
           && verticalSwingMode !== DaikinFanDirectionVerticalModes.STOP;
         this.service.getCharacteristic(this.platform.Characteristic.SwingMode)
+          .updateValue(swingEnabled ? this.platform.Characteristic.SwingMode.SWING_ENABLED : this.platform.Characteristic.SwingMode.SWING_DISABLED);
+        this.fanService?.getCharacteristic(this.platform.Characteristic.SwingMode)
           .updateValue(swingEnabled ? this.platform.Characteristic.SwingMode.SWING_ENABLED : this.platform.Characteristic.SwingMode.SWING_DISABLED);
       }
 
@@ -361,6 +441,12 @@ export class ClimateControlService {
       }
       await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/modes/fixed`, deviceSpeed);
     });
+
+    // Moving the slider flips fanSpeed/currentMode to 'fixed', which means any
+    // fan-mode switches (Auto fan mode, Indoor silent) are now off. Push their
+    // state immediately so HomeKit reflects it without waiting for the next poll
+    // — setData has already updated the in-memory cache optimistically.
+    this.featureManager.refreshAll();
   }
 
   async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {

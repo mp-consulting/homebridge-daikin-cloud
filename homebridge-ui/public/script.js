@@ -572,10 +572,15 @@ const Settings = {
   excludedIds: [],
   saveTimeout: null,
 
+  // Feature switches that honour the legacy "Show Extra Features" flag as their default.
   FEATURE_KEYS: [
     'showPowerfulMode', 'showEconoMode', 'showStreamerMode',
-    'showOutdoorSilentMode', 'showIndoorSilentMode', 'showAutoFanMode', 'showDryMode', 'showFanOnlyMode',
+    'showOutdoorSilentMode', 'showIndoorSilentMode', 'showAutoFanMode',
+    'showOscillationSwitch', 'showDryMode', 'showFanOnlyMode',
   ],
+
+  // Standalone toggles that default to off (never enabled implicitly by the legacy flag).
+  STANDALONE_KEYS: ['showSeparateFanControl'],
 
   async load() {
     try {
@@ -595,7 +600,7 @@ const Settings = {
     const handler = () => this.autoSave();
 
     // Feature toggles + WebSocket
-    [...this.FEATURE_KEYS, 'enableWebSocket'].forEach(id => {
+    [...this.FEATURE_KEYS, ...this.STANDALONE_KEYS, 'enableWebSocket'].forEach(id => {
       $id(id)?.addEventListener('change', handler);
     });
 
@@ -638,6 +643,14 @@ const Settings = {
       const el = $id(key);
       if (el) {
         el.checked = key in config ? config[key] === true : showAllLegacy;
+      }
+    });
+
+    // Standalone toggles never inherit the legacy flag — default to off.
+    this.STANDALONE_KEYS.forEach(key => {
+      const el = $id(key);
+      if (el) {
+        el.checked = config[key] === true;
       }
     });
 
@@ -749,7 +762,7 @@ const Settings = {
       enableWebSocket: $id('enableWebSocket')?.checked ?? true,
     };
 
-    this.FEATURE_KEYS.forEach(key => {
+    [...this.FEATURE_KEYS, ...this.STANDALONE_KEYS].forEach(key => {
       const el = $id(key);
       if (el) {
         settings[key] = el.checked;
