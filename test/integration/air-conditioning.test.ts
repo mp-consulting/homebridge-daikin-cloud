@@ -20,6 +20,7 @@ import {
   StreamerModeFeature,
   OutdoorSilentModeFeature,
   IndoorSilentModeFeature,
+  AutoFanModeFeature,
   DryOperationModeFeature,
   FanOnlyOperationModeFeature,
 } from '../../src/features';
@@ -47,6 +48,7 @@ type DeviceState = {
 	streamerMode: number;
 	outdoorSilentMode: number;
 	indoorSilentMode: number;
+	autoFanMode: number;
 	dryOperationMode: number;
 	fanOnlyOperationMode: number;
 };
@@ -70,6 +72,8 @@ test.each<Array<string | string | any | DeviceState>>([
       streamerMode: false,
       outdoorSilentMode: false,
       indoorSilentMode: false,
+      // dx4 heating fanSpeed.currentMode values ['auto','quiet','fixed'], current 'fixed'
+      autoFanMode: false,
       dryOperationMode: false,
       fanOnlyOperationMode: false,
     },
@@ -92,6 +96,8 @@ test.each<Array<string | string | any | DeviceState>>([
       streamerMode: undefined,
       outdoorSilentMode: undefined,
       indoorSilentMode: undefined,
+      // dx23 cooling fanSpeed.currentMode values ['fixed'] only → switch unsupported
+      autoFanMode: undefined,
       dryOperationMode: false,
       fanOnlyOperationMode: false,
     },
@@ -114,6 +120,8 @@ test.each<Array<string | string | any | DeviceState>>([
       streamerMode: undefined,
       outdoorSilentMode: undefined,
       indoorSilentMode: false,
+      // dx23-2 heating fanSpeed.currentMode values ['quiet','auto','fixed'], current 'fixed'
+      autoFanMode: false,
       dryOperationMode: false,
       fanOnlyOperationMode: false,
     },
@@ -136,6 +144,8 @@ test.each<Array<string | string | any | DeviceState>>([
       streamerMode: undefined,
       outdoorSilentMode: undefined,
       indoorSilentMode: undefined,
+      // unknown cooling fanSpeed.currentMode values ['auto','fixed'], current 'auto'
+      autoFanMode: true,
       dryOperationMode: false,
       fanOnlyOperationMode: false,
     },
@@ -158,6 +168,8 @@ test.each<Array<string | string | any | DeviceState>>([
       streamerMode: undefined,
       outdoorSilentMode: undefined,
       indoorSilentMode: undefined,
+      // unknown2 cooling fanSpeed.currentMode values ['auto','fixed'], current 'auto'
+      autoFanMode: true,
       dryOperationMode: false,
       fanOnlyOperationMode: false,
     },
@@ -246,6 +258,12 @@ test.each<Array<string | string | any | DeviceState>>([
     const feature = homebridgeAccessory.service.featureManager.getFeature(IndoorSilentModeFeature);
     expect(feature).toBeDefined();
     expect(await feature!.handleGet()).toBe(state.indoorSilentMode);
+  }
+
+  if (typeof state.autoFanMode !== 'undefined') {
+    const feature = homebridgeAccessory.service.featureManager.getFeature(AutoFanModeFeature);
+    expect(feature).toBeDefined();
+    expect(await feature!.handleGet()).toBe(state.autoFanMode);
   }
 
   if (typeof state.dryOperationMode !== 'undefined') {

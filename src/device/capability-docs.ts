@@ -28,6 +28,9 @@ export function getCapabilitySummary(capabilities: DeviceCapabilities): string {
   if (capabilities.hasIndoorSilentMode) {
     features.push('indoor-silent');
   }
+  if (capabilities.hasAutoFanMode) {
+    features.push('auto-fan');
+  }
   if (capabilities.hasFanControl) {
     features.push('fan-speed');
   }

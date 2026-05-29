@@ -574,7 +574,7 @@ const Settings = {
 
   FEATURE_KEYS: [
     'showPowerfulMode', 'showEconoMode', 'showStreamerMode',
-    'showOutdoorSilentMode', 'showIndoorSilentMode', 'showDryMode', 'showFanOnlyMode',
+    'showOutdoorSilentMode', 'showIndoorSilentMode', 'showAutoFanMode', 'showDryMode', 'showFanOnlyMode',
   ],
 
   async load() {

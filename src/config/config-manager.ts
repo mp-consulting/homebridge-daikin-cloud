@@ -45,6 +45,7 @@ export interface PluginConfig {
     showStreamerMode?: boolean;
     showOutdoorSilentMode?: boolean;
     showIndoorSilentMode?: boolean;
+    showAutoFanMode?: boolean;
     showDryMode?: boolean;
     showFanOnlyMode?: boolean;
     showExtraFeatures?: boolean; // Legacy
@@ -64,6 +65,7 @@ export interface NormalizedConfig {
         streamerMode: boolean;
         outdoorSilentMode: boolean;
         indoorSilentMode: boolean;
+        autoFanMode: boolean;
         dryMode: boolean;
         fanOnlyMode: boolean;
     };
@@ -191,6 +193,7 @@ export class ConfigManager {
       streamerMode: this.config.showStreamerMode ?? legacy,
       outdoorSilentMode: this.config.showOutdoorSilentMode ?? legacy,
       indoorSilentMode: this.config.showIndoorSilentMode ?? legacy,
+      autoFanMode: this.config.showAutoFanMode ?? legacy,
       dryMode: this.config.showDryMode ?? legacy,
       fanOnlyMode: this.config.showFanOnlyMode ?? legacy,
     };

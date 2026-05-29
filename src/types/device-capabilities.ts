@@ -20,6 +20,7 @@ export interface DeviceCapabilities {
     hasStreamerMode: boolean;
     hasOutdoorSilentMode: boolean;
     hasIndoorSilentMode: boolean;
+    hasAutoFanMode: boolean;
     hasSwingModeVertical: boolean;
     hasSwingModeHorizontal: boolean;
     hasFanControl: boolean;

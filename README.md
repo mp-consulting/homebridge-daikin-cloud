@@ -23,6 +23,7 @@ A [Homebridge](https://homebridge.io) plugin that integrates Daikin air conditio
   - Streamer mode (`showStreamerMode`)
   - Outdoor silent mode (`showOutdoorSilentMode`)
   - Indoor quiet mode (`showIndoorSilentMode`)
+  - Auto fan mode (`showAutoFanMode`)
   - Dry mode (`showDryMode`)
   - Fan only mode (`showFanOnlyMode`)
 
@@ -126,6 +127,7 @@ Add the platform to your Homebridge `config.json`:
 | `showStreamerMode` | boolean | `false` | Show Streamer mode switch |
 | `showOutdoorSilentMode` | boolean | `false` | Show Outdoor Silent mode switch |
 | `showIndoorSilentMode` | boolean | `false` | Show Indoor Silent mode switch |
+| `showAutoFanMode` | boolean | `false` | Show Auto fan mode switch (toggles fan speed between auto and manual) |
 | `showDryMode` | boolean | `false` | Show Dry mode switch |
 | `showFanOnlyMode` | boolean | `false` | Show Fan Only mode switch |
 

@@ -77,6 +77,7 @@ export class DeviceCapabilityDetector {
       hasStreamerMode: this.hasFeature('streamerMode'),
       hasOutdoorSilentMode: this.hasFeature('outdoorSilentMode'),
       hasIndoorSilentMode: this.detectIndoorSilentMode(),
+      hasAutoFanMode: this.detectAutoFanMode(),
       hasSwingModeVertical: this.hasSwingMode('vertical'),
       hasSwingModeHorizontal: this.hasSwingMode('horizontal'),
       hasFanControl: this.detectFanControl(),
@@ -132,6 +133,25 @@ export class DeviceCapabilityDetector {
 
     const fanSpeedValues = (fanSpeedData.values || []) as string[];
     return fanSpeedValues.includes(DaikinFanSpeedModes.QUIET);
+  }
+
+  private detectAutoFanMode(): boolean {
+    const operationMode = this.getCurrentOperationMode();
+    const fanSpeedData = this.device.getData(
+      this.managementPointId,
+      'fanControl',
+      `/operationModes/${operationMode}/fanSpeed/currentMode`,
+    );
+
+    if (!fanSpeedData) {
+      return false;
+    }
+
+    const fanSpeedValues = (fanSpeedData.values || []) as string[];
+    return (
+      fanSpeedValues.includes(DaikinFanSpeedModes.AUTO) &&
+      fanSpeedValues.includes(DaikinFanSpeedModes.FIXED)
+    );
   }
 
   private detectFanControl(): boolean {
