@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.25] - 2026-05-29
+
+### Added
+
+- **Oscillation switch** (`showOscillationSwitch`): exposes fan oscillation (swing) as its own HomeKit switch, in addition to the built-in `SwingMode` on the HeaterCooler. When the accessory is grouped into a single tile in the Home app, Apple hides the built-in swing toggle (and the fan speed slider) — a standalone switch keeps oscillation toggleable from the grouped view. ON sets both fan-direction axes to `swing`, OFF to `stop`, mirroring the existing `SwingMode` handlers so the two stay in sync. Honors both the per-feature toggle and the legacy `showExtraFeatures` flag.
+- **Separate Fan tile** (`showSeparateFanControl`): exposes fan speed and oscillation as a standalone `Fanv2` service, so both controls stay visible even when the air conditioner is grouped into a single tile. Its `Active` mirrors the unit on/off and its `RotationSpeed`/`SwingMode` reuse the HeaterCooler handlers. Only added when the device exposes a fixed fan speed and/or swing; defaults off and is never enabled implicitly by `showExtraFeatures`.
+- Both options are configurable from the plugin's custom UI (Features tab), not just the fallback schema form.
+
+### Fixed
+
+- **Auto fan mode switch not turning off when moving the fan speed slider**: `setData` wrote to the cloud but never updated the in-memory cache, so reads returned the stale value until the next poll (up to a minute on Developer Portal). Moving the slider flips `fanSpeed/currentMode` to `fixed`, but the Auto fan mode switch kept reading `auto` and stayed on. `setData` now optimistically applies each successful write to the local cache, and `handleRotationSpeedSet` refreshes the fan-mode switches immediately — so the Auto fan (and Indoor quiet) switch reflects the change at once instead of waiting for a poll. The next full poll reconciles any drift.
+
 ## [1.3.24] - 2026-05-29
 
 ### Added
