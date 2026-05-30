@@ -114,6 +114,13 @@
         "default": false,
         "description": "Expose fan speed and oscillation as a standalone Fan tile (in addition to the air conditioner). The fan slider and oscillation stay visible even when the accessory is grouped into a single tile in the Home app."
       },
+      "showHolidayMode": {
+        "title": "Show Holiday Mode Switch",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Expose holiday (away) mode as a separate HomeKit switch (only if supported by your device). Turn it on to put the unit into holiday mode and off to resume normal operation."
+      },
       "excludedDevicesByDeviceId": {
         "title": "Excluded Devices",
         "type": "array",
@@ -204,7 +211,8 @@
       "items": [
         "showExtraFeatures",
         "showOscillationSwitch",
-        "showSeparateFanControl"
+        "showSeparateFanControl",
+        "showHolidayMode"
       ]
     },
     {

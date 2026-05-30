@@ -151,6 +151,47 @@ export class DaikinCloudDevice extends EventEmitter {
   }
 
   /**
+     * Enable or disable holiday (away) mode on a management point.
+     *
+     * Holiday mode uses a dedicated endpoint instead of the per-characteristic
+     * PATCH used by setData, so it has its own method. Optimistically reflects
+     * the new state in the in-memory cache (mirroring setData) so getData returns
+     * it immediately instead of the stale value until the next poll.
+     *
+     * @param managementPointId - The embedded ID of the management point
+     * @param enabled - Whether holiday mode should be enabled
+     * @param startDate - Optional start date (YYYY-MM-DD)
+     * @param endDate - Optional end date (YYYY-MM-DD)
+     */
+  async setHolidayMode(
+    managementPointId: string,
+    enabled: boolean,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<void> {
+    // Check device cloud connection is up before attempting write
+    if (this.rawData.isCloudConnectionUp?.value === false) {
+      throw new DeviceOfflineError(this.rawData.id);
+    }
+
+    await this.api.setHolidayMode(this.rawData.id, managementPointId, { enabled, startDate, endDate });
+
+    // Optimistically reflect the write in the in-memory cache
+    const managementPoint = this.getManagementPoint(managementPointId);
+    const holidayMode = managementPoint?.holidayMode;
+    if (holidayMode && typeof holidayMode.value === 'object' && holidayMode.value !== null) {
+      holidayMode.value.enabled = enabled;
+      if (startDate !== undefined) {
+        holidayMode.value.startDate = startDate;
+      }
+      if (endDate !== undefined) {
+        holidayMode.value.endDate = endDate;
+      }
+    }
+    this.lastUpdated = new Date();
+  }
+
+  /**
      * Update the raw device data (after refresh from API)
      */
   updateRawData(newData: GatewayDevice): void {

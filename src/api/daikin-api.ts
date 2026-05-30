@@ -173,6 +173,27 @@ export class DaikinApi {
   }
 
   /**
+     * Enable or disable holiday (away) mode on a management point.
+     *
+     * Uses the dedicated holiday-mode endpoint (POST) rather than the
+     * per-characteristic PATCH used by updateDevice. Only `enabled` is required;
+     * optional startDate/endDate (YYYY-MM-DD) bound the holiday period and are
+     * omitted from the body when undefined.
+     *
+     * @param deviceId - The device ID
+     * @param embeddedId - The management point embedded ID (e.g., 'climateControl')
+     * @param body - The holiday mode payload
+     */
+  async setHolidayMode(
+    deviceId: string,
+    embeddedId: string,
+    body: { enabled: boolean; startDate?: string; endDate?: string },
+  ): Promise<void> {
+    const urlPath = `/v1/gateway-devices/${deviceId}/management-points/${embeddedId}/holiday-mode`;
+    await this.enqueueWriteForDevice(deviceId, () => this.request(urlPath, 'POST', body));
+  }
+
+  /**
    * Serializes write requests per device through a queue with a fixed inter-request delay.
    * Each device has its own queue so writes for different devices run in parallel,
    * while writes for the same device are ordered and rate-limited.

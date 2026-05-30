@@ -49,6 +49,7 @@ export interface PluginConfig {
     showOscillationSwitch?: boolean;
     showDryMode?: boolean;
     showFanOnlyMode?: boolean;
+    showHolidayMode?: boolean;
     showExtraFeatures?: boolean; // Legacy
 
     // Standalone Fan (Fanv2) service exposing fan speed + oscillation as its own tile
@@ -73,6 +74,7 @@ export interface NormalizedConfig {
         oscillationMode: boolean;
         dryMode: boolean;
         fanOnlyMode: boolean;
+        holidayMode: boolean;
     };
     websocketEnabled: boolean;
 }
@@ -202,6 +204,7 @@ export class ConfigManager {
       oscillationMode: this.config.showOscillationSwitch ?? legacy,
       dryMode: this.config.showDryMode ?? legacy,
       fanOnlyMode: this.config.showFanOnlyMode ?? legacy,
+      holidayMode: this.config.showHolidayMode ?? legacy,
     };
   }
 

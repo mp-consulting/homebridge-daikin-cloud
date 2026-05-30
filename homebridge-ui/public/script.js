@@ -577,6 +577,7 @@ const Settings = {
     'showPowerfulMode', 'showEconoMode', 'showStreamerMode',
     'showOutdoorSilentMode', 'showIndoorSilentMode', 'showAutoFanMode',
     'showOscillationSwitch', 'showDryMode', 'showFanOnlyMode',
+    'showHolidayMode',
   ],
 
   // Standalone toggles that default to off (never enabled implicitly by the legacy flag).

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { DaikinCloudDevice } from '../../../src/api/daikin-device';
+import { describe, it, expect, vi } from 'vitest';
+import { DaikinCloudDevice, DeviceOfflineError } from '../../../src/api/daikin-device';
 import type { DaikinApi } from '../../../src/api';
 import { dx4Airco } from '../../fixtures/dx4-airco';
 
@@ -139,5 +139,65 @@ describe('DaikinCloudDevice.setData — optimistic local cache write', () => {
     // Real sibling path is untouched.
     expect(device.getData(ccId, 'fanControl', '/operationModes/heating/fanSpeed/currentMode').value)
       .toBe('fixed');
+  });
+});
+
+describe('DaikinCloudDevice.setHolidayMode', () => {
+  const ccId = 'climateControl';
+
+  const buildDeviceWithApi = (apiOverride: Partial<DaikinApi>) =>
+    new DaikinCloudDevice(
+      JSON.parse(JSON.stringify(dx4Airco)) as unknown as Parameters<typeof DaikinCloudDevice>[0],
+      { updateDevice: () => Promise.resolve(), ...apiOverride } as unknown as DaikinApi,
+    );
+
+  it('calls the dedicated holiday-mode endpoint with enabled only', async () => {
+    const setHolidayMode = vi.fn().mockResolvedValue(undefined);
+    const device = buildDeviceWithApi({ setHolidayMode });
+
+    await device.setHolidayMode(ccId, true);
+
+    expect(setHolidayMode).toHaveBeenCalledWith(device.getId(), ccId, {
+      enabled: true,
+      startDate: undefined,
+      endDate: undefined,
+    });
+  });
+
+  it('forwards optional start/end dates', async () => {
+    const setHolidayMode = vi.fn().mockResolvedValue(undefined);
+    const device = buildDeviceWithApi({ setHolidayMode });
+
+    await device.setHolidayMode(ccId, true, '2026-06-01', '2026-06-15');
+
+    expect(setHolidayMode).toHaveBeenCalledWith(device.getId(), ccId, {
+      enabled: true,
+      startDate: '2026-06-01',
+      endDate: '2026-06-15',
+    });
+  });
+
+  it('optimistically reflects the new enabled state in the cache', async () => {
+    const device = buildDeviceWithApi({ setHolidayMode: vi.fn().mockResolvedValue(undefined) });
+    expect((device.getData(ccId, 'holidayMode', undefined).value as { enabled: boolean }).enabled)
+      .toBe(false);
+
+    await device.setHolidayMode(ccId, true);
+
+    expect((device.getData(ccId, 'holidayMode', undefined).value as { enabled: boolean }).enabled)
+      .toBe(true);
+  });
+
+  it('throws DeviceOfflineError without calling the API when the cloud connection is down', async () => {
+    const setHolidayMode = vi.fn().mockResolvedValue(undefined);
+    const raw = JSON.parse(JSON.stringify(dx4Airco));
+    raw.isCloudConnectionUp = { value: false };
+    const device = new DaikinCloudDevice(
+      raw as unknown as Parameters<typeof DaikinCloudDevice>[0],
+      { updateDevice: () => Promise.resolve(), setHolidayMode } as unknown as DaikinApi,
+    );
+
+    await expect(device.setHolidayMode(ccId, true)).rejects.toBeInstanceOf(DeviceOfflineError);
+    expect(setHolidayMode).not.toHaveBeenCalled();
   });
 });

@@ -20,6 +20,7 @@ import {
   OscillationModeFeature,
   DryOperationModeFeature,
   FanOnlyOperationModeFeature,
+  HolidayModeFeature,
 } from './modes';
 
 /**
@@ -44,6 +45,7 @@ const FEATURE_CLASSES: FeatureConstructor[] = [
   OscillationModeFeature,
   DryOperationModeFeature,
   FanOnlyOperationModeFeature,
+  HolidayModeFeature,
 ];
 
 /**
