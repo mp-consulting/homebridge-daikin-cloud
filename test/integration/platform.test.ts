@@ -152,6 +152,80 @@ test('DaikinCloudPlatform registers the accessory when its raw device ID is NOT 
   expect(registerSpy).toHaveBeenCalled();
 });
 
+test('forceUpdateDevices debounces rapid changes into a single poll fired after the last change', async () => {
+  const mockDevice = {
+    getId: () => 'MOCK_ID',
+    getDescription: () => ({ deviceModel: 'Airco' }),
+    getData: () => 'MOCK_DATE',
+    desc: { managementPoints: [{ embeddedId: 'climateControl', managementPointType: 'climateControl' }] },
+  } as unknown as DaikinCloudDevice;
+
+  MockDaikinCloudController.mockImplementation(function(this: any) {
+    this.getCloudDevices = vi.fn().mockResolvedValue([mockDevice]);
+    this.isAuthenticated = vi.fn().mockReturnValue(true);
+    this.on = vi.fn();
+    this.updateAllDeviceData = vi.fn().mockResolvedValue(undefined);
+  });
+
+  const api = new HomebridgeAPI();
+  const config = new MockPlatformConfig(true);
+  (config as any).forceUpdateDelay = 10000;
+
+  const platform = new DaikinCloudPlatform(new Logger(), config, api);
+  api.signalFinished();
+  await vi.advanceTimersByTimeAsync(100);
+
+  const updateSpy = (platform.controller as any).updateAllDeviceData as ReturnType<typeof vi.fn>;
+  updateSpy.mockClear();
+
+  // Three rapid SETs, each within the 10s debounce window of the previous one.
+  platform.forceUpdateDevices();
+  await vi.advanceTimersByTimeAsync(3000);
+  platform.forceUpdateDevices();
+  await vi.advanceTimersByTimeAsync(3000);
+  platform.forceUpdateDevices();
+
+  // 9s after the last call the timer has not yet elapsed (it was reset each time).
+  await vi.advanceTimersByTimeAsync(9000);
+  expect(updateSpy).not.toHaveBeenCalled();
+
+  // The poll fires exactly once, 10s after the *last* change.
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(updateSpy).toHaveBeenCalledTimes(1);
+});
+
+test('forceUpdateDevices performs a single poll for an isolated change', async () => {
+  const mockDevice = {
+    getId: () => 'MOCK_ID',
+    getDescription: () => ({ deviceModel: 'Airco' }),
+    getData: () => 'MOCK_DATE',
+    desc: { managementPoints: [{ embeddedId: 'climateControl', managementPointType: 'climateControl' }] },
+  } as unknown as DaikinCloudDevice;
+
+  MockDaikinCloudController.mockImplementation(function(this: any) {
+    this.getCloudDevices = vi.fn().mockResolvedValue([mockDevice]);
+    this.isAuthenticated = vi.fn().mockReturnValue(true);
+    this.on = vi.fn();
+    this.updateAllDeviceData = vi.fn().mockResolvedValue(undefined);
+  });
+
+  const api = new HomebridgeAPI();
+  const config = new MockPlatformConfig(true);
+  (config as any).forceUpdateDelay = 10000;
+
+  const platform = new DaikinCloudPlatform(new Logger(), config, api);
+  api.signalFinished();
+  await vi.advanceTimersByTimeAsync(100);
+
+  const updateSpy = (platform.controller as any).updateAllDeviceData as ReturnType<typeof vi.fn>;
+  updateSpy.mockClear();
+
+  platform.forceUpdateDevices();
+  await vi.advanceTimersByTimeAsync(10000);
+
+  expect(updateSpy).toHaveBeenCalledTimes(1);
+});
+
 test('DaikinCloudPlatform with new Altherma accessory', async () => {
   const mockDevice = {
     getId: () => 'MOCK_ID',

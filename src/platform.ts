@@ -312,15 +312,19 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
   }
 
   forceUpdateDevices(delay: number = Math.max(0, this.config.forceUpdateDelay || DEFAULT_FORCE_UPDATE_DELAY_MS)) {
-    // Debounce: if a force update is already pending, don't restart timers
+    // Trailing debounce: reset the timer on every change so a burst of rapid
+    // SETs (e.g. toggling power, fan speed and mode in quick succession)
+    // collapses into a single poll fired `delay` ms after the *last* change,
+    // instead of one poll per change. This avoids redundant API calls.
     if (this.forceUpdateTimeout) {
-      this.log.debug('[API Syncing] Force update already pending, skipping duplicate request');
-      return;
+      clearTimeout(this.forceUpdateTimeout);
+      this.log.debug(`[API Syncing] Force update rescheduled (debouncing rapid changes, delayed by ${delay}ms)`);
+    } else {
+      this.log.debug(`[API Syncing] Force update devices data (delayed by ${delay}ms)`);
+      // Pause periodic polling while we wait for the change to settle; it is
+      // restarted once the debounced update fires.
+      clearInterval(this.updateInterval);
     }
-
-    this.log.debug(`[API Syncing] Force update devices data (delayed by ${delay}ms)`);
-
-    clearInterval(this.updateInterval);
 
     this.forceUpdateTimeout = setTimeout(async () => {
       this.forceUpdateTimeout = undefined;
