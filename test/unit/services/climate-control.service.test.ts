@@ -143,6 +143,48 @@ describe('ClimateControlService — RotationSpeed setter', () => {
     );
   });
 
+  it('skips the write (HomeKit cache replay) when in auto mode and the speed matches the stored fixed value', async () => {
+    // dx4 auto operationMode: fanSpeed.currentMode='auto', modes.fixed.value=1 (min 1, max 5).
+    // 20% → device speed 1, which equals the stored fixed value. This is the
+    // signature of a home-hub "cache verification" replay fired when another
+    // characteristic (e.g. temperature) changes — it must NOT flip the fan to fixed.
+    const fixture = JSON.parse(JSON.stringify(dx4Airco));
+    fixture.managementPoints[1].operationMode.value = 'auto';
+    const { service, setDataMock } = buildService(fixture);
+    setDataMock.mockClear();
+
+    await service.handleRotationSpeedSet(20);
+
+    expect(setDataMock).not.toHaveBeenCalled();
+  });
+
+  it('still writes when in auto mode and the user picks a speed different from the stored fixed value', async () => {
+    // Same auto fixture (stored fixed=1), but 40% → device speed 2 ≠ 1, so this is a
+    // genuine user fan-speed change and must switch currentMode to fixed then set the speed.
+    const fixture = JSON.parse(JSON.stringify(dx4Airco));
+    fixture.managementPoints[1].operationMode.value = 'auto';
+    const { service, setDataMock } = buildService(fixture);
+    setDataMock.mockClear();
+
+    await service.handleRotationSpeedSet(40);
+
+    expect(setDataMock).toHaveBeenCalledTimes(2);
+    expect(setDataMock).toHaveBeenNthCalledWith(
+      1,
+      'climateControl',
+      'fanControl',
+      '/operationModes/auto/fanSpeed/currentMode',
+      'fixed',
+    );
+    expect(setDataMock).toHaveBeenNthCalledWith(
+      2,
+      'climateControl',
+      'fanControl',
+      '/operationModes/auto/fanSpeed/modes/fixed',
+      2,
+    );
+  });
+
   it('skips any write when the current operation mode does not support a fixed fan speed (dry on dx4)', async () => {
     const fixture = JSON.parse(JSON.stringify(dx4Airco));
     delete fixture.managementPoints[1].fanControl.value.operationModes.dry.fanSpeed.modes;

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.27] - 2026-07-04
+
+### Fixed
+
+- **Fan mode reverting from auto/quiet to fixed when adjusting other characteristics** ([#4](https://github.com/mp-consulting/homebridge-daikin-cloud/issues/4)): HomeKit hubs replay a service's cached `RotationSpeed` as a "cache verification" write whenever another characteristic on the same `HeaterCooler` changes (e.g. adjusting the target temperature). Because `handleRotationSpeedSet` unconditionally flipped `fanSpeed/currentMode` to `fixed`, that replay silently kicked the unit out of `auto`/`quiet` back to a fixed speed. Three changes stop this: (1) `refreshValues` and (2) the initial characteristic seed now only push `RotationSpeed` to HomeKit when the device is actually in `fixed` mode, so the cache is never seeded with a misleading value; and (3) `handleRotationSpeedSet` skips the write when the device is in `auto`/`quiet` mode and the incoming speed already matches the stored fixed value — the signature of a cache replay rather than a real user change. Genuine slider moves to a different speed still switch to fixed mode as before. Thanks to @stoyanov-x for the detailed report and reference implementation.
+
 ## [1.3.25] - 2026-05-29
 
 ### Added
