@@ -553,7 +553,7 @@ const Config = {
   async save() {
     try {
       const config = await homebridge.getPluginConfig();
-      const platformConfig = config[0] || { platform: 'DaikinCloud' };
+      const platformConfig = config[0] || { platform: 'DaikinCloud', name: 'Daikin Cloud' };
       Object.assign(platformConfig, Wizard.getFormConfig());
       await homebridge.updatePluginConfig([platformConfig]);
       await homebridge.savePluginConfig();
@@ -779,7 +779,7 @@ const Settings = {
     try {
       this.showStatus(status, 'saving', 'Saving...');
       const config = await homebridge.getPluginConfig();
-      const platformConfig = config[0] || { platform: 'DaikinCloud' };
+      const platformConfig = config[0] || { platform: 'DaikinCloud', name: 'Daikin Cloud' };
       Object.assign(platformConfig, this.getFormSettings());
       await homebridge.updatePluginConfig([platformConfig]);
       await homebridge.savePluginConfig();
@@ -991,7 +991,7 @@ const MobileAuth = {
 
   async saveCredentials(email, password) {
     const config = await homebridge.getPluginConfig();
-    const platformConfig = config[0] || { platform: 'DaikinCloud' };
+    const platformConfig = config[0] || { platform: 'DaikinCloud', name: 'Daikin Cloud' };
     Object.assign(platformConfig, { authMode: 'mobile_app', daikinEmail: email, daikinPassword: password });
     await homebridge.updatePluginConfig([platformConfig]);
     await homebridge.savePluginConfig();
@@ -1085,7 +1085,7 @@ const AuthMode = {
   async save() {
     try {
       const config = await homebridge.getPluginConfig();
-      const platformConfig = config[0] || { platform: 'DaikinCloud' };
+      const platformConfig = config[0] || { platform: 'DaikinCloud', name: 'Daikin Cloud' };
       platformConfig.authMode = this.current;
       await homebridge.updatePluginConfig([platformConfig]);
       await homebridge.savePluginConfig();

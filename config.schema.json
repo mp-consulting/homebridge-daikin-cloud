@@ -8,6 +8,13 @@
   "schema": {
     "type": "object",
     "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "required": true,
+        "default": "Daikin Cloud",
+        "description": "Plugin name as displayed in the homebridge log"
+      },
       "authMode": {
         "title": "Authentication Method",
         "description": "Choose how to authenticate with Daikin Cloud",
@@ -158,6 +165,7 @@
     }
   },
   "layout": [
+    "name",
     {
       "type": "fieldset",
       "title": "Authentication Method",

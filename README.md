@@ -92,6 +92,7 @@ Add the platform to your Homebridge `config.json`:
   "platforms": [
     {
       "platform": "DaikinCloud",
+      "name": "Daikin Cloud",
       "authMode": "developer_portal",
       "clientId": "<your-client-id>",
       "clientSecret": "<your-client-secret>",
