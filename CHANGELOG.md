@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.31] - 2026-08-10
+
+### Fixed
+
+- **The Homebridge log showed `[DaikinCloud]` instead of `[Daikin Cloud]`**: Homebridge derives a plugin's log prefix from `name` in its platform config, falling back to the plugin alias when that key is absent. `config.schema.json` had no `name` property at all, so the settings form never offered the field and nothing ever wrote it into `config.json`. `name` is now the first control in the form and defaults to `Daikin Cloud`. The custom UI's first-run fallback also seeds the name when no platform block exists yet.
+
 ## [1.3.30] - 2026-08-09
 
 ### Changed
