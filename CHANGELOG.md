@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.33] - 2026-08-15
+
+### Fixed
+
+- **Auth requests silently dropped by the WAF in front of the Daikin endpoints** ([#6](https://github.com/mp-consulting/homebridge-daikin-cloud/issues/6)): for some users the TLS handshake to `idp.onecta.daikineurope.com` or `cdc.daikin.eu` completed but no HTTP response ever arrived, so every attempt died at the 30s timeout — while `curl` from the same host worked. Two client-identification signals caused this. First, Node's hand-picked default cipher list produces the canonical "Node.js" TLS ClientHello fingerprint (JA3), which bot-control WAFs single out; all plugin requests now offer OpenSSL's `DEFAULT` cipher list instead, yielding the generic OpenSSL fingerprint shared by curl and countless other clients. Second, v1.3.32 sent a Chrome `User-Agent` — a browser UA on a non-browser TLS fingerprint trips the WAF's impersonation-mismatch rule, which is why Gigya started failing for users it had previously worked for. The plugin now identifies as `okhttp/4.12.0`, matching the official Onecta app whose OAuth client the mobile flow already emulates. Both knobs are overridable without a rebuild via `DAIKIN_TLS_CIPHERS` and `DAIKIN_USER_AGENT`. The same defaults now also apply to the Developer Portal OAuth flow, the Onecta API client and the WebSocket connection, which previously sent no `User-Agent` and used Node's default ciphers.
+
 ## [1.3.32] - 2026-08-15
 
 ### Fixed
