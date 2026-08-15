@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DaikinMobileOAuth } from '../../../src/api/daikin-mobile-oauth';
 import * as https from 'node:https';
 
@@ -41,6 +41,30 @@ function mockHttpsResponse(statusCode: number, body: string, headers: Record<str
       setTimeout: vi.fn(),
       destroy: vi.fn(),
     };
+  };
+}
+
+/**
+ * Helper to create a mock HTTPS request that fails at the socket level, i.e.
+ * before any HTTP response is received.
+ */
+function mockHttpsNetworkError(code: string) {
+  return () => {
+    const req: any = {
+      on: vi.fn((event: string, handler: (err: NodeJS.ErrnoException) => void) => {
+        if (event === 'error') {
+          const error: NodeJS.ErrnoException = new Error(`connect ${code}`);
+          error.code = code;
+          setTimeout(() => handler(error), 0);
+        }
+        return req;
+      }),
+      write: vi.fn(),
+      end: vi.fn(),
+      setTimeout: vi.fn(),
+      destroy: vi.fn(),
+    };
+    return req;
   };
 }
 
@@ -346,6 +370,143 @@ describe('DaikinMobileOAuth', () => {
 
       await expect(oauth.authenticate()).rejects.toThrow(
         'Login failed (403042): Invalid LoginID',
+      );
+    });
+  });
+
+  describe('network resilience', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should send a User-Agent header (WAFs drop requests without one)', async () => {
+      const oauth = new DaikinMobileOAuth(mockConfig, onTokenUpdate, onError, onLog);
+
+      vi.mocked(https.request).mockImplementation((...args: any[]) => {
+        const urlArg = typeof args[0] === 'string' ? args[0] : args[0]?.href || '';
+        const callback = typeof args[1] === 'function' ? args[1] : args[2];
+        return mockHttpsResponse(302, '', {
+          location: 'https://id.daikin.eu/?context=ctx&mode=login',
+        })(urlArg, callback);
+      });
+
+      await oauth.authenticate().catch(() => undefined);
+
+      const options = vi.mocked(https.request).mock.calls[0][0] as any;
+      expect(options.headers['User-Agent']).toBeTruthy();
+    });
+
+    it('should use Happy Eyeballs so broken IPv6 does not stall the connect', async () => {
+      const oauth = new DaikinMobileOAuth(mockConfig, onTokenUpdate, onError, onLog);
+
+      vi.mocked(https.request).mockImplementation((...args: any[]) => {
+        const urlArg = typeof args[0] === 'string' ? args[0] : args[0]?.href || '';
+        const callback = typeof args[1] === 'function' ? args[1] : args[2];
+        return mockHttpsResponse(302, '', {
+          location: 'https://id.daikin.eu/?context=ctx&mode=login',
+        })(urlArg, callback);
+      });
+
+      await oauth.authenticate().catch(() => undefined);
+
+      const options = vi.mocked(https.request).mock.calls[0][0] as any;
+      expect(options.autoSelectFamily).toBe(true);
+    });
+
+    it('should retry transient network failures and report the unreachable host', async () => {
+      vi.useFakeTimers();
+      const oauth = new DaikinMobileOAuth(mockConfig, onTokenUpdate, onError, onLog);
+
+      vi.mocked(https.request).mockImplementation(() => mockHttpsNetworkError('ETIMEDOUT')());
+
+      const promise = oauth.authenticate();
+      const assertion = expect(promise).rejects.toThrow(/cdc\.daikin\.eu.*after 3 attempts/s);
+      await vi.runAllTimersAsync();
+      await assertion;
+
+      expect(vi.mocked(https.request)).toHaveBeenCalledTimes(3);
+      expect(onLog).toHaveBeenCalledWith(expect.stringContaining('retrying in'));
+    });
+
+    it('should succeed when a retry recovers from a transient failure', async () => {
+      vi.useFakeTimers();
+      const oauth = new DaikinMobileOAuth(mockConfig, onTokenUpdate, onError, onLog);
+
+      let failuresLeft = 1;
+      let step = 0;
+
+      vi.mocked(https.request).mockImplementation((...args: any[]) => {
+        if (failuresLeft > 0) {
+          failuresLeft--;
+          return mockHttpsNetworkError('ECONNRESET')() as any;
+        }
+
+        step++;
+        const urlArg = typeof args[0] === 'string' ? args[0] : args[0]?.href || '';
+        const callback = typeof args[1] === 'function' ? args[1] : args[2];
+
+        if (step === 1) {
+          return mockHttpsResponse(302, '', {
+            location: 'https://id.daikin.eu/?context=ctx&mode=login',
+          })(urlArg, callback);
+        }
+        if (step === 2) {
+          return mockHttpsResponse(200, '{}', { 'set-cookie': ['gig_canary=abc; Path=/'] })(urlArg, callback);
+        }
+        if (step === 3) {
+          return mockHttpsResponse(200, JSON.stringify({
+            errorCode: 0,
+            sessionInfo: { login_token: 'login-token-xyz' },
+          }))(urlArg, callback);
+        }
+        if (step === 4) {
+          return mockHttpsResponse(302, '', { location: 'daikinunified://login?code=auth-code-456' })(urlArg, callback);
+        }
+        return mockHttpsResponse(200, JSON.stringify({
+          access_token: 'access-token-final',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        }))(urlArg, callback);
+      });
+
+      const promise = oauth.authenticate();
+      await vi.runAllTimersAsync();
+
+      await expect(promise).resolves.toMatchObject({ access_token: 'access-token-final' });
+    });
+
+    it('should report a non-JSON token response instead of a JSON parse error', async () => {
+      const oauth = new DaikinMobileOAuth(mockConfig, onTokenUpdate, onError, onLog);
+
+      let step = 0;
+      vi.mocked(https.request).mockImplementation((...args: any[]) => {
+        step++;
+        const urlArg = typeof args[0] === 'string' ? args[0] : args[0]?.href || '';
+        const callback = typeof args[1] === 'function' ? args[1] : args[2];
+
+        if (step === 1) {
+          return mockHttpsResponse(302, '', {
+            location: 'https://id.daikin.eu/?context=ctx&mode=login',
+          })(urlArg, callback);
+        }
+        if (step === 2) {
+          return mockHttpsResponse(200, '{}', { 'set-cookie': ['gig_canary=abc; Path=/'] })(urlArg, callback);
+        }
+        if (step === 3) {
+          return mockHttpsResponse(200, JSON.stringify({
+            errorCode: 0,
+            sessionInfo: { login_token: 'login-token-xyz' },
+          }))(urlArg, callback);
+        }
+        if (step === 4) {
+          return mockHttpsResponse(302, '', { location: 'daikinunified://login?code=auth-code-456' })(urlArg, callback);
+        }
+        // The token endpoint answers with a CloudFront error page, not JSON
+        return mockHttpsResponse(403, '<!DOCTYPE html><html>Forbidden</html>')(urlArg, callback);
+      });
+
+      await expect(oauth.authenticate()).rejects.toThrow(
+        /Token exchange failed: idp\.onecta\.daikineurope\.com returned a non-JSON response \(HTTP 403\)/,
       );
     });
   });

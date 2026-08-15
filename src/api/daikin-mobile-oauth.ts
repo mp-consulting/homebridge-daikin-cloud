@@ -12,7 +12,12 @@ import * as https from 'node:https';
 import * as crypto from 'node:crypto';
 import type { TokenSet, MobileClientConfig } from './daikin-types';
 import { DAIKIN_MOBILE_CONFIG } from './daikin-types';
-import { HTTP_REQUEST_TIMEOUT_MS } from '../constants';
+import {
+  HTTP_REQUEST_TIMEOUT_MS,
+  MAX_RETRY_ATTEMPTS,
+  RETRY_BASE_DELAY_MS,
+  RETRY_MAX_DELAY_MS,
+} from '../constants';
 import { loadTokenFromFile, saveTokenToFile, deleteTokenFile } from './token-storage';
 
 interface PKCEPair {
@@ -118,7 +123,9 @@ export class DaikinMobileOAuth {
       params.toString(),
     );
 
-    const result = JSON.parse(response.body) as TokenSet & { error?: string; error_description?: string };
+    const result = this.parseJsonResponse<TokenSet & { error?: string; error_description?: string }>(
+      response, DAIKIN_MOBILE_CONFIG.idpTokenEndpoint, 'Token refresh failed',
+    );
 
     if (result.error) {
       throw new Error('Token refresh failed: ' + (result.error_description || result.error));
@@ -333,7 +340,9 @@ export class DaikinMobileOAuth {
       params.toString(),
     );
 
-    const result = JSON.parse(response.body) as GigyaLoginResult;
+    const result = this.parseJsonResponse<GigyaLoginResult>(
+      response, DAIKIN_MOBILE_CONFIG.gigyaBaseUrl, 'Login failed',
+    );
 
     if (result.errorCode === 206001) {
       this.onLog?.('Account has pending registration (206001). Attempting to complete registration automatically...');
@@ -397,7 +406,9 @@ export class DaikinMobileOAuth {
       params.toString(),
     );
 
-    const result = JSON.parse(response.body) as GigyaLoginResult;
+    const result = this.parseJsonResponse<GigyaLoginResult>(
+      response, DAIKIN_MOBILE_CONFIG.gigyaBaseUrl, 'Registration completion failed',
+    );
     const loginToken = this.extractLoginToken(result, 'Registration completion failed');
 
     this.onLog?.('Pending registration completed successfully.');
@@ -463,7 +474,9 @@ export class DaikinMobileOAuth {
       params.toString(),
     );
 
-    const result = JSON.parse(response.body) as TokenSet & { error?: string; error_description?: string };
+    const result = this.parseJsonResponse<TokenSet & { error?: string; error_description?: string }>(
+      response, DAIKIN_MOBILE_CONFIG.idpTokenEndpoint, 'Token exchange failed',
+    );
 
     if (result.error) {
       throw new Error('Token exchange failed: ' + (result.error_description || result.error));
@@ -519,19 +532,118 @@ export class DaikinMobileOAuth {
   // HTTP helper
   // =========================================================================
 
-  private httpsRequest(
+  /**
+     * Network-level failures where no HTTP response was ever received. These are
+     * worth retrying: a silently dropped packet, a host that is still booting its
+     * network stack, or a flaky DNS resolver all look like this.
+     */
+  private static readonly RETRYABLE_ERROR_CODES = new Set([
+    'ETIMEDOUT',
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ECONNABORTED',
+    'EPIPE',
+    'EAI_AGAIN',
+    'ENOTFOUND',
+    'ENETUNREACH',
+    'EHOSTUNREACH',
+  ]);
+
+  /**
+     * Parse a JSON response body, reporting the endpoint and status instead of a
+     * bare "Unexpected end of JSON input" when a proxy/WAF answers with HTML or
+     * with nothing at all.
+     */
+  private parseJsonResponse<T>(
+    response: { statusCode: number; body: string },
+    url: string,
+    context: string,
+  ): T {
+    try {
+      return JSON.parse(response.body) as T;
+    } catch {
+      const { hostname } = new URL(url);
+      const snippet = response.body.trim().slice(0, 200);
+      throw new Error(
+        `${context}: ${hostname} returned a non-JSON response (HTTP ${response.statusCode})`
+        + (snippet ? `: ${snippet}` : ' with an empty body'),
+      );
+    }
+  }
+
+  private isRetryableNetworkError(error: NodeJS.ErrnoException): boolean {
+    return !!error.code && DaikinMobileOAuth.RETRYABLE_ERROR_CODES.has(error.code);
+  }
+
+  /**
+     * Turn a bare socket error into something a user can act on. The generic
+     * "timed out after 30000ms" gave no hint about which host was unreachable.
+     */
+  private describeNetworkError(error: NodeJS.ErrnoException, url: string): Error {
+    const { hostname } = new URL(url);
+    const reason = error.code ? `${error.message} (${error.code})` : error.message;
+
+    if (!this.isRetryableNetworkError(error)) {
+      return new Error(`Request to ${hostname} failed: ${reason}`);
+    }
+
+    return new Error(
+      `Request to ${hostname} failed after ${MAX_RETRY_ATTEMPTS} attempts: ${reason}. `
+      + `The Homebridge host could not get a response from https://${hostname}. `
+      + 'Verify it is reachable from this host (curl -v), and check for firewall/DNS filtering, '
+      + 'broken IPv6 connectivity or a low-MTU link — the Daikin endpoints themselves are usually fine.',
+    );
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+     * Perform a request, retrying transient network failures with exponential backoff.
+     */
+  private async httpsRequest(
+    url: string,
+    options: { method: string; headers?: Record<string, string> },
+    postData?: string,
+  ): Promise<{ statusCode: number; headers: Record<string, string | string[] | undefined>; body: string }> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.performHttpsRequest(url, options, postData);
+      } catch (error) {
+        const err = error as NodeJS.ErrnoException;
+
+        if (attempt >= MAX_RETRY_ATTEMPTS || !this.isRetryableNetworkError(err)) {
+          throw this.describeNetworkError(err, url);
+        }
+
+        const delay = Math.min(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1), RETRY_MAX_DELAY_MS);
+        this.onLog?.(`Request to ${new URL(url).hostname} failed (${err.code}); retrying in ${delay}ms `
+          + `(attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS})`);
+        await this.sleep(delay);
+      }
+    }
+  }
+
+  private performHttpsRequest(
     url: string,
     options: { method: string; headers?: Record<string, string> },
     postData?: string,
   ): Promise<{ statusCode: number; headers: Record<string, string | string[] | undefined>; body: string }> {
     return new Promise((resolve, reject) => {
       const urlObj = new URL(url);
-      const reqOptions: https.RequestOptions = {
+      // autoSelectFamily is honoured by net.connect but is not part of the
+      // https.RequestOptions typings, hence the intersection type.
+      const reqOptions: https.RequestOptions & { autoSelectFamily?: boolean } = {
         hostname: urlObj.hostname,
         port: 443,
         path: urlObj.pathname + urlObj.search,
         method: options.method,
+        // Happy Eyeballs: hosts with advertised-but-broken IPv6 otherwise hang
+        // on connect until the request timeout instead of falling back to IPv4.
+        autoSelectFamily: true,
         headers: {
+          'User-Agent': DAIKIN_MOBILE_CONFIG.userAgent,
           ...options.headers,
           ...(postData ? { 'Content-Length': Buffer.byteLength(postData).toString() } : {}),
         },
@@ -550,7 +662,11 @@ export class DaikinMobileOAuth {
       });
 
       req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
-        req.destroy(new Error(`Mobile OAuth request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
+        const timeoutError: NodeJS.ErrnoException = new Error(
+          `no response after ${HTTP_REQUEST_TIMEOUT_MS}ms`,
+        );
+        timeoutError.code = 'ETIMEDOUT';
+        req.destroy(timeoutError);
       });
 
       req.on('error', reject);
