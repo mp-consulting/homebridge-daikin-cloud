@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.32] - 2026-08-15
+
+### Fixed
+
+- **README documented the wrong config keys for Mobile App mode** ([#7](https://github.com/mp-consulting/homebridge-daikin-cloud/issues/7)): the Configuration Options table listed `email`/`password`, while the code, `config.schema.json` and the custom UI have always used `daikinEmail`/`daikinPassword`. A config written against the README looked complete but produced only a generic `Daikin email and/or password not configured` warning, with nothing pointing at the field names. The table is corrected, the Mobile App setup section now shows a full `config.json` example, and the startup warning names the exact keys it expects. `email`/`password` are also accepted as deprecated aliases — configs already written against the old docs keep working, with a warning telling you to rename them.
+
+### Changed
+
+- **Mobile OAuth requests survive transient network failures** ([#6](https://github.com/mp-consulting/homebridge-daikin-cloud/issues/6)): every step of the mobile auth flow now retries socket-level failures (timeouts, resets, DNS hiccups) up to `MAX_RETRY_ATTEMPTS` with exponential backoff, instead of giving up on the first one. Requests also carry a `User-Agent` — Node sends none by default, and WAFs in front of the Daikin endpoints are known to silently drop such requests — and enable Happy Eyeballs (`autoSelectFamily`), so hosts advertising broken IPv6 fall back to IPv4 rather than stalling until the timeout. Failures now name the unreachable host and the likely causes rather than reporting a bare `Mobile OAuth request timed out after 30000ms`, and a non-JSON reply (e.g. a CloudFront error page) is reported with its status and body instead of surfacing as `Unexpected end of JSON input`.
+
 ## [1.3.31] - 2026-08-10
 
 ### Fixed
