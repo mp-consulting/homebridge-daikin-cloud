@@ -23,10 +23,6 @@ export const DAIKIN_MOBILE_CONFIG = {
   scope: process.env.DAIKIN_SCOPE || 'openid onecta:onecta.application offline_access',
   apiBaseUrl: process.env.DAIKIN_API_BASE_URL || 'https://api.onecta.daikineurope.com',
   websocketUrl: process.env.DAIKIN_WEBSOCKET_URL || 'wss://wsapi.onecta.daikineurope.com',
-  // Node sends no User-Agent by default. Some WAFs in front of the Daikin
-  // endpoints drop such requests without ever answering, so always send one.
-  userAgent: process.env.DAIKIN_USER_AGENT
-    || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
 };
 
 // Token Set

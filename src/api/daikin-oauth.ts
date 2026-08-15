@@ -10,6 +10,7 @@ import type { TokenSet, DaikinClientConfig } from './daikin-types';
 import { DAIKIN_OIDC_CONFIG } from './daikin-types';
 import { HTTP_REQUEST_TIMEOUT_MS } from '../constants';
 import { loadTokenFromFile, saveTokenToFile, deleteTokenFile } from './token-storage';
+import { withHttpDefaults } from './http-defaults';
 
 export class DaikinOAuth {
   private tokenSet: TokenSet | null = null;
@@ -104,7 +105,7 @@ export class DaikinOAuth {
       const postData = new URLSearchParams(params).toString();
       const urlObj = new URL(url);
 
-      const options: https.RequestOptions = {
+      const options = withHttpDefaults({
         hostname: urlObj.hostname,
         port: 443,
         path: urlObj.pathname,
@@ -113,7 +114,7 @@ export class DaikinOAuth {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Content-Length': Buffer.byteLength(postData),
         },
-      };
+      });
 
       const req = https.request(options, (res) => {
         let data = '';
@@ -329,7 +330,7 @@ export class DaikinOAuth {
       const postData = new URLSearchParams(params).toString();
       const urlObj = new URL(url);
 
-      const options: https.RequestOptions = {
+      const options = withHttpDefaults({
         hostname: urlObj.hostname,
         port: 443,
         path: urlObj.pathname,
@@ -338,7 +339,7 @@ export class DaikinOAuth {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Content-Length': Buffer.byteLength(postData),
         },
-      };
+      });
 
       const req = https.request(options, (res) => {
         let data = '';

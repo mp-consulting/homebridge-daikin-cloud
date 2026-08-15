@@ -394,6 +394,26 @@ describe('DaikinMobileOAuth', () => {
 
       const options = vi.mocked(https.request).mock.calls[0][0] as any;
       expect(options.headers['User-Agent']).toBeTruthy();
+      // A browser UA on a Node TLS fingerprint trips AWS WAF Bot Control's
+      // impersonation-mismatch rule (issue #6), so never claim to be one.
+      expect(options.headers['User-Agent']).not.toMatch(/Mozilla|Chrome|Safari|Firefox/);
+    });
+
+    it('should offer the generic OpenSSL cipher list, not the Node-specific one (issue #6)', async () => {
+      const oauth = new DaikinMobileOAuth(mockConfig, onTokenUpdate, onError, onLog);
+
+      vi.mocked(https.request).mockImplementation((...args: any[]) => {
+        const urlArg = typeof args[0] === 'string' ? args[0] : args[0]?.href || '';
+        const callback = typeof args[1] === 'function' ? args[1] : args[2];
+        return mockHttpsResponse(302, '', {
+          location: 'https://id.daikin.eu/?context=ctx&mode=login',
+        })(urlArg, callback);
+      });
+
+      await oauth.authenticate().catch(() => undefined);
+
+      const options = vi.mocked(https.request).mock.calls[0][0] as any;
+      expect(options.ciphers).toBe('DEFAULT');
     });
 
     it('should use Happy Eyeballs so broken IPv6 does not stall the connect', async () => {

@@ -9,6 +9,7 @@ import WebSocket from 'ws';
 import { EventEmitter } from 'node:events';
 import type { OAuthProvider } from './daikin-types';
 import { DAIKIN_WEBSOCKET_URL } from '../constants';
+import { withHttpDefaults } from './http-defaults';
 
 // Reconnection settings
 const INITIAL_RECONNECT_DELAY = 1000;  // 1 second
@@ -147,12 +148,12 @@ export class DaikinWebSocket extends EventEmitter {
     try {
       const accessToken = await this.oauth.getAccessToken();
 
-      this.ws = new WebSocket(DAIKIN_WEBSOCKET_URL, {
+      this.ws = new WebSocket(DAIKIN_WEBSOCKET_URL, withHttpDefaults({
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },
         handshakeTimeout: CONNECTION_TIMEOUT,
-      });
+      }));
 
       this.setupEventHandlers();
     } catch (error) {

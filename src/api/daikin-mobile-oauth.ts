@@ -19,6 +19,7 @@ import {
   RETRY_MAX_DELAY_MS,
 } from '../constants';
 import { loadTokenFromFile, saveTokenToFile, deleteTokenFile } from './token-storage';
+import { withHttpDefaults } from './http-defaults';
 
 interface PKCEPair {
     verifier: string;
@@ -632,22 +633,16 @@ export class DaikinMobileOAuth {
   ): Promise<{ statusCode: number; headers: Record<string, string | string[] | undefined>; body: string }> {
     return new Promise((resolve, reject) => {
       const urlObj = new URL(url);
-      // autoSelectFamily is honoured by net.connect but is not part of the
-      // https.RequestOptions typings, hence the intersection type.
-      const reqOptions: https.RequestOptions & { autoSelectFamily?: boolean } = {
+      const reqOptions = withHttpDefaults({
         hostname: urlObj.hostname,
         port: 443,
         path: urlObj.pathname + urlObj.search,
         method: options.method,
-        // Happy Eyeballs: hosts with advertised-but-broken IPv6 otherwise hang
-        // on connect until the request timeout instead of falling back to IPv4.
-        autoSelectFamily: true,
         headers: {
-          'User-Agent': DAIKIN_MOBILE_CONFIG.userAgent,
           ...options.headers,
           ...(postData ? { 'Content-Length': Buffer.byteLength(postData).toString() } : {}),
         },
-      };
+      });
 
       const req = https.request(reqOptions, (res) => {
         let data = '';

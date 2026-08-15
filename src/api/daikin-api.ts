@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { RateLimitStatus, GatewayDevice, OAuthProvider } from './daikin-types';
 import { DAIKIN_OIDC_CONFIG } from './daikin-types';
 import { GatewayDeviceSchema } from './daikin-schemas';
+import { withHttpDefaults } from './http-defaults';
 import {
   HTTP_STATUS,
   DEFAULT_RETRY_AFTER_SECONDS,
@@ -109,7 +110,7 @@ export class DaikinApi {
     return new Promise((resolve, reject) => {
       const urlObj = new URL(url);
 
-      const options: https.RequestOptions = {
+      const options = withHttpDefaults({
         hostname: urlObj.hostname,
         port: 443,
         path: urlObj.pathname + urlObj.search,
@@ -118,7 +119,7 @@ export class DaikinApi {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json',
         },
-      };
+      });
 
       const req = https.request(options, (res) => {
         let data = '';
@@ -395,7 +396,7 @@ export class DaikinApi {
       const urlObj = new URL(url);
       const bodyStr = body ? JSON.stringify(body) : undefined;
 
-      const options: https.RequestOptions = {
+      const options = withHttpDefaults({
         hostname: urlObj.hostname,
         port: 443,
         path: urlObj.pathname + urlObj.search,
@@ -408,7 +409,7 @@ export class DaikinApi {
             'Content-Length': Buffer.byteLength(bodyStr),
           }),
         },
-      };
+      });
 
       const req = https.request(options, (res) => {
         let data = '';
