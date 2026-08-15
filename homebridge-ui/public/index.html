@@ -267,6 +267,14 @@
                                        pattern="^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$">
                                 <div class="form-text">IPv4 address for OAuth callback server (use 0.0.0.0 for all interfaces)</div>
                             </div>
+                            <div class="mt-3 mb-0">
+                                <label class="form-label" for="httpTransport">HTTP Transport</label>
+                                <select class="form-select" id="httpTransport">
+                                    <option value="node" selected>Node (default)</option>
+                                    <option value="curl">curl subprocess (WAF fingerprint workaround)</option>
+                                </select>
+                                <div class="form-text">Use "curl subprocess" only if authentication times out on your network while curl works &mdash; some WAFs drop Node's TLS fingerprint (issue #6). Requires the curl binary; WebSocket still uses Node TLS.</div>
+                            </div>
                         </div>
                     </div>
                 </div>

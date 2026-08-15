@@ -9,6 +9,8 @@ import { StringUtils } from './utils/strings';
 import fs from 'node:fs';
 import type { DaikinCloudDevice, DaikinControllerConfig } from './api';
 import { DaikinCloudRepo, DaikinCloudController } from './api';
+import type { HttpTransportMode } from './api/http-transport';
+import { configureHttpTransport, getHttpTransportMode } from './api/http-transport';
 import { UpdateMapper } from './utils/update-mapper';
 import type { PluginConfig } from './config/config-manager';
 import { ConfigManager } from './config/config-manager';
@@ -59,6 +61,13 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     // Determine authentication mode
     this.authMode = this.config.authMode === 'mobile_app' ? 'mobile_app' : 'developer_portal';
     this.log.info(`[Config] Authentication mode: ${this.authMode}`);
+
+    // Select the HTTP transport (env var DAIKIN_HTTP_TRANSPORT wins over config)
+    configureHttpTransport(this.config.httpTransport as HttpTransportMode | undefined);
+    if (getHttpTransportMode() === 'curl') {
+      this.log.info('[Config] HTTP transport: curl subprocess (WAF fingerprint workaround). '
+        + 'Note: WebSocket connections still use Node TLS — disable WebSocket if it cannot connect.');
+    }
 
     // Validate configuration
     const configManager = new ConfigManager(this.config as PluginConfig);

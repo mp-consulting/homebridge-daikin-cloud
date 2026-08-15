@@ -4,13 +4,11 @@
  * Handles OAuth 2.0 authentication with the Daikin Cloud API.
  */
 
-import * as https from 'node:https';
 import * as crypto from 'node:crypto';
 import type { TokenSet, DaikinClientConfig } from './daikin-types';
 import { DAIKIN_OIDC_CONFIG } from './daikin-types';
-import { HTTP_REQUEST_TIMEOUT_MS } from '../constants';
 import { loadTokenFromFile, saveTokenToFile, deleteTokenFile } from './token-storage';
-import { withHttpDefaults } from './http-defaults';
+import { httpRequest } from './http-transport';
 
 export class DaikinOAuth {
   private tokenSet: TokenSet | null = null;
@@ -100,36 +98,13 @@ export class DaikinOAuth {
   /**
      * Make a raw static HTTP request
      */
-  private static makeStaticRequestRaw(url: string, params: Record<string, string>): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const postData = new URLSearchParams(params).toString();
-      const urlObj = new URL(url);
-
-      const options = withHttpDefaults({
-        hostname: urlObj.hostname,
-        port: 443,
-        path: urlObj.pathname,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Content-Length': Buffer.byteLength(postData),
-        },
-      });
-
-      const req = https.request(options, (res) => {
-        let data = '';
-        res.on('data', (chunk) => data += chunk);
-        res.on('end', () => resolve(data));
-      });
-
-      req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
-        req.destroy(new Error(`OAuth request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
-      });
-
-      req.on('error', reject);
-      req.write(postData);
-      req.end();
-    });
+  private static async makeStaticRequestRaw(url: string, params: Record<string, string>): Promise<string> {
+    const postData = new URLSearchParams(params).toString();
+    const response = await httpRequest(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    }, postData);
+    return response.body;
   }
 
   // =========================================================================
@@ -325,35 +300,12 @@ export class DaikinOAuth {
     return tokenSet;
   }
 
-  private makeRequest(url: string, params: Record<string, string>): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const postData = new URLSearchParams(params).toString();
-      const urlObj = new URL(url);
-
-      const options = withHttpDefaults({
-        hostname: urlObj.hostname,
-        port: 443,
-        path: urlObj.pathname,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Content-Length': Buffer.byteLength(postData),
-        },
-      });
-
-      const req = https.request(options, (res) => {
-        let data = '';
-        res.on('data', (chunk) => data += chunk);
-        res.on('end', () => resolve(data));
-      });
-
-      req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
-        req.destroy(new Error(`OAuth request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
-      });
-
-      req.on('error', reject);
-      req.write(postData);
-      req.end();
-    });
+  private async makeRequest(url: string, params: Record<string, string>): Promise<string> {
+    const postData = new URLSearchParams(params).toString();
+    const response = await httpRequest(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    }, postData);
+    return response.body;
   }
 }

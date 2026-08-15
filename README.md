@@ -143,6 +143,7 @@ Add the platform to your Homebridge `config.json`:
 | `updateIntervalInMinutes` | number | `15` | Polling interval (Developer Portal: 15+ min, Mobile App: 1-5 min) |
 | `forceUpdateDelay` | number | `60000` | Delay (ms) before refreshing after a change |
 | `enableWebSocket` | boolean | `true` | Enable real-time updates (Mobile App mode only) |
+| `httpTransport` | string | `node` | `node` or `curl`. Use `curl` only if authentication times out on your network while curl works — some WAFs drop Node's TLS fingerprint ([#6](https://github.com/mp-consulting/homebridge-daikin-cloud/issues/6)). Requires the curl binary; WebSocket still uses Node TLS. Env override: `DAIKIN_HTTP_TRANSPORT` |
 | `excludedDevicesByDeviceId` | string[] | `[]` | Device IDs to exclude from HomeKit |
 | `showPowerfulMode` | boolean | `false` | Show Powerful mode switch |
 | `showEconoMode` | boolean | `false` | Show Econo mode switch |

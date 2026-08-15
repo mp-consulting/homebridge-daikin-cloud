@@ -8,18 +8,16 @@
  * - Automatic token refresh
  */
 
-import * as https from 'node:https';
 import * as crypto from 'node:crypto';
 import type { TokenSet, MobileClientConfig } from './daikin-types';
 import { DAIKIN_MOBILE_CONFIG } from './daikin-types';
 import {
-  HTTP_REQUEST_TIMEOUT_MS,
   MAX_RETRY_ATTEMPTS,
   RETRY_BASE_DELAY_MS,
   RETRY_MAX_DELAY_MS,
 } from '../constants';
 import { loadTokenFromFile, saveTokenToFile, deleteTokenFile } from './token-storage';
-import { withHttpDefaults } from './http-defaults';
+import { httpRequest } from './http-transport';
 
 interface PKCEPair {
     verifier: string;
@@ -631,45 +629,6 @@ export class DaikinMobileOAuth {
     options: { method: string; headers?: Record<string, string> },
     postData?: string,
   ): Promise<{ statusCode: number; headers: Record<string, string | string[] | undefined>; body: string }> {
-    return new Promise((resolve, reject) => {
-      const urlObj = new URL(url);
-      const reqOptions = withHttpDefaults({
-        hostname: urlObj.hostname,
-        port: 443,
-        path: urlObj.pathname + urlObj.search,
-        method: options.method,
-        headers: {
-          ...options.headers,
-          ...(postData ? { 'Content-Length': Buffer.byteLength(postData).toString() } : {}),
-        },
-      });
-
-      const req = https.request(reqOptions, (res) => {
-        let data = '';
-        res.on('data', (chunk) => data += chunk);
-        res.on('end', () => {
-          resolve({
-            statusCode: res.statusCode || 0,
-            headers: res.headers,
-            body: data,
-          });
-        });
-      });
-
-      req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
-        const timeoutError: NodeJS.ErrnoException = new Error(
-          `no response after ${HTTP_REQUEST_TIMEOUT_MS}ms`,
-        );
-        timeoutError.code = 'ETIMEDOUT';
-        req.destroy(timeoutError);
-      });
-
-      req.on('error', reject);
-
-      if (postData) {
-        req.write(postData);
-      }
-      req.end();
-    });
+    return httpRequest(url, { method: options.method, headers: options.headers }, postData);
   }
 }

@@ -135,6 +135,17 @@
         "default": false,
         "description": "Expose gateway firmware updates as a HomeKit switch (only if supported by your device). The plugin logs when Daikin stages an update; turn the switch on to install it \u2014 the unit is unavailable while updating. Not included in \u2018Show Extra Features\u2019: it must be enabled explicitly."
       },
+      "httpTransport": {
+        "title": "HTTP Transport",
+        "type": "string",
+        "required": false,
+        "default": "node",
+        "oneOf": [
+          { "title": "Node (default)", "enum": ["node"] },
+          { "title": "curl subprocess (WAF fingerprint workaround)", "enum": ["curl"] }
+        ],
+        "description": "How the plugin talks to the Daikin cloud. Use 'curl subprocess' only if authentication times out on your network while curl works (some WAFs drop Node's TLS fingerprint \u2014 see issue #6). Requires the curl binary. WebSocket connections still use Node TLS."
+      },
       "excludedDevicesByDeviceId": {
         "title": "Excluded Devices",
         "type": "array",
@@ -239,6 +250,7 @@
       "expanded": false,
       "items": [
         "enableWebSocket",
+        "httpTransport",
         "updateIntervalInMinutes",
         "forceUpdateDelay",
         "excludedDevicesByDeviceId"

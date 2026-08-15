@@ -605,6 +605,8 @@ const Settings = {
       $id(id)?.addEventListener('change', handler);
     });
 
+    $id('httpTransport')?.addEventListener('change', handler);
+
     // Number/text inputs
     ['updateIntervalInMinutes', 'forceUpdateDelay', 'oidcCallbackServerBindAddr'].forEach(id => {
       const el = $id(id);
@@ -668,6 +670,11 @@ const Settings = {
     const bindAddr = $id('oidcCallbackServerBindAddr');
     if (bindAddr) {
       bindAddr.value = config.oidcCallbackServerBindAddr || '0.0.0.0';
+    }
+
+    const transport = $id('httpTransport');
+    if (transport) {
+      transport.value = config.httpTransport === 'curl' ? 'curl' : 'node';
     }
 
     const enableWS = $id('enableWebSocket');
@@ -761,6 +768,7 @@ const Settings = {
       oidcCallbackServerBindAddr: $id('oidcCallbackServerBindAddr')?.value?.trim() || '0.0.0.0',
       excludedDevicesByDeviceId: this.excludedIds,
       enableWebSocket: $id('enableWebSocket')?.checked ?? true,
+      httpTransport: $id('httpTransport')?.value === 'curl' ? 'curl' : 'node',
     };
 
     [...this.FEATURE_KEYS, ...this.STANDALONE_KEYS].forEach(key => {

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-08-15
+
+### Added
+
+- **curl transport as a WAF-fingerprint escape hatch** (`httpTransport: "curl"`, or env `DAIKIN_HTTP_TRANSPORT=curl`) ([#6](https://github.com/mp-consulting/homebridge-daikin-cloud/issues/6)): on some networks the WAF in front of the Daikin endpoints drops Node's TLS ClientHello outright — the handshake completes, then no HTTP response ever arrives — and field testing showed that matching the cipher list and User-Agent (v1.3.33) is not enough: the fingerprint parts Node cannot change (extension order, ALPN set) are still being matched. The new opt-in transport routes every plugin HTTP request (mobile auth, developer-portal OAuth, Onecta API — and the setup wizard in the custom UI) through the system `curl` binary, whose fingerprint passes on those networks. Secrets never touch the command line: URL, headers and body travel via a 0600 config file in a private temp dir, and curl exit codes map onto Node-style error codes so retry/backoff behaves identically. Selectable in the custom UI (Settings → Network) and the config schema; requires the `curl` binary. WebSocket connections still use Node TLS — disable WebSocket if it cannot connect on such a network.
+
+### Changed
+
+- All HTTP requests now go through a single shared transport layer (`node` mode is the default and behaves exactly as before), replacing three separate `https.request` implementations.
+
 ## [1.4.0] - 2026-08-15
 
 ### Added

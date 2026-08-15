@@ -4,12 +4,11 @@
  * Handles REST API calls to the Daikin Cloud.
  */
 
-import * as https from 'node:https';
 import { z } from 'zod';
 import type { RateLimitStatus, GatewayDevice, OAuthProvider } from './daikin-types';
 import { DAIKIN_OIDC_CONFIG } from './daikin-types';
 import { GatewayDeviceSchema } from './daikin-schemas';
-import { withHttpDefaults } from './http-defaults';
+import { httpRequest } from './http-transport';
 import {
   HTTP_STATUS,
   DEFAULT_RETRY_AFTER_SECONDS,
@@ -18,7 +17,6 @@ import {
   MAX_RETRY_ATTEMPTS,
   RETRY_BASE_DELAY_MS,
   RETRY_MAX_DELAY_MS,
-  HTTP_REQUEST_TIMEOUT_MS,
   WRITE_INTER_REQUEST_DELAY_MS,
 } from '../constants';
 
@@ -107,36 +105,12 @@ export class DaikinApi {
     url: string,
     accessToken: string,
   ): Promise<{ statusCode: number; body: string; headers: Record<string, string | string[] | undefined> }> {
-    return new Promise((resolve, reject) => {
-      const urlObj = new URL(url);
-
-      const options = withHttpDefaults({
-        hostname: urlObj.hostname,
-        port: 443,
-        path: urlObj.pathname + urlObj.search,
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
-        },
-      });
-
-      const req = https.request(options, (res) => {
-        let data = '';
-        res.on('data', (chunk) => data += chunk);
-        res.on('end', () => resolve({
-          statusCode: res.statusCode || 500,
-          body: data,
-          headers: res.headers,
-        }));
-      });
-
-      req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
-        req.destroy(new Error(`Request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
-      });
-
-      req.on('error', reject);
-      req.end();
+    return httpRequest(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+      },
     });
   }
 
@@ -422,52 +396,20 @@ export class DaikinApi {
     return isNaN(num) ? undefined : num;
   }
 
-  private makeRequest(
+  private async makeRequest(
     url: string,
     method: string,
     accessToken: string,
     body?: unknown,
   ): Promise<{ statusCode: number; body: string; headers: Record<string, string | string[] | undefined> }> {
-    return new Promise((resolve, reject) => {
-      const urlObj = new URL(url);
-      const bodyStr = body ? JSON.stringify(body) : undefined;
-
-      const options = withHttpDefaults({
-        hostname: urlObj.hostname,
-        port: 443,
-        path: urlObj.pathname + urlObj.search,
-        method,
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
-          ...(bodyStr && {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(bodyStr),
-          }),
-        },
-      });
-
-      const req = https.request(options, (res) => {
-        let data = '';
-        res.on('data', (chunk) => data += chunk);
-        res.on('end', () => resolve({
-          statusCode: res.statusCode || 500,
-          body: data,
-          headers: res.headers,
-        }));
-      });
-
-      req.setTimeout(HTTP_REQUEST_TIMEOUT_MS, () => {
-        req.destroy(new Error(`Request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`));
-      });
-
-      req.on('error', reject);
-
-      if (bodyStr) {
-        req.write(bodyStr);
-      }
-
-      req.end();
-    });
+    const bodyStr = body ? JSON.stringify(body) : undefined;
+    return httpRequest(url, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+        ...(bodyStr && { 'Content-Type': 'application/json' }),
+      },
+    }, bodyStr);
   }
 }

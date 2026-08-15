@@ -12,6 +12,7 @@ const distPath = join(__dirname, '..', 'dist', 'src', 'api');
 const { DaikinOAuth } = require(join(distPath, 'daikin-oauth'));
 const { DaikinMobileOAuth } = require(join(distPath, 'daikin-mobile-oauth'));
 const { DaikinApi } = require(join(distPath, 'daikin-api'));
+const { configureHttpTransport } = require(join(distPath, 'http-transport'));
 
 // =============================================================================
 // Configuration
@@ -428,8 +429,25 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     this.authResult = null;
     this.callbackServer = new CallbackServer();
 
+    this.applyTransportFromConfig();
     this.registerHandlers();
     this.ready();
+  }
+
+  /**
+   * Honour the plugin's httpTransport setting in the setup wizard too, so a
+   * network that blocks Node's TLS fingerprint (issue #6) can still complete
+   * authentication from the UI. Env var DAIKIN_HTTP_TRANSPORT wins.
+   */
+  applyTransportFromConfig() {
+    try {
+      const configPath = resolve(this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '', 'config.json');
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const platform = (config.platforms || []).find((p) => p.platform === 'DaikinCloud');
+      configureHttpTransport(platform && platform.httpTransport);
+    } catch (e) {
+      console.log('[DaikinCloud] Could not read httpTransport from config, using default:', e.message);
+    }
   }
 
   getTokenFilePath() {

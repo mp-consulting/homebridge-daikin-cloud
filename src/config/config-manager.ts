@@ -68,6 +68,10 @@ export interface PluginConfig {
     // the legacy showExtraFeatures catch-all — must be enabled explicitly.
     showFirmwareUpdateSwitch?: boolean;
 
+    // HTTP transport: 'node' (default) or 'curl' subprocess — escape hatch for
+    // networks whose WAF drops Node's TLS fingerprint (GitHub issue #6).
+    httpTransport?: 'node' | 'curl';
+
     // WebSocket
     enableWebSocket?: boolean;
 }
