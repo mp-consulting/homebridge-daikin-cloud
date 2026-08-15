@@ -70,6 +70,22 @@ npm install -g @mp-consulting/homebridge-daikin-cloud
 6. Click **Test & Save Credentials**
 7. Restart Homebridge
 
+If you edit `config.json` by hand instead, the credential keys are `daikinEmail` and `daikinPassword`:
+
+```json
+{
+  "platforms": [
+    {
+      "platform": "DaikinCloud",
+      "name": "Daikin Cloud",
+      "authMode": "mobile_app",
+      "daikinEmail": "<your-onecta-email>",
+      "daikinPassword": "<your-onecta-password>"
+    }
+  ]
+}
+```
+
 ### Option 2: Developer Portal Authentication
 
 #### 1. Create a Daikin Developer App
@@ -116,8 +132,8 @@ Add the platform to your Homebridge `config.json`:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `authMode` | string | `developer_portal` | Authentication method: `developer_portal` or `mobile_app` |
-| `email` | string | - | Daikin account email (Mobile App mode) |
-| `password` | string | - | Daikin account password (Mobile App mode) |
+| `daikinEmail` | string | - | Daikin account email (Mobile App mode) |
+| `daikinPassword` | string | - | Daikin account password (Mobile App mode) |
 | `clientId` | string | - | Daikin Developer App Client ID (Developer Portal mode) |
 | `clientSecret` | string | - | Daikin Developer App Client Secret (Developer Portal mode) |
 | `callbackServerExternalAddress` | string | auto-detected | External IP/hostname for OAuth callback |

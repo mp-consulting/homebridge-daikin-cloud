@@ -69,8 +69,10 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
 
     // Check if credentials are configured based on auth mode
     if (this.authMode === 'mobile_app') {
-      if (!this.config.daikinEmail || !this.config.daikinPassword) {
+      const mobileCredentials = configManager.getMobileCredentials();
+      if (!mobileCredentials) {
         this.log.warn('[Config] Daikin email and/or password not configured.');
+        this.log.warn('[Config] Mobile App mode expects the config keys "daikinEmail" and "daikinPassword".');
         this.log.warn('[Config] Please configure the plugin using the Homebridge UI.');
         this.log.info('--------------- End Daikin info for debugging reasons --------------------');
         return;
@@ -100,8 +102,8 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
       callbackServerPort: this.config.callbackServerPort || 8582,
       oidcCallbackServerBindAddr: this.config.oidcCallbackServerBindAddr,
       // Mobile App fields
-      email: this.config.daikinEmail,
-      password: this.config.daikinPassword,
+      email: configManager.getMobileEmail(),
+      password: configManager.getMobilePassword(),
     };
 
     this.log.debug('[Config] Homebridge config', this.getPrivacyFriendlyConfig(this.config));
@@ -373,6 +375,9 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
       clientSecret: StringUtils.mask(config.clientSecret),
       daikinEmail: StringUtils.mask(config.daikinEmail),
       daikinPassword: config.daikinPassword ? '***' : undefined,
+      // Legacy aliases, masked too so they never leak into debug logs
+      email: StringUtils.mask(config.email),
+      password: config.password ? '***' : undefined,
       excludedDevicesByDeviceId: config.excludedDevicesByDeviceId ? config.excludedDevicesByDeviceId.map((deviceId: string) => StringUtils.mask(deviceId)) : [],
     };
   }

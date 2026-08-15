@@ -77,6 +77,36 @@ describe('ConfigManager', () => {
       const manager = new ConfigManager(config);
       expect(manager.getMobileCredentials()).toBeNull();
     });
+
+    it('should accept the legacy email/password keys documented in older READMEs', () => {
+      const config: PluginConfig = {
+        platform: 'DaikinCloud',
+        email: 'legacy@example.com',
+        password: 'legacy-password',
+      };
+      const manager = new ConfigManager(config);
+      const creds = manager.getMobileCredentials();
+
+      expect(creds?.email).toBe('legacy@example.com');
+      expect(creds?.password).toBe('legacy-password');
+      expect(manager.getLegacyCredentialKeysInUse()).toEqual(['email', 'password']);
+    });
+
+    it('should prefer the canonical keys over the legacy aliases', () => {
+      const config: PluginConfig = {
+        platform: 'DaikinCloud',
+        daikinEmail: 'canonical@example.com',
+        daikinPassword: 'canonical-password',
+        email: 'legacy@example.com',
+        password: 'legacy-password',
+      };
+      const manager = new ConfigManager(config);
+      const creds = manager.getMobileCredentials();
+
+      expect(creds?.email).toBe('canonical@example.com');
+      expect(creds?.password).toBe('canonical-password');
+      expect(manager.getLegacyCredentialKeysInUse()).toEqual([]);
+    });
   });
 
   describe('validate', () => {
@@ -182,7 +212,21 @@ describe('ConfigManager', () => {
       const result = manager.validate();
 
       expect(result.valid).toBe(false);
-      expect(result.errors).toContain('Email is required for Mobile App mode');
+      expect(result.errors).toContain('Email is required for Mobile App mode (config key: "daikinEmail")');
+    });
+
+    it('should warn when mobile credentials come from the legacy keys', () => {
+      const config: PluginConfig = {
+        platform: 'DaikinCloud',
+        authMode: 'mobile_app',
+        email: 'legacy@example.com',
+        password: 'legacy-password',
+      };
+      const manager = new ConfigManager(config);
+      const result = manager.validate();
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.includes('daikinEmail'))).toBe(true);
     });
 
     it('should warn about low update interval for developer portal', () => {

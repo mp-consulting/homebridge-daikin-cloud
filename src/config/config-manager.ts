@@ -32,6 +32,15 @@ export interface PluginConfig {
     daikinEmail?: string;
     daikinPassword?: string;
 
+    /**
+     * Legacy aliases. The README documented `email`/`password` up to v1.3.31
+     * while the code has always read `daikinEmail`/`daikinPassword`, so configs
+     * written against the docs silently looked "unconfigured". Accepted as a
+     * fallback (with a warning) so those configs keep working.
+     */
+    email?: string;
+    password?: string;
+
     // Update intervals
     updateIntervalInMinutes?: number;
     forceUpdateDelay?: number;
@@ -147,16 +156,42 @@ export class ConfigManager {
      * Get mobile app credentials
      */
   getMobileCredentials(): { email: string; password: string } | null {
-    const { daikinEmail, daikinPassword } = this.config;
+    const email = this.getMobileEmail();
+    const password = this.getMobilePassword();
 
-    if (!daikinEmail || !daikinPassword) {
+    if (!email || !password) {
       return null;
     }
 
-    return {
-      email: daikinEmail,
-      password: daikinPassword,
-    };
+    return { email, password };
+  }
+
+  /**
+     * Mobile app email, falling back to the legacy `email` key
+     */
+  getMobileEmail(): string | undefined {
+    return this.config.daikinEmail || this.config.email;
+  }
+
+  /**
+     * Mobile app password, falling back to the legacy `password` key
+     */
+  getMobilePassword(): string | undefined {
+    return this.config.daikinPassword || this.config.password;
+  }
+
+  /**
+     * Legacy credential keys that are in use because the canonical key is absent
+     */
+  getLegacyCredentialKeysInUse(): string[] {
+    const keys: string[] = [];
+    if (!this.config.daikinEmail && this.config.email) {
+      keys.push('email');
+    }
+    if (!this.config.daikinPassword && this.config.password) {
+      keys.push('password');
+    }
+    return keys;
   }
 
   /**
@@ -227,8 +262,8 @@ export class ConfigManager {
       callbackServerExternalAddress: this.config.callbackServerExternalAddress,
       callbackServerPort: this.config.callbackServerPort,
       oidcCallbackServerBindAddr: this.config.oidcCallbackServerBindAddr,
-      email: this.config.daikinEmail,
-      password: this.config.daikinPassword,
+      email: this.getMobileEmail(),
+      password: this.getMobilePassword(),
     };
 
     const result = safeValidateData(DaikinControllerConfigSchema, configData);
@@ -267,11 +302,18 @@ export class ConfigManager {
         errors.push('Callback address cannot be localhost. Use your external IP or domain.');
       }
     } else if (authMode === 'mobile_app') {
-      if (!this.config.daikinEmail) {
-        errors.push('Email is required for Mobile App mode');
+      if (!this.getMobileEmail()) {
+        errors.push('Email is required for Mobile App mode (config key: "daikinEmail")');
       }
-      if (!this.config.daikinPassword) {
-        errors.push('Password is required for Mobile App mode');
+      if (!this.getMobilePassword()) {
+        errors.push('Password is required for Mobile App mode (config key: "daikinPassword")');
+      }
+      const legacyKeys = this.getLegacyCredentialKeysInUse();
+      if (legacyKeys.length > 0) {
+        warnings.push(
+          `Using deprecated config key(s) ${legacyKeys.map(k => `"${k}"`).join(' and ')}. `
+          + 'Rename to "daikinEmail"/"daikinPassword" — the old names will stop working in a future release.',
+        );
       }
     }
 
