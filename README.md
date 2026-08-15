@@ -28,6 +28,7 @@ A [Homebridge](https://homebridge.io) plugin that integrates Daikin air conditio
   - Dry mode (`showDryMode`)
   - Fan only mode (`showFanOnlyMode`)
 - **Separate Fan Tile** (`showSeparateFanControl`): Expose fan speed and oscillation as a standalone Fan tile, so both stay visible even when the accessory is grouped into a single tile in the Home app
+- **Firmware Updates** (`showFirmwareUpdateSwitch`): Manage gateway firmware updates from HomeKit instead of the Onecta app. The plugin logs when Daikin stages an update for your unit and exposes a "Firmware Update" switch — turn it on to install; it stays on while the update runs and the plugin logs the outcome. Not part of `showExtraFeatures`: it must be enabled explicitly, so an "all switches on" scene can never trigger an install. The unit is unavailable (and rejects commands) while it updates. The current firmware version is also shown in each accessory's HomeKit details.
 
 > **Note**: HomeKit doesn't natively support all Daikin operation modes. Extra features appear as switches in the Home app. Enable them individually in the plugin settings UI.
 >
@@ -153,6 +154,7 @@ Add the platform to your Homebridge `config.json`:
 | `showSeparateFanControl` | boolean | `false` | Expose fan speed and oscillation as a standalone Fan tile (stays visible when the accessory is grouped into a single tile) |
 | `showDryMode` | boolean | `false` | Show Dry mode switch |
 | `showFanOnlyMode` | boolean | `false` | Show Fan Only mode switch |
+| `showFirmwareUpdateSwitch` | boolean | `false` | Show a Firmware Update switch that installs staged gateway firmware updates (never enabled implicitly by `showExtraFeatures`) |
 
 ## API Rate Limits
 

@@ -21,6 +21,7 @@ import {
   DryOperationModeFeature,
   FanOnlyOperationModeFeature,
   HolidayModeFeature,
+  FirmwareUpdateFeature,
 } from './modes';
 
 /**
@@ -46,6 +47,7 @@ const FEATURE_CLASSES: FeatureConstructor[] = [
   DryOperationModeFeature,
   FanOnlyOperationModeFeature,
   HolidayModeFeature,
+  FirmwareUpdateFeature,
 ];
 
 /**

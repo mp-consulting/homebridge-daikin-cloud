@@ -581,7 +581,7 @@ const Settings = {
   ],
 
   // Standalone toggles that default to off (never enabled implicitly by the legacy flag).
-  STANDALONE_KEYS: ['showSeparateFanControl'],
+  STANDALONE_KEYS: ['showSeparateFanControl', 'showFirmwareUpdateSwitch'],
 
   async load() {
     try {

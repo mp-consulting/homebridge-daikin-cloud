@@ -128,6 +128,13 @@
         "default": false,
         "description": "Expose holiday (away) mode as a separate HomeKit switch (only if supported by your device). Turn it on to put the unit into holiday mode and off to resume normal operation."
       },
+      "showFirmwareUpdateSwitch": {
+        "title": "Show Firmware Update Switch",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "Expose gateway firmware updates as a HomeKit switch (only if supported by your device). The plugin logs when Daikin stages an update; turn the switch on to install it \u2014 the unit is unavailable while updating. Not included in \u2018Show Extra Features\u2019: it must be enabled explicitly."
+      },
       "excludedDevicesByDeviceId": {
         "title": "Excluded Devices",
         "type": "array",
@@ -220,7 +227,8 @@
         "showExtraFeatures",
         "showOscillationSwitch",
         "showSeparateFanControl",
-        "showHolidayMode"
+        "showHolidayMode",
+        "showFirmwareUpdateSwitch"
       ]
     },
     {

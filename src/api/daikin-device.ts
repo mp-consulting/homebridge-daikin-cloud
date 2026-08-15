@@ -25,6 +25,17 @@ export interface DeviceDataPoint {
     settable?: boolean;
 }
 
+/**
+ * A firmware update staged by Daikin's cloud (the gateway management point's
+ * `firmwareUpdate.value`). Only present while an update is available.
+ */
+export interface FirmwareUpdateInfo {
+    id: string;
+    version?: string;
+    description?: string;
+    type?: string;
+}
+
 export class DaikinCloudDevice extends EventEmitter {
   private lastUpdated: Date = new Date();
 
@@ -187,6 +198,65 @@ export class DaikinCloudDevice extends EventEmitter {
       if (endDate !== undefined) {
         holidayMode.value.endDate = endDate;
       }
+    }
+    this.lastUpdated = new Date();
+  }
+
+  /**
+     * Find a management point's embedded ID by its type (e.g. 'gateway').
+     */
+  getManagementPointIdByType(managementPointType: string): string | undefined {
+    return this.rawData.managementPoints
+      ?.find(mp => mp.managementPointType === managementPointType)?.embeddedId;
+  }
+
+  /**
+     * Details of a firmware update staged by Daikin's cloud for a management
+     * point, or undefined when the device is up to date. The `firmwareUpdate`
+     * characteristic only exists while an update is available.
+     */
+  getFirmwareUpdateInfo(managementPointId: string): FirmwareUpdateInfo | undefined {
+    const data = this.getData(managementPointId, 'firmwareUpdate', undefined);
+    const info = data?.value as FirmwareUpdateInfo | undefined;
+    return typeof info?.id === 'string' ? info : undefined;
+  }
+
+  /**
+     * Current firmware update status: 'in-progress' | 'succeeded' | 'failed',
+     * or undefined when no update has run recently.
+     */
+  getFirmwareUpdateStatus(managementPointId: string): string | undefined {
+    return this.getData(managementPointId, 'firmwareUpdateStatus', undefined)?.value as string | undefined;
+  }
+
+  isFirmwareUpdateSupported(managementPointId: string): boolean {
+    return this.getData(managementPointId, 'isFirmwareUpdateSupported', undefined)?.value === true;
+  }
+
+  /**
+     * Trigger installation of the staged firmware update on a management point.
+     * Throws if the device is offline or no update is staged. Optimistically
+     * marks the update as in-progress in the in-memory cache so the switch
+     * reflects it immediately; the next poll provides the real status.
+     */
+  async triggerFirmwareUpdate(managementPointId: string): Promise<FirmwareUpdateInfo> {
+    if (this.rawData.isCloudConnectionUp?.value === false) {
+      throw new DeviceOfflineError(this.rawData.id);
+    }
+    const info = this.getFirmwareUpdateInfo(managementPointId);
+    if (!info) {
+      throw new Error('No firmware update is currently staged for this device');
+    }
+    await this.api.triggerFirmwareUpdate(this.rawData.id, managementPointId, info.id);
+    this.markFirmwareUpdateInProgress(managementPointId);
+    return info;
+  }
+
+  private markFirmwareUpdateInProgress(managementPointId: string): void {
+    const managementPoint = this.getManagementPoint(managementPointId) as
+      Record<string, { value?: unknown }> | undefined;
+    if (managementPoint) {
+      managementPoint.firmwareUpdateStatus = { value: 'in-progress' };
     }
     this.lastUpdated = new Date();
   }

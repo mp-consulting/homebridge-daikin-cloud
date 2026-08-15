@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-08-15
+
+### Added
+
+- **Manage gateway firmware updates from HomeKit** (`showFirmwareUpdateSwitch`): the plugin now detects when Daikin stages a firmware update for a unit (the gateway management point's `firmwareUpdate` characteristic, which only appears while an update is available) and logs the staged version and description. A new "Firmware Update" switch installs it via the dedicated `PUT …/management-points/gateway/firmware/{firmwareId}` endpoint — the same mechanism the official Onecta app uses — so updates no longer require the Daikin app. The switch stays ON while the update runs (`firmwareUpdateStatus: in-progress`) and the outcome (`succeeded`/`failed`) is logged. Turning it on with nothing staged, or off mid-update, is a safe no-op that snaps the switch back to reality. Deliberately excluded from the legacy `showExtraFeatures` catch-all — it must be enabled explicitly (config schema and custom UI both expose the toggle), so an "all switches on" scene can never trigger an install.
+- **Firmware version in accessory details**: each accessory's HomeKit information now shows the gateway's real firmware version (e.g. `4.0.3`) as its Firmware Revision.
+
+### Changed
+
+- **Actionable message for writes rejected while a unit is locked**: commands sent while a unit is powered off, mid-firmware-update, or controlled elsewhere used to surface as raw `Bad Request (400): {"code":"READ_ONLY_CHARACTERISTIC",…}` JSON. The log now explains the unit is temporarily read-only and will accept commands again once back online.
+
 ## [1.3.33] - 2026-08-15
 
 ### Fixed

@@ -24,10 +24,17 @@ export class BaseAccessory {
 
     this.printDeviceInfo(modelInfo);
 
+    const firmwareData = this.gatewayManagementPointId
+      ? accessory.context.device.getData(this.gatewayManagementPointId, 'firmwareVersion', undefined)
+      : null;
+    // Daikin reports versions like '4_0_3'; HomeKit expects dotted revisions
+    const firmwareVersion = (firmwareData?.value as string | undefined)?.replace(/_/g, '.');
+
         this.accessory.getService(this.platform.Service.AccessoryInformation)!
           .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Daikin')
           .setCharacteristic(this.platform.Characteristic.Model, modelInfo)
-          .setCharacteristic(this.platform.Characteristic.SerialNumber, serialNumber);
+          .setCharacteristic(this.platform.Characteristic.SerialNumber, serialNumber)
+          .setCharacteristic(this.platform.Characteristic.FirmwareRevision, firmwareVersion || '0.0.0');
 
         const updateListener = () => {
           const name = this.accessory.displayName;

@@ -64,6 +64,10 @@ export interface PluginConfig {
     // Standalone Fan (Fanv2) service exposing fan speed + oscillation as its own tile
     showSeparateFanControl?: boolean;
 
+    // Gateway firmware updates as a HomeKit switch. Deliberately excluded from
+    // the legacy showExtraFeatures catch-all — must be enabled explicitly.
+    showFirmwareUpdateSwitch?: boolean;
+
     // WebSocket
     enableWebSocket?: boolean;
 }

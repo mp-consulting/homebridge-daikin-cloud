@@ -8,3 +8,4 @@ export * from './oscillation-mode.feature';
 export * from './dry-operation-mode.feature';
 export * from './fan-only-operation-mode.feature';
 export * from './holiday-mode.feature';
+export * from './firmware-update.feature';

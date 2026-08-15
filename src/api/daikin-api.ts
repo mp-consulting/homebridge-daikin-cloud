@@ -195,6 +195,23 @@ export class DaikinApi {
   }
 
   /**
+     * Trigger installation of a staged firmware update on a management point.
+     *
+     * Firmware installs use a dedicated PUT sub-resource with an empty body
+     * (mirroring the official Onecta app) rather than a characteristic PATCH.
+     * The firmwareId is the `firmwareUpdate.value.id` UUID from the device
+     * payload, which is only present while an update is staged by Daikin.
+     *
+     * @param deviceId - The device ID
+     * @param embeddedId - The management point embedded ID (e.g., 'gateway')
+     * @param firmwareId - The staged update's id from firmwareUpdate.value.id
+     */
+  async triggerFirmwareUpdate(deviceId: string, embeddedId: string, firmwareId: string): Promise<void> {
+    const urlPath = `/v1/gateway-devices/${deviceId}/management-points/${embeddedId}/firmware/${firmwareId}`;
+    await this.enqueueWriteForDevice(deviceId, () => this.request(urlPath, 'PUT'));
+  }
+
+  /**
    * Serializes write requests per device through a queue with a fixed inter-request delay.
    * Each device has its own queue so writes for different devices run in parallel,
    * while writes for the same device are ordered and rate-limited.
@@ -265,11 +282,30 @@ export class DaikinApi {
   }
 
   /**
+     * Translate well-known Onecta 400 error codes into actionable messages
+     */
+  private describeBadRequest(body: string): string {
+    if (this.isReadOnlyRejection(body)) {
+      return 'The unit is temporarily read-only — it is powered off, updating its firmware, '
+        + 'or locked by another controller. It will accept commands again once it is back online.';
+    }
+    return `Bad Request (${HTTP_STATUS.BAD_REQUEST}): ${body || 'No response body'}`;
+  }
+
+  private isReadOnlyRejection(body: string): boolean {
+    try {
+      return JSON.parse(body)?.code === 'READ_ONLY_CHARACTERISTIC';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
      * Make an authenticated API request
      */
   private async request<T>(
     path: string,
-    method: 'GET' | 'PATCH' | 'POST' | 'DELETE' = 'GET',
+    method: 'GET' | 'PATCH' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     body?: unknown,
     retryCount = 0,
   ): Promise<T> {
@@ -306,7 +342,7 @@ export class DaikinApi {
         return response.body ? JSON.parse(response.body) : null as unknown as T;
 
       case HTTP_STATUS.BAD_REQUEST:
-        throw new Error(`Bad Request (${HTTP_STATUS.BAD_REQUEST}): ${response.body || 'No response body'}`);
+        throw new Error(this.describeBadRequest(response.body));
 
       case HTTP_STATUS.UNAUTHORIZED:
         // If we've exhausted retries, give up

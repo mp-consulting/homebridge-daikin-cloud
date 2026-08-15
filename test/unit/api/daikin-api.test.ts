@@ -440,4 +440,59 @@ describe('DaikinApi', () => {
       expect(error.message).toContain('Service Unavailable');
     });
   });
+
+  describe('bad request handling', () => {
+    it('translates READ_ONLY_CHARACTERISTIC into an actionable message', async () => {
+      mockHttpsRequest(400, JSON.stringify({
+        code: 'READ_ONLY_CHARACTERISTIC',
+        message: 'Characteristic is read-only and therefore can not be set',
+      }));
+
+      const api = new DaikinApi(mockOAuth);
+      const promise = api.updateDevice('device-1', 'climateControl', 'onOffMode', 'on').catch((e) => e);
+      await vi.runAllTimersAsync();
+      const error = await promise;
+
+      expect(error.message).toContain('temporarily read-only');
+      expect(error.message).toContain('powered off, updating its firmware');
+    });
+
+    it('keeps the raw body for other 400 errors', async () => {
+      mockHttpsRequest(400, JSON.stringify({ code: 'INVALID_VALUE' }));
+
+      const api = new DaikinApi(mockOAuth);
+      const promise = api.updateDevice('device-1', 'climateControl', 'onOffMode', 'on').catch((e) => e);
+      await vi.runAllTimersAsync();
+      const error = await promise;
+
+      expect(error.message).toContain('Bad Request (400)');
+      expect(error.message).toContain('INVALID_VALUE');
+    });
+
+    it('keeps the raw body when the 400 body is not JSON', async () => {
+      mockHttpsRequest(400, '<html>WAF error page</html>');
+
+      const api = new DaikinApi(mockOAuth);
+      const promise = api.updateDevice('device-1', 'climateControl', 'onOffMode', 'on').catch((e) => e);
+      await vi.runAllTimersAsync();
+      const error = await promise;
+
+      expect(error.message).toContain('Bad Request (400)');
+    });
+  });
+
+  describe('triggerFirmwareUpdate', () => {
+    it('issues a body-less PUT to the dedicated firmware sub-resource', async () => {
+      mockHttpsRequest(204, '');
+
+      const api = new DaikinApi(mockOAuth);
+      const promise = api.triggerFirmwareUpdate('device-1', 'gateway', 'fw-uuid-123');
+      await vi.runAllTimersAsync();
+      await promise;
+
+      const options = vi.mocked(https.request).mock.calls[0][0] as any;
+      expect(options.method).toBe('PUT');
+      expect(options.path).toBe('/v1/gateway-devices/device-1/management-points/gateway/firmware/fw-uuid-123');
+    });
+  });
 });
