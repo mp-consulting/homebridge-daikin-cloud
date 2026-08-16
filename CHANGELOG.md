@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-08-16
+
+### Fixed
+
+- **Restored Node.js 20 support** ([#6](https://github.com/mp-consulting/homebridge-daikin-cloud/issues/6)): `engines.node` had dropped the 20.x line in v1.3.30 as housekeeping, not for any technical reason. The side effect only surfaced now: HOOBS and Homebridge plugin browsers filter the registry by `engines`, so hosts running Node 20 stopped being offered new versions altogether, and a manual `npm install` warned `EBADENGINE`. That left exactly the users hitting the WAF blocking in #6 unable to install the v1.5.0 curl transport built to fix it. Nothing in the plugin requires Node 22+ — the build targets ES2022 and no runtime dependency asks for more — and the full test suite passes on Node 20, which is now back in the CI matrix alongside 22, 24 and 26.
+
+  Note that Node 20 reached end-of-life in April 2026 and receives no further security patches; it is supported here for compatibility with appliance-style hosts that pin it, and upgrading remains recommended where possible.
+
 ## [1.5.0] - 2026-08-15
 
 ### Added
