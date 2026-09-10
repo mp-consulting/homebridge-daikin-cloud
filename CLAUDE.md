@@ -242,14 +242,27 @@ The codebase uses structured logging:
 
 ## Release Process
 
-1. Update version in [package.json](package.json)
-2. Update [README.md](README.md) if needed
+Publishing to npm is done by CI, not by hand: [publish.yml](.github/workflows/publish.yml)
+runs on a **published GitHub Release** and publishes with provenance. Do not run
+`npm publish` locally for a normal release — it would publish the same version twice.
+
+1. Update version in [package.json](package.json) — `npm version X.Y.Z --no-git-tag-version`
+   also updates `package-lock.json`
+2. Add the release section to [CHANGELOG.md](CHANGELOG.md), and update [README.md](README.md)
+   if needed
 3. Run tests: `npm test`
 4. Build: `npm run build`
-5. Commit with version bump: `chore: bump version to X.Y.Z`
-6. Tag release: `git tag vX.Y.Z`
-7. Push: `git push && git push --tags`
-8. Publish: `npm run release` (or `npm run release:beta`)
+5. Commit: `chore: release vX.Y.Z`
+6. Tag: `git tag vX.Y.Z`
+7. Push branch and tag: `git push origin main && git push origin vX.Y.Z`
+   (the tags are lightweight, so `--follow-tags` will not push them)
+8. Create the GitHub Release, which triggers the npm publish:
+   `gh release create vX.Y.Z --title vX.Y.Z --notes-file <changelog section>`
+9. Check the run: `gh run list --workflow=publish.yml --limit 1`. The registry can lag a
+   few minutes behind a successful publish.
+
+`npm run release` / `npm run release:beta` publish directly from the working tree and exist
+only for one-off beta or recovery publishes.
 
 ## Important Constraints
 
