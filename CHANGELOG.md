@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-09-10
+
+### Changed
+
+- **Dependencies**: Updated all dependencies to latest compatible versions, including `zod` ^4.5.4, `ws` ^8.21.3 and `@homebridge/plugin-ui-utils` ^2.2.6, plus dev-only major bumps for `vitest` (4→5) and `@types/node` (25→26).
+
 ## [1.5.1] - 2026-08-16
 
 ### Fixed
