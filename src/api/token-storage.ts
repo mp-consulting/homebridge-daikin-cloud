@@ -6,6 +6,7 @@
  */
 
 import * as fs from 'node:fs';
+import * as crypto from 'node:crypto';
 import type { TokenSet } from './daikin-types';
 import { TokenSetSchema } from './daikin-schemas';
 
@@ -23,7 +24,7 @@ export function loadTokenFromFile(filePath: string): TokenSet | null {
       const parsed = JSON.parse(data);
       const result = TokenSetSchema.safeParse(parsed);
       if (result.success) {
-        return result.data as TokenSet;
+        return result.data;
       }
       // Token file has invalid structure - treat as missing
       return null;
@@ -36,13 +37,35 @@ export function loadTokenFromFile(filePath: string): TokenSet | null {
 
 /**
  * Save a token set to a file with restricted permissions.
+ *
+ * Writes atomically (temp file + rename) so a crash mid-write never leaves a
+ * truncated token file behind. `mode` on writeFileSync only applies when a
+ * file is created, so a pre-existing world-readable token file would keep its
+ * permissions: the temp file is always freshly created with 0600 and replaces
+ * the old inode, and the final file is chmod'ed again for good measure.
  */
 export function saveTokenToFile(filePath: string, tokenSet: TokenSet): void {
-  fs.writeFileSync(
-    filePath,
-    JSON.stringify(tokenSet, null, 2),
-    { encoding: 'utf8', mode: TOKEN_FILE_MODE },
-  );
+  const tempPath = `${filePath}.tmp-${crypto.randomBytes(8).toString('hex')}`;
+  try {
+    fs.writeFileSync(
+      tempPath,
+      JSON.stringify(tokenSet, null, 2),
+      { encoding: 'utf8', mode: TOKEN_FILE_MODE, flag: 'wx' },
+    );
+    fs.renameSync(tempPath, filePath);
+  } catch (error) {
+    try {
+      fs.rmSync(tempPath, { force: true });
+    } catch {
+      // Best effort cleanup
+    }
+    throw error;
+  }
+  try {
+    fs.chmodSync(filePath, TOKEN_FILE_MODE);
+  } catch {
+    // Platforms without POSIX permissions (Windows)
+  }
 }
 
 /**

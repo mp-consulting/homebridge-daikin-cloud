@@ -1,5 +1,8 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import type { Mock } from 'vitest';
+import type { ClientRequest } from 'node:http';
 import { DaikinMobileOAuth } from '../../../src/api/daikin-mobile-oauth';
+import type { TokenSet } from '../../../src/api/daikin-types';
 import * as https from 'node:https';
 
 vi.mock('node:https');
@@ -34,13 +37,14 @@ function mockHttpsResponse(statusCode: number, body: string, headers: Record<str
       }),
     };
     callback(res);
+    // Only the members DaikinMobileOAuth uses.
     return {
       on: vi.fn().mockReturnThis(),
       write: vi.fn(),
       end: vi.fn(),
       setTimeout: vi.fn(),
       destroy: vi.fn(),
-    };
+    } as unknown as ClientRequest;
   };
 }
 
@@ -69,9 +73,9 @@ function mockHttpsNetworkError(code: string) {
 }
 
 describe('DaikinMobileOAuth', () => {
-  let onTokenUpdate: ReturnType<typeof vi.fn>;
-  let onError: ReturnType<typeof vi.fn>;
-  let onLog: ReturnType<typeof vi.fn>;
+  let onTokenUpdate: Mock<(tokenSet: TokenSet) => void>;
+  let onError: Mock<(error: Error) => void>;
+  let onLog: Mock<(message: string) => void>;
 
   beforeEach(() => {
     vi.clearAllMocks();

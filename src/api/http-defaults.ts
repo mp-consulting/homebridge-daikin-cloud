@@ -25,9 +25,9 @@ export const DAIKIN_TLS_CIPHERS = process.env.DAIKIN_TLS_CIPHERS || 'DEFAULT';
  * Apply the shared User-Agent and TLS fingerprint defaults to the options of
  * an https.request (or ws) call. Explicit options and headers win.
  */
-export function withHttpDefaults<T extends { headers?: OutgoingHttpHeaders }>(
-  options: T,
-): T & { autoSelectFamily: boolean; ciphers: string } {
+export function withHttpDefaults<T extends object>(
+  options: T & { headers?: OutgoingHttpHeaders },
+): T & { headers: OutgoingHttpHeaders; autoSelectFamily: boolean; ciphers: string } {
   return {
     // Happy Eyeballs: fall back to IPv4 when advertised IPv6 is broken
     // instead of hanging on connect until the request timeout.

@@ -15,6 +15,24 @@ export const TokenSetSchema = z.object({
   scope: z.string().optional(),
 });
 
+// OAuth 2.0 error body (RFC 6749 section 5.2)
+export const OAuthErrorSchema = z.object({
+  error: z.string(),
+  error_description: z.string().optional(),
+});
+
+// Gigya (SAP CDC) accounts.login / accounts.register response. Gigya answers
+// HTTP 200 for most failures and reports them through errorCode instead.
+export const GigyaLoginResultSchema = z.object({
+  errorCode: z.number(),
+  errorMessage: z.string().optional(),
+  errorDetails: z.string().optional(),
+  regToken: z.string().optional(),
+  data: z.object({ profile: z.record(z.string(), z.unknown()).optional() }).loose().optional(),
+  profile: z.object({ firstName: z.string().nullish(), lastName: z.string().nullish() }).loose().optional(),
+  sessionInfo: z.object({ login_token: z.string() }).loose().optional(),
+}).loose();
+
 // Daikin "characteristic" objects always carry extra metadata Zod would
 // otherwise strip: ref, settable, values, minValue/maxValue/stepValue, unit,
 // maxLength… Several of these are read at runtime (e.g. setProps ranges for
@@ -108,54 +126,3 @@ export const GatewayDeviceSchema = chr({
   isCloudConnectionUp: chr({ value: z.boolean() }).optional(),
   managementPoints: z.array(ManagementPointSchema),
 });
-
-// Configuration Validation Schema
-export const DaikinControllerConfigSchema = z.object({
-  authMode: z.enum(['developer_portal', 'mobile_app']),
-  tokenFilePath: z.string().min(1),
-  // Developer Portal fields
-  clientId: z.string().optional(),
-  clientSecret: z.string().optional(),
-  callbackServerExternalAddress: z.string().optional(),
-  callbackServerPort: z.number().int().min(1).max(65535).optional(),
-  oidcCallbackServerBindAddr: z.string().optional(),
-  // Mobile App fields
-  email: z.string().email().optional(),
-  password: z.string().optional(),
-}).refine(
-  (data) => {
-    if (data.authMode === 'developer_portal') {
-      return !!(data.clientId && data.clientSecret && data.callbackServerExternalAddress && data.callbackServerPort);
-    }
-    if (data.authMode === 'mobile_app') {
-      return !!(data.email && data.password);
-    }
-    return false;
-  },
-  {
-    message: 'Missing required configuration for the selected authentication mode',
-  },
-);
-
-// Helper function to validate and parse data
-export function validateData<T>(schema: z.ZodSchema<T>, data: unknown, context?: string): T {
-  try {
-    return schema.parse(data);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      const errorMessages = error.issues.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
-      throw new Error(`Validation failed${context ? ` for ${context}` : ''}: ${errorMessages}`, { cause: error });
-    }
-    throw error;
-  }
-}
-
-// Helper function to safely validate without throwing
-export function safeValidateData<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; error: string } {
-  const result = schema.safeParse(data);
-  if (result.success) {
-    return { success: true, data: result.data };
-  }
-  const errorMessages = result.error.issues.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
-  return { success: false, error: errorMessages };
-}

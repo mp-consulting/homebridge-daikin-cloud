@@ -2,6 +2,9 @@
  * Daikin Cloud API Types
  */
 
+import type { z } from 'zod';
+import type { GatewayDeviceSchema, TokenSetSchema } from './daikin-schemas';
+
 // OIDC Configuration (Developer Portal)
 export const DAIKIN_OIDC_CONFIG = {
   authorizationEndpoint: 'https://idp.onecta.daikineurope.com/v1/oidc/authorize',
@@ -25,15 +28,8 @@ export const DAIKIN_MOBILE_CONFIG = {
   websocketUrl: process.env.DAIKIN_WEBSOCKET_URL || 'wss://wsapi.onecta.daikineurope.com',
 };
 
-// Token Set
-export interface TokenSet {
-    access_token: string;
-    refresh_token?: string;
-    token_type: string;
-    expires_in?: number;
-    expires_at?: number;
-    scope?: string;
-}
+// Token Set (derived from the runtime schema so the two cannot drift)
+export type TokenSet = z.infer<typeof TokenSetSchema>;
 
 // Rate Limit Status
 export interface RateLimitStatus {
@@ -41,12 +37,6 @@ export interface RateLimitStatus {
     remainingMinute?: number;
     limitDay?: number;
     remainingDay?: number;
-}
-
-// API Response with Rate Limit
-export interface ApiResponse<T> {
-    data: T;
-    rateLimit: RateLimitStatus;
 }
 
 // Device Management Point
@@ -97,15 +87,8 @@ export interface ManagementPoint {
     [key: string]: unknown;
 }
 
-// Gateway Device from API
-export interface GatewayDevice {
-    id: string;
-    deviceModel?: string;
-    type?: string;
-    isCloudConnectionUp?: { value: boolean };
-    managementPoints: ManagementPoint[];
-    [key: string]: unknown;
-}
+// Gateway Device from API (derived from the runtime schema so the two cannot drift)
+export type GatewayDevice = z.infer<typeof GatewayDeviceSchema>;
 
 // Authentication mode
 export type AuthMode = 'developer_portal' | 'mobile_app';
@@ -149,15 +132,6 @@ export interface OAuthProvider {
     refreshToken(): Promise<TokenSet>;
 }
 
-// Event Types
-export type DaikinEventType =
-    | 'token_update'
-    | 'rate_limit_status'
-    | 'error'
-    | 'websocket_connected'
-    | 'websocket_disconnected'
-    | 'websocket_device_update';
-
 // WebSocket Device Update Event Data
 export interface WebSocketDeviceUpdate {
     deviceId: string;
@@ -174,4 +148,12 @@ export interface WebSocketDeviceUpdate {
         maxValue?: number;
         stepValue?: number;
     };
+}
+
+/** Shape of RATE_LIMIT_STATUS_FILE */
+export interface RateLimitStatusFile extends RateLimitStatus {
+    /** Auth mode the headers were observed under */
+    mode: 'developer_portal' | 'mobile_app';
+    /** ISO timestamp of when the headers were observed */
+    updatedAt: string;
 }

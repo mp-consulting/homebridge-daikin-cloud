@@ -12,8 +12,10 @@
  *
  * The curl transport keeps secrets off the command line: URL, headers and
  * body travel via a 0600 config file in a private temp dir (argv is visible
- * to every process on the host via ps). curl exit codes are mapped onto
- * Node-style error codes so the callers' retry logic works unchanged.
+ * to every process on the host via ps). curl runs with -q so the user's
+ * ~/.curlrc cannot inject options, and with proto "=https" so it can never
+ * fall back to plain HTTP. curl exit codes are mapped onto Node-style error
+ * codes so the callers' retry logic works unchanged.
  */
 
 import * as https from 'node:https';
@@ -131,18 +133,30 @@ const CURL_EXIT_CODES: Record<number, string> = {
   56: 'ECONNRESET',  // receive failure
 };
 
-/** Escape a value for a double-quoted curl config entry. */
-function curlQuote(value: string): string {
+/**
+ * Escape a value for a double-quoted curl config entry.
+ *
+ * A config entry ends at the line break, so a CR/LF in a value (e.g. from a
+ * cloud-supplied id interpolated into a URL or header) would let it inject
+ * arbitrary curl options such as `output` or `upload-file`. NUL truncates the
+ * entry. Such values are never legitimate in a URL or header, so reject them.
+ */
+export function curlQuote(value: string): string {
+  if (/[\r\n\0]/.test(value)) {
+    throw new Error('Refusing to pass a value containing CR, LF or NUL to curl');
+  }
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-function buildCurlConfig(
+export function buildCurlConfig(
   url: string,
   options: TransportOptions,
   bodyFile: string | undefined,
 ): string {
   const timeoutSecs = Math.ceil((options.timeoutMs ?? HTTP_REQUEST_TIMEOUT_MS) / 1000);
   const lines = [
+    // Only ever speak HTTPS, whatever the URL or a redirect says
+    'proto = "=https"',
     `url = ${curlQuote(url)}`,
     `request = ${curlQuote(options.method)}`,
     `max-time = ${timeoutSecs}`,
@@ -167,18 +181,24 @@ function curlRequest(
   options: TransportOptions,
   postData?: string,
 ): Promise<TransportResponse> {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'daikin-curl-') );
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'daikin-curl-'));
   const configFile = path.join(tempDir, 'request.conf');
-  let bodyFile: string | undefined;
-  if (postData !== undefined) {
-    bodyFile = path.join(tempDir, 'body');
-    fs.writeFileSync(bodyFile, postData, { mode: 0o600 });
+  try {
+    let bodyFile: string | undefined;
+    if (postData !== undefined) {
+      bodyFile = path.join(tempDir, 'body');
+      fs.writeFileSync(bodyFile, postData, { mode: 0o600 });
+    }
+    fs.writeFileSync(configFile, buildCurlConfig(url, options, bodyFile), { mode: 0o600 });
+  } catch (error) {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    return Promise.reject(error);
   }
-  fs.writeFileSync(configFile, buildCurlConfig(url, options, bodyFile), { mode: 0o600 });
 
   const timeoutMs = (options.timeoutMs ?? HTTP_REQUEST_TIMEOUT_MS) + 5000;
   return new Promise<TransportResponse>((resolve, reject) => {
-    execFile('curl', ['--config', configFile], { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 },
+    // -q must come first: it stops curl from reading ~/.curlrc
+    execFile('curl', ['-q', '--config', configFile], { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) {
           reject(describeCurlError(error as NodeJS.ErrnoException & { code?: string | number }, stderr));

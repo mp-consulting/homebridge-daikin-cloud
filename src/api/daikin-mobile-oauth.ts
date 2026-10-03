@@ -9,6 +9,7 @@
  */
 
 import * as crypto from 'node:crypto';
+import type { z } from 'zod';
 import type { TokenSet, MobileClientConfig } from './daikin-types';
 import { DAIKIN_MOBILE_CONFIG } from './daikin-types';
 import {
@@ -16,38 +17,28 @@ import {
   RETRY_BASE_DELAY_MS,
   RETRY_MAX_DELAY_MS,
 } from '../constants';
-import { loadTokenFromFile, saveTokenToFile, deleteTokenFile } from './token-storage';
-import { httpRequest } from './http-transport';
+import { httpRequest, type TransportResponse } from './http-transport';
+import { GigyaLoginResultSchema } from './daikin-schemas';
+import { TokenClient, parseJsonBody, parseTokenResponse } from './token-client';
+import { sleep } from '../utils/sleep';
 
 interface PKCEPair {
     verifier: string;
     challenge: string;
 }
 
-interface GigyaLoginResult {
-    errorCode: number;
-    errorMessage?: string;
-    errorDetails?: string;
-    regToken?: string;
-    data?: { profile?: Record<string, string> };
-    profile?: { firstName?: string; lastName?: string };
-    sessionInfo?: {
-        login_token: string;
-    };
-}
+type GigyaLoginResult = z.infer<typeof GigyaLoginResultSchema>;
 
-export class DaikinMobileOAuth {
-  private tokenSet: TokenSet | null = null;
-  private refreshPromise: Promise<TokenSet> | null = null;
+export class DaikinMobileOAuth extends TokenClient {
   private cookies = '';
 
   constructor(
         private readonly config: MobileClientConfig,
-        private readonly onTokenUpdate?: (tokenSet: TokenSet) => void,
-        private readonly onError?: (error: Error) => void,
+        onTokenUpdate?: (tokenSet: TokenSet) => void,
+        onError?: (error: Error) => void,
         private readonly onLog?: (message: string) => void,
   ) {
-    this.loadFromFile();
+    super(config.tokenFilePath, onTokenUpdate, onError);
   }
 
   /**
@@ -72,119 +63,15 @@ export class DaikinMobileOAuth {
     // Step 5: Exchange code for tokens at IDP
     const tokenSet = await this.exchangeCodeForTokens(code, pkce);
 
-    this.setTokenSet(tokenSet);
-    return tokenSet;
+    return this.setTokenSet(tokenSet);
   }
 
-  /**
-     * Refresh the access token
-     */
-  async refreshToken(): Promise<TokenSet> {
-    if (!this.tokenSet?.refresh_token) {
-      throw new Error('No refresh token available');
-    }
-
-    // Prevent concurrent refresh requests
-    if (this.refreshPromise) {
-      return this.refreshPromise;
-    }
-
-    this.refreshPromise = this.performRefresh();
-
-    try {
-      const tokenSet = await this.refreshPromise;
-      this.setTokenSet(tokenSet);
-      return tokenSet;
-    } finally {
-      this.refreshPromise = null;
-    }
-  }
-
-  private async performRefresh(): Promise<TokenSet> {
-    const basicAuth = Buffer.from(
-      DAIKIN_MOBILE_CONFIG.clientId + ':' + DAIKIN_MOBILE_CONFIG.clientSecret,
-    ).toString('base64');
-
+  protected async requestTokenRefresh(refreshToken: string): Promise<TokenSet> {
     const params = new URLSearchParams({
       grant_type: 'refresh_token',
-      refresh_token: this.tokenSet!.refresh_token!,
+      refresh_token: refreshToken,
     });
-
-    const response = await this.httpsRequest(
-      DAIKIN_MOBILE_CONFIG.idpTokenEndpoint,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': 'Basic ' + basicAuth,
-        },
-      },
-      params.toString(),
-    );
-
-    const result = this.parseJsonResponse<TokenSet & { error?: string; error_description?: string }>(
-      response, DAIKIN_MOBILE_CONFIG.idpTokenEndpoint, 'Token refresh failed',
-    );
-
-    if (result.error) {
-      throw new Error('Token refresh failed: ' + (result.error_description || result.error));
-    }
-
-    return result;
-  }
-
-  /**
-     * Get a valid access token, refreshing if necessary
-     */
-  async getAccessToken(): Promise<string> {
-    if (!this.tokenSet) {
-      throw new Error('Not authenticated. Please authenticate first.');
-    }
-
-    // Check if token is expired or about to expire (10 second buffer)
-    const now = Math.floor(Date.now() / 1000);
-    const expiresAt = this.tokenSet.expires_at || 0;
-
-    if (expiresAt < now + 10) {
-      if (!this.tokenSet.refresh_token) {
-        throw new Error('Token expired and no refresh token available. Please re-authenticate.');
-      }
-      await this.refreshToken();
-    }
-
-    return this.tokenSet!.access_token;
-  }
-
-  /**
-     * Check if we have a valid token
-     */
-  isAuthenticated(): boolean {
-    return this.tokenSet !== null && !!this.tokenSet.access_token;
-  }
-
-  /**
-     * Get token expiration date
-     */
-  getTokenExpiration(): Date | null {
-    if (!this.tokenSet?.expires_at) {
-      return null;
-    }
-    return new Date(this.tokenSet.expires_at * 1000);
-  }
-
-  /**
-     * Get current token set (for status display)
-     */
-  getTokenSet(): TokenSet | null {
-    return this.tokenSet;
-  }
-
-  /**
-     * Clear stored tokens
-     */
-  clearTokens(): void {
-    this.deleteFile();
-    this.tokenSet = null;
+    return this.requestIdpToken(params, 'Token refresh failed');
   }
 
   // =========================================================================
@@ -339,9 +226,7 @@ export class DaikinMobileOAuth {
       params.toString(),
     );
 
-    const result = this.parseJsonResponse<GigyaLoginResult>(
-      response, DAIKIN_MOBILE_CONFIG.gigyaBaseUrl, 'Login failed',
-    );
+    const result = this.parseGigyaResponse(response, DAIKIN_MOBILE_CONFIG.gigyaBaseUrl, 'Login failed');
 
     if (result.errorCode === 206001) {
       this.onLog?.('Account has pending registration (206001). Attempting to complete registration automatically...');
@@ -358,16 +243,16 @@ export class DaikinMobileOAuth {
 
   private async completePendingRegistration(
     regToken: string,
-    existingData?: { profile?: Record<string, string> },
-    existingProfile?: { firstName?: string; lastName?: string },
+    existingData?: GigyaLoginResult['data'],
+    existingProfile?: GigyaLoginResult['profile'],
   ): Promise<string> {
-    const customProfile = existingData?.profile || {};
-    const countryResidence = customProfile.countryResidence || 'US';
-    const communicationLanguage = customProfile.communicationLanguage || 'en';
+    const customProfile = existingData?.profile ?? {};
+    const countryResidence = stringOr(customProfile.countryResidence, 'US');
+    const communicationLanguage = stringOr(customProfile.communicationLanguage, 'en');
 
     // Use existing name fields, or derive from email as last resort
-    let firstName = existingProfile?.firstName;
-    let lastName = existingProfile?.lastName;
+    let firstName = existingProfile?.firstName ?? undefined;
+    let lastName = existingProfile?.lastName ?? undefined;
 
     if (!firstName || !lastName) {
       const emailUser = this.config.email.split('@')[0];
@@ -405,7 +290,7 @@ export class DaikinMobileOAuth {
       params.toString(),
     );
 
-    const result = this.parseJsonResponse<GigyaLoginResult>(
+    const result = this.parseGigyaResponse(
       response, DAIKIN_MOBILE_CONFIG.gigyaBaseUrl, 'Registration completion failed',
     );
     const loginToken = this.extractLoginToken(result, 'Registration completion failed');
@@ -450,16 +335,22 @@ export class DaikinMobileOAuth {
   }
 
   private async exchangeCodeForTokens(code: string, pkce: PKCEPair): Promise<TokenSet> {
-    const basicAuth = Buffer.from(
-      DAIKIN_MOBILE_CONFIG.clientId + ':' + DAIKIN_MOBILE_CONFIG.clientSecret,
-    ).toString('base64');
-
     const params = new URLSearchParams({
       grant_type: 'authorization_code',
       code: code,
       redirect_uri: DAIKIN_MOBILE_CONFIG.redirectUri,
       code_verifier: pkce.verifier,
     });
+    return this.requestIdpToken(params, 'Token exchange failed');
+  }
+
+  /**
+     * POST a grant to the IDP token endpoint (client authenticates with HTTP Basic)
+     */
+  private async requestIdpToken(params: URLSearchParams, context: string): Promise<TokenSet> {
+    const basicAuth = Buffer.from(
+      DAIKIN_MOBILE_CONFIG.clientId + ':' + DAIKIN_MOBILE_CONFIG.clientSecret,
+    ).toString('base64');
 
     const response = await this.httpsRequest(
       DAIKIN_MOBILE_CONFIG.idpTokenEndpoint,
@@ -473,58 +364,7 @@ export class DaikinMobileOAuth {
       params.toString(),
     );
 
-    const result = this.parseJsonResponse<TokenSet & { error?: string; error_description?: string }>(
-      response, DAIKIN_MOBILE_CONFIG.idpTokenEndpoint, 'Token exchange failed',
-    );
-
-    if (result.error) {
-      throw new Error('Token exchange failed: ' + (result.error_description || result.error));
-    }
-
-    return result;
-  }
-
-  // =========================================================================
-  // Token storage methods
-  // =========================================================================
-
-  private setTokenSet(tokenSet: TokenSet): void {
-    if (tokenSet.expires_in && !tokenSet.expires_at) {
-      tokenSet.expires_at = Math.floor(Date.now() / 1000) + tokenSet.expires_in;
-    }
-
-    this.tokenSet = tokenSet;
-    this.saveToFile();
-
-    if (this.onTokenUpdate) {
-      this.onTokenUpdate(tokenSet);
-    }
-  }
-
-  private loadFromFile(): void {
-    try {
-      this.tokenSet = loadTokenFromFile(this.config.tokenFilePath);
-    } catch (error) {
-      if (this.onError) {
-        this.onError(new Error('Failed to load token file: ' + (error as Error).message));
-      }
-    }
-  }
-
-  private saveToFile(): void {
-    try {
-      if (this.tokenSet) {
-        saveTokenToFile(this.config.tokenFilePath, this.tokenSet);
-      }
-    } catch (error) {
-      if (this.onError) {
-        this.onError(new Error('Failed to save token file: ' + (error as Error).message));
-      }
-    }
-  }
-
-  private deleteFile(): void {
-    deleteTokenFile(this.config.tokenFilePath);
+    return parseTokenResponse(response, DAIKIN_MOBILE_CONFIG.idpTokenEndpoint, context);
   }
 
   // =========================================================================
@@ -549,25 +389,16 @@ export class DaikinMobileOAuth {
   ]);
 
   /**
-     * Parse a JSON response body, reporting the endpoint and status instead of a
-     * bare "Unexpected end of JSON input" when a proxy/WAF answers with HTML or
-     * with nothing at all.
+     * Parse and validate a Gigya response. Non-JSON bodies (proxy/WAF pages)
+     * and unexpected shapes become readable errors instead of a SyntaxError.
      */
-  private parseJsonResponse<T>(
-    response: { statusCode: number; body: string },
-    url: string,
-    context: string,
-  ): T {
-    try {
-      return JSON.parse(response.body) as T;
-    } catch {
-      const { hostname } = new URL(url);
-      const snippet = response.body.trim().slice(0, 200);
-      throw new Error(
-        `${context}: ${hostname} returned a non-JSON response (HTTP ${response.statusCode})`
-        + (snippet ? `: ${snippet}` : ' with an empty body'),
-      );
+  private parseGigyaResponse(response: TransportResponse, url: string, context: string): GigyaLoginResult {
+    const body = parseJsonBody(response, url, context);
+    const result = GigyaLoginResultSchema.safeParse(body);
+    if (!result.success) {
+      throw new Error(`${context}: ${new URL(url).hostname} returned an unexpected response (HTTP ${response.statusCode})`);
     }
+    return result.data;
   }
 
   private isRetryableNetworkError(error: NodeJS.ErrnoException): boolean {
@@ -594,10 +425,6 @@ export class DaikinMobileOAuth {
     );
   }
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
   /**
      * Perform a request, retrying transient network failures with exponential backoff.
      */
@@ -605,7 +432,7 @@ export class DaikinMobileOAuth {
     url: string,
     options: { method: string; headers?: Record<string, string> },
     postData?: string,
-  ): Promise<{ statusCode: number; headers: Record<string, string | string[] | undefined>; body: string }> {
+  ): Promise<TransportResponse> {
     for (let attempt = 1; ; attempt++) {
       try {
         return await this.performHttpsRequest(url, options, postData);
@@ -619,7 +446,7 @@ export class DaikinMobileOAuth {
         const delay = Math.min(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1), RETRY_MAX_DELAY_MS);
         this.onLog?.(`Request to ${new URL(url).hostname} failed (${err.code}); retrying in ${delay}ms `
           + `(attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS})`);
-        await this.sleep(delay);
+        await sleep(delay);
       }
     }
   }
@@ -628,7 +455,11 @@ export class DaikinMobileOAuth {
     url: string,
     options: { method: string; headers?: Record<string, string> },
     postData?: string,
-  ): Promise<{ statusCode: number; headers: Record<string, string | string[] | undefined>; body: string }> {
+  ): Promise<TransportResponse> {
     return httpRequest(url, { method: options.method, headers: options.headers }, postData);
   }
+}
+
+function stringOr(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value ? value : fallback;
 }

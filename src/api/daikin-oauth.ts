@@ -7,19 +7,16 @@
 import * as crypto from 'node:crypto';
 import type { TokenSet, DaikinClientConfig } from './daikin-types';
 import { DAIKIN_OIDC_CONFIG } from './daikin-types';
-import { loadTokenFromFile, saveTokenToFile, deleteTokenFile } from './token-storage';
-import { httpRequest } from './http-transport';
+import { httpRequest, type TransportResponse } from './http-transport';
+import { TokenClient, parseTokenResponse, withExpiresAt } from './token-client';
 
-export class DaikinOAuth {
-  private tokenSet: TokenSet | null = null;
-  private refreshPromise: Promise<TokenSet> | null = null;
-
+export class DaikinOAuth extends TokenClient {
   constructor(
         private readonly config: DaikinClientConfig,
-        private readonly onTokenUpdate?: (tokenSet: TokenSet) => void,
-        private readonly onError?: (error: Error) => void,
+        onTokenUpdate?: (tokenSet: TokenSet) => void,
+        onError?: (error: Error) => void,
   ) {
-    this.loadFromFile();
+    super(config.tokenFilePath, onTokenUpdate, onError);
   }
 
   // =========================================================================
@@ -48,20 +45,14 @@ export class DaikinOAuth {
     clientSecret: string,
     redirectUri: string,
   ): Promise<TokenSet> {
-    const tokenSet = await DaikinOAuth.makeStaticRequest(DAIKIN_OIDC_CONFIG.tokenEndpoint, {
+    const tokenSet = await DaikinOAuth.requestToken({
       grant_type: 'authorization_code',
       code,
       redirect_uri: redirectUri,
       client_id: clientId,
       client_secret: clientSecret,
-    });
-
-    // Calculate expires_at if not present
-    if (tokenSet.expires_in && !tokenSet.expires_at) {
-      tokenSet.expires_at = Math.floor(Date.now() / 1000) + tokenSet.expires_in;
-    }
-
-    return tokenSet;
+    }, 'Authorization code exchange failed');
+    return withExpiresAt(tokenSet);
   }
 
   /**
@@ -72,39 +63,33 @@ export class DaikinOAuth {
     clientId: string,
     clientSecret: string,
   ): Promise<void> {
-    await DaikinOAuth.makeStaticRequestRaw(DAIKIN_OIDC_CONFIG.revokeEndpoint, {
+    const response = await DaikinOAuth.postForm(DAIKIN_OIDC_CONFIG.revokeEndpoint, {
       token: refreshToken,
       token_type_hint: 'refresh_token',
       client_id: clientId,
       client_secret: clientSecret,
     });
-  }
-
-  /**
-     * Make a static token request
-     */
-  private static async makeStaticRequest(url: string, params: Record<string, string>): Promise<TokenSet> {
-    const response = await DaikinOAuth.makeStaticRequestRaw(url, params);
-    const tokenSet = JSON.parse(response) as TokenSet;
-
-    if ((tokenSet as unknown as { error?: string }).error) {
-      const errorResponse = tokenSet as unknown as { error: string; error_description?: string };
-      throw new Error(errorResponse.error_description || errorResponse.error);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new Error(`Token revocation failed: HTTP ${response.statusCode}`);
     }
-
-    return tokenSet;
   }
 
   /**
-     * Make a raw static HTTP request
+     * POST to the token endpoint and validate the token response
      */
-  private static async makeStaticRequestRaw(url: string, params: Record<string, string>): Promise<string> {
-    const postData = new URLSearchParams(params).toString();
-    const response = await httpRequest(url, {
+  private static async requestToken(params: Record<string, string>, context: string): Promise<TokenSet> {
+    const response = await DaikinOAuth.postForm(DAIKIN_OIDC_CONFIG.tokenEndpoint, params);
+    return parseTokenResponse(response, DAIKIN_OIDC_CONFIG.tokenEndpoint, context);
+  }
+
+  /**
+     * POST a form-encoded body
+     */
+  private static postForm(url: string, params: Record<string, string>): Promise<TransportResponse> {
+    return httpRequest(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    }, postData);
-    return response.body;
+    }, new URLSearchParams(params).toString());
   }
 
   // =========================================================================
@@ -136,176 +121,41 @@ export class DaikinOAuth {
      * Exchange authorization code for tokens
      */
   async exchangeCode(code: string): Promise<TokenSet> {
-    const tokenSet = await this.makeTokenRequest({
+    const tokenSet = await DaikinOAuth.requestToken({
       grant_type: 'authorization_code',
       code,
       redirect_uri: this.getRedirectUri(),
       client_id: this.config.clientId,
       client_secret: this.config.clientSecret,
-    });
-
-    this.setTokenSet(tokenSet);
-    return tokenSet;
+    }, 'Authorization code exchange failed');
+    return this.setTokenSet(tokenSet);
   }
 
   /**
-     * Refresh the access token
-     */
-  async refreshToken(): Promise<TokenSet> {
-    if (!this.tokenSet?.refresh_token) {
-      throw new Error('No refresh token available');
-    }
-
-    // Prevent concurrent refresh requests
-    if (this.refreshPromise) {
-      return this.refreshPromise;
-    }
-
-    this.refreshPromise = this.makeTokenRequest({
-      grant_type: 'refresh_token',
-      refresh_token: this.tokenSet.refresh_token,
-      client_id: this.config.clientId,
-      client_secret: this.config.clientSecret,
-    });
-
-    try {
-      const tokenSet = await this.refreshPromise;
-      this.setTokenSet(tokenSet);
-      return tokenSet;
-    } finally {
-      this.refreshPromise = null;
-    }
-  }
-
-  /**
-     * Revoke the current token
+     * Revoke the current token. The local token file is deleted even when the
+     * revocation request fails.
      */
   async revokeToken(): Promise<void> {
-    if (!this.tokenSet?.refresh_token) {
+    const refreshToken = this.tokenSet?.refresh_token;
+    if (!refreshToken) {
       return;
     }
 
     try {
-      await this.makeRequest(DAIKIN_OIDC_CONFIG.revokeEndpoint, {
-        token: this.tokenSet.refresh_token,
-        token_type_hint: 'refresh_token',
-        client_id: this.config.clientId,
-        client_secret: this.config.clientSecret,
-      });
-    } catch (error) {
-      // Ignore revocation errors
+      await DaikinOAuth.revokeTokenStatic(refreshToken, this.config.clientId, this.config.clientSecret);
+    } catch {
+      // Ignore revocation errors: the local logout must still happen
     }
 
-    this.deleteFile();
-    this.tokenSet = null;
+    this.clearTokens();
   }
 
-  /**
-     * Get a valid access token, refreshing if necessary
-     */
-  async getAccessToken(): Promise<string> {
-    if (!this.tokenSet) {
-      throw new Error('Not authenticated. Please authenticate first.');
-    }
-
-    // Check if token is expired or about to expire (10 second buffer)
-    const now = Math.floor(Date.now() / 1000);
-    const expiresAt = this.tokenSet.expires_at || 0;
-
-    if (expiresAt < now + 10) {
-      if (!this.tokenSet.refresh_token) {
-        throw new Error('Token expired and no refresh token available. Please re-authenticate.');
-      }
-      await this.refreshToken();
-    }
-
-    return this.tokenSet!.access_token;
-  }
-
-  /**
-     * Check if we have a valid token
-     */
-  isAuthenticated(): boolean {
-    return this.tokenSet !== null && !!this.tokenSet.access_token;
-  }
-
-  /**
-     * Get token expiration date
-     */
-  getTokenExpiration(): Date | null {
-    if (!this.tokenSet?.expires_at) {
-      return null;
-    }
-    return new Date(this.tokenSet.expires_at * 1000);
-  }
-
-  /**
-     * Get current token set (for status display)
-     */
-  getTokenSet(): TokenSet | null {
-    return this.tokenSet;
-  }
-
-  // Private methods
-
-  private setTokenSet(tokenSet: TokenSet): void {
-    // Calculate expires_at if not present
-    if (tokenSet.expires_in && !tokenSet.expires_at) {
-      tokenSet.expires_at = Math.floor(Date.now() / 1000) + tokenSet.expires_in;
-    }
-
-    this.tokenSet = tokenSet;
-    this.saveToFile();
-
-    if (this.onTokenUpdate) {
-      this.onTokenUpdate(tokenSet);
-    }
-  }
-
-  private loadFromFile(): void {
-    try {
-      this.tokenSet = loadTokenFromFile(this.config.tokenFilePath);
-    } catch (error) {
-      if (this.onError) {
-        this.onError(new Error(`Failed to load token file: ${(error as Error).message}`));
-      }
-    }
-  }
-
-  private saveToFile(): void {
-    try {
-      if (this.tokenSet) {
-        saveTokenToFile(this.config.tokenFilePath, this.tokenSet);
-      }
-    } catch (error) {
-      if (this.onError) {
-        this.onError(new Error(`Failed to save token file: ${(error as Error).message}`));
-      }
-    }
-  }
-
-  private deleteFile(): void {
-    deleteTokenFile(this.config.tokenFilePath);
-  }
-
-  private async makeTokenRequest(params: Record<string, string>): Promise<TokenSet> {
-    const response = await this.makeRequest(DAIKIN_OIDC_CONFIG.tokenEndpoint, params);
-    const tokenSet = JSON.parse(response) as TokenSet;
-
-    if ((tokenSet as unknown as { error?: string }).error) {
-      const errorResponse = tokenSet as unknown as { error: string; error_description?: string };
-      throw new Error(errorResponse.error_description || errorResponse.error);
-    }
-
-    return tokenSet;
-  }
-
-  private async makeRequest(url: string, params: Record<string, string>): Promise<string> {
-    const postData = new URLSearchParams(params).toString();
-    const response = await httpRequest(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    }, postData);
-    return response.body;
+  protected requestTokenRefresh(refreshToken: string): Promise<TokenSet> {
+    return DaikinOAuth.requestToken({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: this.config.clientId,
+      client_secret: this.config.clientSecret,
+    }, 'Token refresh failed');
   }
 }
