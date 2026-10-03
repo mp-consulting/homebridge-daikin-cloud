@@ -4,22 +4,67 @@ import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { AccessoryFactory } from './device';
 
 import { resolve } from 'node:path';
+import { inspect } from 'node:util';
 import { StringUtils } from './utils/strings';
+import { toMessage } from './utils/errors';
 
 import fs from 'node:fs';
-import type { DaikinCloudDevice, DaikinControllerConfig } from './api';
+import type { DaikinCloudDevice, RateLimitStatus, RateLimitStatusFile } from './api';
 import { DaikinCloudRepo, DaikinCloudController } from './api';
-import type { HttpTransportMode } from './api/http-transport';
 import { configureHttpTransport, getHttpTransportMode } from './api/http-transport';
-import { UpdateMapper } from './utils/update-mapper';
 import type { PluginConfig } from './config/config-manager';
 import { ConfigManager } from './config/config-manager';
 import {
+  ONE_SECOND_MS,
   ONE_MINUTE_MS,
-  DEFAULT_UPDATE_INTERVAL_MINUTES,
-  DEFAULT_FORCE_UPDATE_DELAY_MS,
   RATE_LIMIT_WARNING_THRESHOLD,
+  RATE_LIMIT_STATUS_FILE,
+  TOKEN_FILES,
 } from './constants';
+
+/** Safety-net poll interval while the WebSocket is delivering push updates */
+export const WEBSOCKET_SAFETY_POLL_INTERVAL_MS = 60 * ONE_MINUTE_MS;
+/** Minimum poll interval once the daily quota is nearly exhausted */
+export const LOW_QUOTA_POLL_INTERVAL_MS = 60 * ONE_MINUTE_MS;
+/** Upper bound of the failure backoff, as a multiple of the base interval */
+export const MAX_POLL_BACKOFF_MULTIPLIER = 4;
+/** Minimum time between two writes of the rate-limit status file */
+const RATE_LIMIT_FILE_MIN_WRITE_INTERVAL_MS = 5 * ONE_SECOND_MS;
+
+export interface PollIntervalInput {
+  configuredMs: number;
+  webSocketConnected: boolean;
+  consecutiveFailures: number;
+  remainingDay?: number;
+}
+
+/**
+ * Compute the delay until the next periodic poll:
+ * - WebSocket connected: push updates arrive anyway, poll only as a safety net
+ * - consecutive failures: exponential backoff, capped at MAX_POLL_BACKOFF_MULTIPLIER
+ * - daily quota nearly exhausted: stretch to LOW_QUOTA_POLL_INTERVAL_MS
+ */
+export function computePollInterval(input: PollIntervalInput): number {
+  let interval = input.configuredMs;
+  if (input.webSocketConnected) {
+    interval = Math.max(interval, WEBSOCKET_SAFETY_POLL_INTERVAL_MS);
+  }
+  if (input.consecutiveFailures > 0) {
+    interval *= Math.min(2 ** input.consecutiveFailures, MAX_POLL_BACKOFF_MULTIPLIER);
+  }
+  if (input.remainingDay !== undefined && input.remainingDay <= RATE_LIMIT_WARNING_THRESHOLD) {
+    interval = Math.max(interval, LOW_QUOTA_POLL_INTERVAL_MS);
+  }
+  return interval;
+}
+
+/**
+ * Wrap an expensive serialisation so it only runs if the logger actually
+ * formats the parameter (Homebridge skips formatting when debug is off).
+ */
+function lazyJson(producer: () => unknown, space?: number): object {
+  return { [inspect.custom]: () => JSON.stringify(producer(), null, space) };
+}
 
 export type DaikinCloudAccessoryContext = {
     device: DaikinCloudDevice;
@@ -32,45 +77,56 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
   public readonly accessories: PlatformAccessory<DaikinCloudAccessoryContext>[] = [];
 
   public readonly storagePath: string = '';
+  /** Single source of truth for the plugin configuration: read config only through this */
+  public readonly configManager: ConfigManager;
   public controller: DaikinCloudController | undefined;
 
   public readonly updateIntervalDelay: number;
-  private updateInterval: NodeJS.Timeout | undefined;
+  private pollTimer: NodeJS.Timeout | undefined;
   private forceUpdateTimeout: NodeJS.Timeout | undefined;
+  private inFlightUpdate: Promise<void> | undefined;
+  private pollingStarted = false;
+  private isShuttingDown = false;
+  private consecutivePollFailures = 0;
+  private remainingDay: number | undefined;
+  private webSocketHasConnected = false;
+  private pendingRateLimitStatus: RateLimitStatusFile | undefined;
+  private rateLimitWriteTimer: NodeJS.Timeout | undefined;
+  private lastRateLimitWriteAt = 0;
   private readonly accessoryFactory: AccessoryFactory;
-  private readonly updateMapper: UpdateMapper;
   private readonly authMode: 'developer_portal' | 'mobile_app';
   private readonly deviceListeners = new Map<string, () => void>();
 
   constructor(
         public readonly log: Logger,
-        public readonly config: PlatformConfig,
+        config: PlatformConfig,
         public readonly api: API,
   ) {
+    this.configManager = new ConfigManager(config as PluginConfig);
+    const configManager = this.configManager;
+
     this.log.info('--- Daikin info for debugging reasons (enable Debug Mode for more logs) ---');
 
-    this.log.debug('[Platform] Initializing platform:', this.config.name);
+    this.log.debug('[Platform] Initializing platform:', configManager.getName());
 
     this.Service = this.api.hap.Service;
     this.Characteristic = this.api.hap.Characteristic;
     this.storagePath = api.user.storagePath();
-    this.updateIntervalDelay = ONE_MINUTE_MS * (this.config.updateIntervalInMinutes || DEFAULT_UPDATE_INTERVAL_MINUTES);
+    this.updateIntervalDelay = configManager.getUpdateIntervalMs();
     this.accessoryFactory = new AccessoryFactory(this);
-    this.updateMapper = new UpdateMapper(this.log, this.Service, this.Characteristic);
 
     // Determine authentication mode
-    this.authMode = this.config.authMode === 'mobile_app' ? 'mobile_app' : 'developer_portal';
+    this.authMode = configManager.getAuthMode();
     this.log.info(`[Config] Authentication mode: ${this.authMode}`);
 
     // Select the HTTP transport (env var DAIKIN_HTTP_TRANSPORT wins over config)
-    configureHttpTransport(this.config.httpTransport as HttpTransportMode | undefined);
+    configureHttpTransport(configManager.getHttpTransport());
     if (getHttpTransportMode() === 'curl') {
       this.log.info('[Config] HTTP transport: curl subprocess (WAF fingerprint workaround). '
         + 'Note: WebSocket connections still use Node TLS — disable WebSocket if it cannot connect.');
     }
 
     // Validate configuration
-    const configManager = new ConfigManager(this.config as PluginConfig);
     const validation = configManager.validate();
     for (const warning of validation.warnings) {
       this.log.warn(`[Config] ${warning}`);
@@ -87,7 +143,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         return;
       }
     } else {
-      if (!this.config.clientId || !this.config.clientSecret) {
+      if (!configManager.hasDeveloperCredentials()) {
         this.log.warn('[Config] Client ID and/or Client Secret not configured.');
         this.log.warn('[Config] Please configure the plugin using the Homebridge UI.');
         this.log.info('--------------- End Daikin info for debugging reasons --------------------');
@@ -95,27 +151,18 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
       }
     }
 
+    // Credentials are present: the remaining errors (e.g. a localhost callback
+    // address or an invalid port) do not stop startup, but must be visible.
+    for (const error of validation.errors) {
+      this.log.error(`[Config] ${error}`);
+    }
+
     // Use different token file for mobile auth to avoid conflicts
-    const tokenFileName = this.authMode === 'mobile_app'
-      ? '.daikin-mobile-tokenset'
-      : '.daikin-controller-cloud-tokenset';
-    const tokenFilePath = resolve(this.storagePath, tokenFileName);
+    const tokenFilePath = resolve(this.storagePath, TOKEN_FILES[this.authMode]);
 
-    const daikinCloudControllerConfig: DaikinControllerConfig = {
-      authMode: this.authMode,
-      tokenFilePath,
-      // Developer Portal fields
-      clientId: this.config.clientId,
-      clientSecret: this.config.clientSecret,
-      callbackServerExternalAddress: this.config.callbackServerExternalAddress,
-      callbackServerPort: this.config.callbackServerPort || 8582,
-      oidcCallbackServerBindAddr: this.config.oidcCallbackServerBindAddr,
-      // Mobile App fields
-      email: configManager.getMobileEmail(),
-      password: configManager.getMobilePassword(),
-    };
+    const daikinCloudControllerConfig = configManager.getControllerConfig(tokenFilePath);
 
-    this.log.debug('[Config] Homebridge config', this.getPrivacyFriendlyConfig(this.config));
+    this.log.debug('[Config] Homebridge config', configManager.getRedactedConfig());
 
     fs.stat(tokenFilePath, (err, stats) => {
       if (err) {
@@ -135,6 +182,10 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         return;
       }
 
+      // Register listeners before authenticating: an 'error' emitted without a
+      // listener would throw.
+      this.registerControllerListeners(this.controller);
+
       // Handle authentication based on mode
       if (!this.controller.isAuthenticated()) {
         if (this.authMode === 'mobile_app') {
@@ -144,7 +195,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
             await this.controller.authenticateMobile();
             this.log.info('[Auth] Authentication successful!');
           } catch (error) {
-            this.log.error(`[Auth] Authentication failed: ${(error as Error).message}`);
+            this.log.error(`[Auth] Authentication failed: ${toMessage(error)}`);
             this.log.info('--------------- End Daikin info for debugging reasons --------------------');
             return;
           }
@@ -155,52 +206,16 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         }
       }
 
-      this.controller.on('rate_limit_status', (rateLimitStatus) => {
-        if (rateLimitStatus.remainingDay && rateLimitStatus.remainingDay <= RATE_LIMIT_WARNING_THRESHOLD) {
-          this.log.warn(`[Rate Limit] Rate limit almost reached, you only have ${rateLimitStatus.remainingDay} calls left today`);
-        }
-        // Only show minute limits if available (Developer Portal mode)
-        const minuteInfo = rateLimitStatus.limitMinute !== undefined
-          ? ` -- this minute: ${rateLimitStatus.remainingMinute}/${rateLimitStatus.limitMinute}`
-          : '';
-        this.log.debug(`[Rate Limit] Remaining calls today: ${rateLimitStatus.remainingDay}/${rateLimitStatus.limitDay}${minuteInfo}`);
-      });
-
-      this.controller.on('error', (error) => {
-        this.log.error(`[Error] ${error}`);
-      });
-
-      this.controller.on('log', (message) => {
-        this.log.info(message);
-      });
-
-      // WebSocket event handlers
-      this.controller.on('websocket_connected', () => {
-        this.log.info('[WebSocket] Connected - receiving real-time updates');
-      });
-
-      this.controller.on('websocket_disconnected', (info?: { reconnecting: boolean }) => {
-        if (info?.reconnecting) {
-          this.log.debug('[WebSocket] Disconnected, attempting to reconnect...');
-        } else {
-          this.log.info('[WebSocket] Disconnected');
-        }
-      });
-
-      this.controller.on('websocket_device_update', (update) => {
-        this.log.debug(`[WebSocket] Device update: ${update.deviceId} - ${update.characteristicName}`, JSON.stringify(update.data));
-        this.handleWebSocketDeviceUpdate(update);
-      });
-
       const onInvalidGrantError = () => this.onInvalidGrantError(tokenFilePath);
       const devices: DaikinCloudDevice[] = await this.discoverDevices(this.controller, onInvalidGrantError);
 
-      if (devices.length > 0) {
+      if (devices.length > 0 && !this.isShuttingDown) {
         this.createDevices(devices);
+        this.pollingStarted = true;
         this.startUpdateDevicesInterval();
 
         // Enable WebSocket for real-time updates (unless explicitly disabled)
-        if (this.config.enableWebSocket !== false) {
+        if (this.configManager.isWebSocketEnabled()) {
           await this.enableWebSocket();
         }
       }
@@ -211,8 +226,13 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     // Shutdown handler: clean up timers, WebSocket, and device listeners on platform shutdown
     this.api.on('shutdown', () => {
       this.log.debug('[Platform] Shutting down, cleaning up resources...');
-      clearInterval(this.updateInterval);
+      this.isShuttingDown = true;
+      this.stopPolling();
       clearTimeout(this.forceUpdateTimeout);
+      this.forceUpdateTimeout = undefined;
+      clearTimeout(this.rateLimitWriteTimer);
+      this.rateLimitWriteTimer = undefined;
+      this.flushRateLimitStatus();
       this.controller?.disableWebSocket();
       for (const [uuid, listener] of this.deviceListeners) {
         const accessory = this.accessories.find(a => a.UUID === uuid);
@@ -221,6 +241,38 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         }
       }
       this.deviceListeners.clear();
+    });
+  }
+
+  private registerControllerListeners(controller: DaikinCloudController): void {
+    controller.on('rate_limit_status', (rateLimitStatus: RateLimitStatus) => this.onRateLimitStatus(rateLimitStatus));
+
+    controller.on('error', (error) => {
+      this.log.error(`[Error] ${toMessage(error)}`);
+    });
+
+    controller.on('log', (message) => {
+      this.log.info(message);
+    });
+
+    controller.on('websocket_connected', () => this.onWebSocketConnected());
+
+    controller.on('websocket_disconnected', (info?: { reconnecting: boolean }) => {
+      if (info?.reconnecting) {
+        this.log.debug('[WebSocket] Disconnected, attempting to reconnect...');
+      } else {
+        this.log.info('[WebSocket] Disconnected');
+      }
+      // Push updates are gone: fall back to the configured polling interval
+      if (this.pollingStarted) {
+        this.startUpdateDevicesInterval();
+      }
+    });
+
+    // The controller already applied the update to the device, which emits
+    // 'updated' and makes the accessory refresh its characteristics.
+    controller.on('websocket_device_update', (update) => {
+      this.log.debug(`[WebSocket] Device update: ${update.deviceId} - ${update.characteristicName}`, lazyJson(() => update.data));
     });
   }
 
@@ -254,9 +306,9 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
 
         const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
 
-        this.log.debug('Create Device', deviceModel, JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(device.desc), null, 4));
+        this.log.debug('Create Device', deviceModel, lazyJson(() => DaikinCloudRepo.maskSensitiveCloudDeviceData(device.desc), 4));
 
-        if (this.isExcludedDevice(this.config.excludedDevicesByDeviceId, deviceId)) {
+        if (this.configManager.isDeviceExcluded(deviceId)) {
           this.log.info(`[Platform] Device ${deviceModel} (id: ${deviceId}) is excluded, don't add accessory`);
           if (existingAccessory) {
             this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
@@ -293,7 +345,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         if (error instanceof Error) {
           this.log.error(`[Platform] Failed to create accessory: ${error.message}`);
           this.log.debug('[Platform] Error details:', error.stack);
-          this.log.debug('[Platform] Device JSON:', JSON.stringify(DaikinCloudRepo.maskSensitiveCloudDeviceData(device.desc), null, 2));
+          this.log.debug('[Platform] Device JSON:', lazyJson(() => DaikinCloudRepo.maskSensitiveCloudDeviceData(device.desc), 2));
         }
       }
     }
@@ -311,18 +363,53 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     this.deviceListeners.set(accessory.UUID, listener);
   }
 
-  private async updateDevices() {
-    if (!this.controller) {
-      return;
+  /**
+   * Fetch fresh device data. Overlapping callers (periodic poll, forced update,
+   * WebSocket reconnect catch-up) share a single in-flight request.
+   */
+  private updateDevices(): Promise<void> {
+    const controller = this.controller;
+    if (!controller) {
+      return Promise.resolve();
     }
-    try {
-      await this.controller.updateAllDeviceData();
-    } catch (error) {
-      this.log.error(`[API Syncing] Failed to update devices data: ${JSON.stringify(error)}`);
+    if (!this.inFlightUpdate) {
+      this.inFlightUpdate = (async () => {
+        try {
+          await controller.updateAllDeviceData();
+          this.consecutivePollFailures = 0;
+        } catch (error) {
+          this.consecutivePollFailures++;
+          this.log.error(`[API Syncing] Failed to update devices data: ${toMessage(error)}`);
+        }
+      })().finally(() => {
+        this.inFlightUpdate = undefined;
+      });
     }
+    return this.inFlightUpdate;
   }
 
-  forceUpdateDevices(delay: number = Math.max(0, this.config.forceUpdateDelay || DEFAULT_FORCE_UPDATE_DELAY_MS)) {
+  /**
+   * Poll now, then schedule the next periodic poll.
+   */
+  private async pollNow(): Promise<void> {
+    if (this.isShuttingDown) {
+      return;
+    }
+    this.stopPolling();
+    await this.updateDevices();
+    this.startUpdateDevicesInterval();
+  }
+
+  forceUpdateDevices(delay: number = this.configManager.getForceUpdateDelayMs()) {
+    if (this.isShuttingDown) {
+      return;
+    }
+    // With a healthy WebSocket the change is pushed to us; a follow-up GET would only cost quota.
+    if (this.isWebSocketConnected()) {
+      this.log.debug('[API Syncing] WebSocket connected, skipping forced update (waiting for push update)');
+      return;
+    }
+
     // Trailing debounce: reset the timer on every change so a burst of rapid
     // SETs (e.g. toggling power, fan speed and mode in quick succession)
     // collapses into a single poll fired `delay` ms after the *last* change,
@@ -334,29 +421,118 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
       this.log.debug(`[API Syncing] Force update devices data (delayed by ${delay}ms)`);
       // Pause periodic polling while we wait for the change to settle; it is
       // restarted once the debounced update fires.
-      clearInterval(this.updateInterval);
+      this.stopPolling();
     }
 
-    this.forceUpdateTimeout = setTimeout(async () => {
+    this.forceUpdateTimeout = setTimeout(() => {
       this.forceUpdateTimeout = undefined;
-      try {
-        await this.updateDevices();
-      } catch (error) {
-        this.log.error(`[API Syncing] Force update failed: ${(error as Error).message}`);
-      }
-      this.startUpdateDevicesInterval();
+      void this.pollNow();
     }, delay);
   }
 
-  private startUpdateDevicesInterval() {
-    this.log.debug(`[API Syncing] (Re)starting update devices interval every ${this.updateIntervalDelay / ONE_MINUTE_MS} minutes`);
-    this.updateInterval = setInterval(async () => {
-      try {
-        await this.updateDevices();
-      } catch (error) {
-        this.log.error(`[API Syncing] Periodic update failed: ${(error as Error).message}`);
+  /**
+   * (Re)schedule the next periodic poll. Always replaces any previously
+   * scheduled poll, so there is never more than one pending.
+   */
+  private startUpdateDevicesInterval(): void {
+    this.stopPolling();
+    // Shutting down, or a pending forced update will restart polling when it fires
+    if (this.isShuttingDown || this.forceUpdateTimeout) {
+      return;
+    }
+    const delay = this.getPollInterval();
+    this.log.debug(`[API Syncing] Next update of devices data in ${Math.round(delay / ONE_MINUTE_MS)} minutes`);
+    this.pollTimer = setTimeout(() => {
+      this.pollTimer = undefined;
+      void this.pollNow();
+    }, delay);
+  }
+
+  private stopPolling(): void {
+    clearTimeout(this.pollTimer);
+    this.pollTimer = undefined;
+  }
+
+  private getPollInterval(): number {
+    return computePollInterval({
+      configuredMs: this.updateIntervalDelay,
+      webSocketConnected: this.isWebSocketConnected(),
+      consecutiveFailures: this.consecutivePollFailures,
+      remainingDay: this.remainingDay,
+    });
+  }
+
+  private isWebSocketConnected(): boolean {
+    return this.controller?.isWebSocketConnected() === true;
+  }
+
+  private onWebSocketConnected(): void {
+    this.log.info('[WebSocket] Connected - receiving real-time updates');
+    const isReconnect = this.webSocketHasConnected;
+    this.webSocketHasConnected = true;
+    if (!this.pollingStarted || this.isShuttingDown) {
+      return;
+    }
+    if (isReconnect) {
+      // Catch up on anything that changed while the socket was down
+      void this.pollNow();
+    } else {
+      // Push updates are flowing: stretch polling to the safety interval
+      this.startUpdateDevicesInterval();
+    }
+  }
+
+  private onRateLimitStatus(rateLimitStatus: RateLimitStatus): void {
+    const { remainingDay, limitDay } = rateLimitStatus;
+    if (remainingDay !== undefined) {
+      this.remainingDay = remainingDay;
+      if (remainingDay <= RATE_LIMIT_WARNING_THRESHOLD) {
+        this.log.warn(`[Rate Limit] Rate limit almost reached, you only have ${remainingDay} calls left today`);
       }
-    }, this.updateIntervalDelay);
+    }
+    // Only show minute limits if available (Developer Portal mode)
+    const minuteInfo = rateLimitStatus.limitMinute !== undefined
+      ? ` -- this minute: ${rateLimitStatus.remainingMinute}/${rateLimitStatus.limitMinute}`
+      : '';
+    this.log.debug(`[Rate Limit] Remaining calls today: ${remainingDay}/${limitDay}${minuteInfo}`);
+    this.saveRateLimitStatus(rateLimitStatus);
+  }
+
+  /**
+   * Persist the latest rate-limit headers for the settings UI (throttled,
+   * best effort: failures are logged at debug level and never thrown).
+   */
+  private saveRateLimitStatus(rateLimitStatus: RateLimitStatus): void {
+    this.pendingRateLimitStatus = {
+      ...rateLimitStatus,
+      mode: this.authMode,
+      updatedAt: new Date().toISOString(),
+    };
+    if (this.rateLimitWriteTimer || this.isShuttingDown) {
+      return;
+    }
+    const wait = Math.max(0, this.lastRateLimitWriteAt + RATE_LIMIT_FILE_MIN_WRITE_INTERVAL_MS - Date.now());
+    this.rateLimitWriteTimer = setTimeout(() => {
+      this.rateLimitWriteTimer = undefined;
+      this.flushRateLimitStatus();
+    }, wait);
+  }
+
+  private flushRateLimitStatus(): void {
+    const status = this.pendingRateLimitStatus;
+    if (!status) {
+      return;
+    }
+    this.pendingRateLimitStatus = undefined;
+    this.lastRateLimitWriteAt = Date.now();
+    const filePath = resolve(this.storagePath, RATE_LIMIT_STATUS_FILE);
+    const tmpPath = `${filePath}.tmp`;
+    // Write-then-rename so the UI never reads a half-written file
+    fs.promises.writeFile(tmpPath, JSON.stringify(status, null, 2))
+      .then(() => fs.promises.rename(tmpPath, filePath))
+      .catch((error) => {
+        this.log.debug(`[Rate Limit] Could not write ${RATE_LIMIT_STATUS_FILE}: ${toMessage(error)}`);
+      });
   }
 
   private async enableWebSocket() {
@@ -368,27 +544,9 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
       this.log.info('[WebSocket] Enabling real-time updates...');
       await this.controller.enableWebSocket();
     } catch (error) {
-      this.log.warn(`[WebSocket] Failed to enable: ${(error as Error).message}`);
+      this.log.warn(`[WebSocket] Failed to enable: ${toMessage(error)}`);
       this.log.warn('[WebSocket] Falling back to polling-only mode');
     }
-  }
-
-  private isExcludedDevice(excludedDevicesByDeviceId: Array<string> | undefined, deviceId: string): boolean {
-    return Array.isArray(excludedDevicesByDeviceId) && excludedDevicesByDeviceId.includes(deviceId);
-  }
-
-  private getPrivacyFriendlyConfig(config: PlatformConfig): object {
-    return {
-      ...config,
-      clientId: StringUtils.mask(config.clientId),
-      clientSecret: StringUtils.mask(config.clientSecret),
-      daikinEmail: StringUtils.mask(config.daikinEmail),
-      daikinPassword: config.daikinPassword ? '***' : undefined,
-      // Legacy aliases, masked too so they never leak into debug logs
-      email: StringUtils.mask(config.email),
-      password: config.password ? '***' : undefined,
-      excludedDevicesByDeviceId: config.excludedDevicesByDeviceId ? config.excludedDevicesByDeviceId.map((deviceId: string) => StringUtils.mask(deviceId)) : [],
-    };
   }
 
   private onInvalidGrantError(tokenFilePath: string) {
@@ -401,30 +559,4 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     }
   }
 
-  /**
-     * Handle WebSocket device updates by pushing updated values to HomeKit
-     */
-  private handleWebSocketDeviceUpdate(update: {
-        deviceId: string;
-        embeddedId: string;
-        characteristicName: string;
-        data: { value: unknown };
-    }): void {
-    // Find the accessory for this device
-    const accessory = this.accessories.find(
-      a => a.context.device.getId() === update.deviceId,
-    );
-
-    if (!accessory) {
-      this.log.debug(`[WebSocket] No accessory found for device ${update.deviceId}`);
-      return;
-    }
-
-    // Use the UpdateMapper to apply the update
-    const result = this.updateMapper.applyUpdate(accessory, update);
-
-    if (result.success) {
-      this.log.debug(`[WebSocket] Updated ${result.updated.join(', ')}`);
-    }
-  }
 }

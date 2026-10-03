@@ -14,22 +14,20 @@ import type {
   TokenSet,
   WebSocketDeviceUpdate,
 } from './daikin-types';
+import { DEFAULT_CALLBACK_PORT } from '../constants';
 import { DaikinOAuth } from './daikin-oauth';
 import { DaikinMobileOAuth } from './daikin-mobile-oauth';
 import { DaikinApi } from './daikin-api';
 import { DaikinCloudDevice } from './daikin-device';
-import type { WebSocketState } from './daikin-websocket';
 import { DaikinWebSocket } from './daikin-websocket';
 
 export class DaikinCloudController extends EventEmitter {
-  private readonly oauth: OAuthProvider & { getTokenSet(): TokenSet | null; getTokenExpiration(): Date | null };
+  private readonly oauth: OAuthProvider;
   private readonly mobileOAuth?: DaikinMobileOAuth;
-  private readonly devPortalOAuth?: DaikinOAuth;
   private readonly api: DaikinApi;
   private readonly websocket: DaikinWebSocket;
   private readonly authMode: 'developer_portal' | 'mobile_app';
   private devices: DaikinCloudDevice[] = [];
-  private websocketEnabled = false;
 
   constructor(config: DaikinControllerConfig | DaikinClientConfig) {
     super();
@@ -58,17 +56,16 @@ export class DaikinCloudController extends EventEmitter {
         clientId: (config as DaikinClientConfig).clientId,
         clientSecret: (config as DaikinClientConfig).clientSecret,
         callbackServerExternalAddress: (config as DaikinClientConfig).callbackServerExternalAddress,
-        callbackServerPort: (config as DaikinClientConfig).callbackServerPort || 8582,
+        callbackServerPort: (config as DaikinClientConfig).callbackServerPort || DEFAULT_CALLBACK_PORT,
         oidcCallbackServerBindAddr: (config as DaikinClientConfig).oidcCallbackServerBindAddr,
         tokenFilePath: config.tokenFilePath,
       };
 
-      this.devPortalOAuth = new DaikinOAuth(
+      this.oauth = new DaikinOAuth(
         devConfig,
         (tokenSet) => this.emit('token_update', tokenSet),
         (error) => this.emit('error', error.message),
       );
-      this.oauth = this.devPortalOAuth;
     }
 
     this.api = new DaikinApi(
@@ -76,19 +73,10 @@ export class DaikinCloudController extends EventEmitter {
       (status) => this.emit('rate_limit_status', status),
     );
 
-    this.websocket = new DaikinWebSocket(
-      this.oauth,
-      (error) => this.emit('error', `WebSocket: ${error.message}`),
-    );
+    // Errors are forwarded once, via the 'error' listener in setupWebSocketHandlers
+    this.websocket = new DaikinWebSocket(this.oauth);
 
     this.setupWebSocketHandlers();
-  }
-
-  /**
-     * Get the authentication mode
-     */
-  getAuthMode(): 'developer_portal' | 'mobile_app' {
-    return this.authMode;
   }
 
   /**
@@ -146,59 +134,26 @@ export class DaikinCloudController extends EventEmitter {
   }
 
   /**
-     * Get token expiration date
-     */
-  getTokenExpiration(): Date | null {
-    return this.oauth.getTokenExpiration();
-  }
-
-  /**
-     * Get current token set
-     */
-  getTokenSet(): TokenSet | null {
-    return this.oauth.getTokenSet();
-  }
-
-  /**
-     * Build authorization URL (Developer Portal mode only)
-     */
-  buildAuthUrl(state?: string): { url: string; state: string } {
-    if (!this.devPortalOAuth) {
-      throw new Error('buildAuthUrl is only available in developer_portal mode');
-    }
-    return this.devPortalOAuth.buildAuthUrl(state);
-  }
-
-  /**
-     * Exchange authorization code for tokens (Developer Portal mode only)
-     */
-  async exchangeCode(code: string): Promise<TokenSet> {
-    if (!this.devPortalOAuth) {
-      throw new Error('exchangeCode is only available in developer_portal mode');
-    }
-    return this.devPortalOAuth.exchangeCode(code);
-  }
-
-  /**
-     * Revoke authentication
-     */
-  async revokeAuth(): Promise<void> {
-    if (this.devPortalOAuth) {
-      return this.devPortalOAuth.revokeToken();
-    } else if (this.mobileOAuth) {
-      this.mobileOAuth.clearTokens();
-    }
-  }
-
-  /**
-     * Get all cloud devices
+     * Get all cloud devices (initial discovery: transient gateway errors are retried)
      */
   async getCloudDevices(): Promise<DaikinCloudDevice[]> {
+    return this.fetchDevices(true);
+  }
+
+  /**
+     * Update all device data from the cloud (periodic polling: no gateway-error
+     * retries, the next poll is the retry)
+     */
+  async updateAllDeviceData(): Promise<void> {
+    await this.fetchDevices(false);
+  }
+
+  private async fetchDevices(retryGatewayErrors: boolean): Promise<DaikinCloudDevice[]> {
     if (!this.oauth.isAuthenticated()) {
       throw new Error('Not authenticated. Please authenticate first.');
     }
 
-    const rawDevices = await this.api.getDevices();
+    const rawDevices = await this.api.getDevices({ retryGatewayErrors });
 
     // Create or update DaikinCloudDevice instances
     this.devices = rawDevices.map(rawDevice => {
@@ -213,27 +168,6 @@ export class DaikinCloudController extends EventEmitter {
     return this.devices;
   }
 
-  /**
-     * Update all device data from the cloud
-     */
-  async updateAllDeviceData(): Promise<void> {
-    await this.getCloudDevices();
-  }
-
-  /**
-     * Check if rate limited
-     */
-  isRateLimited(): boolean {
-    return this.api.isRateLimited();
-  }
-
-  /**
-     * Get rate limit retry time
-     */
-  getRateLimitRetryAfter(): number {
-    return this.api.getRateLimitRetryAfter();
-  }
-
   // =========================================================================
   // WebSocket methods
   // =========================================================================
@@ -246,7 +180,6 @@ export class DaikinCloudController extends EventEmitter {
       throw new Error('Cannot enable WebSocket: not authenticated');
     }
 
-    this.websocketEnabled = true;
     await this.websocket.connect();
   }
 
@@ -254,15 +187,7 @@ export class DaikinCloudController extends EventEmitter {
      * Disable and disconnect WebSocket
      */
   disableWebSocket(): void {
-    this.websocketEnabled = false;
     this.websocket.disconnect();
-  }
-
-  /**
-     * Check if WebSocket is enabled
-     */
-  isWebSocketEnabled(): boolean {
-    return this.websocketEnabled;
   }
 
   /**
@@ -272,10 +197,4 @@ export class DaikinCloudController extends EventEmitter {
     return this.websocket.isConnected();
   }
 
-  /**
-     * Get WebSocket connection state
-     */
-  getWebSocketState(): WebSocketState {
-    return this.websocket.getState();
-  }
 }

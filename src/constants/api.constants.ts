@@ -45,3 +45,10 @@ export const WRITE_INTER_REQUEST_DELAY_MS = 400;
 
 /** Daikin WebSocket URL for real-time updates */
 export const DAIKIN_WEBSOCKET_URL = 'wss://wsapi.onecta.daikineurope.com';
+
+/**
+ * File (in the Homebridge storage path) where the plugin records the last
+ * rate-limit headers it saw, so the settings UI can show them without
+ * spending an API call. Contents: RateLimitStatusFile.
+ */
+export const RATE_LIMIT_STATUS_FILE = '.daikin-rate-limit.json';

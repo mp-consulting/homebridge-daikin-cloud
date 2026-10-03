@@ -1,13 +1,28 @@
 import { describe, it, expect, vi } from 'vitest';
 import { DaikinCloudDevice, DeviceOfflineError } from '../../../src/api/daikin-device';
 import type { DaikinApi } from '../../../src/api';
+import type { WebSocketDeviceUpdate } from '../../../src/api/daikin-types';
 import { dx4Airco } from '../../fixtures/dx4-airco';
 
 const mockApi = { updateDevice: () => Promise.resolve() } as unknown as DaikinApi;
 
+/** A WebSocket update as DaikinWebSocket emits it (data.name is the characteristic name). */
+const wsUpdate = (
+  device: DaikinCloudDevice,
+  embeddedId: string,
+  characteristicName: string,
+  data: Omit<WebSocketDeviceUpdate['data'], 'name'>,
+): WebSocketDeviceUpdate => ({
+  deviceId: device.getId(),
+  embeddedId,
+  managementPointId: embeddedId,
+  characteristicName,
+  data: { name: characteristicName, ...data },
+});
+
 const buildDevice = () =>
   new DaikinCloudDevice(
-    JSON.parse(JSON.stringify(dx4Airco)) as unknown as Parameters<typeof DaikinCloudDevice>[0],
+    JSON.parse(JSON.stringify(dx4Airco)) as unknown as ConstructorParameters<typeof DaikinCloudDevice>[0],
     mockApi,
   );
 
@@ -29,24 +44,19 @@ describe('DaikinCloudDevice.applyWebSocketUpdate — partial sub-tree merging', 
       .toBeTypeOf('number');
 
     // Mirror the exact shape Daikin pushes (from tmp/logs.txt line 82).
-    device.applyWebSocketUpdate({
-      deviceId: device.getId(),
-      embeddedId: ccId,
-      characteristicName: 'fanControl',
-      data: {
-        value: {
-          operationModes: {
-            cooling: {
-              fanDirection: {
-                vertical: {
-                  currentMode: { name: 'currentMode', value: 'stop', settable: true, values: ['stop', 'swing', 'windNice'] },
-                },
+    device.applyWebSocketUpdate(wsUpdate(device, ccId, 'fanControl', {
+      value: {
+        operationModes: {
+          cooling: {
+            fanDirection: {
+              vertical: {
+                currentMode: { name: 'currentMode', value: 'stop', settable: true, values: ['stop', 'swing', 'windNice'] },
               },
             },
           },
         },
       },
-    });
+    }));
 
     // The pushed path is updated…
     expect(
@@ -68,12 +78,7 @@ describe('DaikinCloudDevice.applyWebSocketUpdate — partial sub-tree merging', 
     const device = buildDevice();
     const ccId = 'climateControl';
 
-    device.applyWebSocketUpdate({
-      deviceId: device.getId(),
-      embeddedId: ccId,
-      characteristicName: 'operationMode',
-      data: { value: 'heating' },
-    });
+    device.applyWebSocketUpdate(wsUpdate(device, ccId, 'operationMode', { value: 'heating' }));
 
     expect(device.getData(ccId, 'operationMode', undefined).value).toBe('heating');
   });
@@ -82,12 +87,7 @@ describe('DaikinCloudDevice.applyWebSocketUpdate — partial sub-tree merging', 
     const device = buildDevice();
     const ccId = 'climateControl';
 
-    device.applyWebSocketUpdate({
-      deviceId: device.getId(),
-      embeddedId: ccId,
-      characteristicName: 'operationMode',
-      data: { value: 'cooling', values: ['cooling', 'heating'] },
-    });
+    device.applyWebSocketUpdate(wsUpdate(device, ccId, 'operationMode', { value: 'cooling', values: ['cooling', 'heating'] }));
 
     const op = device.getData(ccId, 'operationMode', undefined);
     expect(op.values).toEqual(['cooling', 'heating']);
@@ -147,7 +147,7 @@ describe('DaikinCloudDevice.setHolidayMode', () => {
 
   const buildDeviceWithApi = (apiOverride: Partial<DaikinApi>) =>
     new DaikinCloudDevice(
-      JSON.parse(JSON.stringify(dx4Airco)) as unknown as Parameters<typeof DaikinCloudDevice>[0],
+      JSON.parse(JSON.stringify(dx4Airco)) as unknown as ConstructorParameters<typeof DaikinCloudDevice>[0],
       { updateDevice: () => Promise.resolve(), ...apiOverride } as unknown as DaikinApi,
     );
 
@@ -193,7 +193,7 @@ describe('DaikinCloudDevice.setHolidayMode', () => {
     const raw = JSON.parse(JSON.stringify(dx4Airco));
     raw.isCloudConnectionUp = { value: false };
     const device = new DaikinCloudDevice(
-      raw as unknown as Parameters<typeof DaikinCloudDevice>[0],
+      raw as unknown as ConstructorParameters<typeof DaikinCloudDevice>[0],
       { updateDevice: () => Promise.resolve(), setHolidayMode } as unknown as DaikinApi,
     );
 

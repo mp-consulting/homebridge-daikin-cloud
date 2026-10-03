@@ -19,6 +19,23 @@ import {
   RETRY_MAX_DELAY_MS,
   WRITE_INTER_REQUEST_DELAY_MS,
 } from '../constants';
+import { sleep } from '../utils/sleep';
+
+/** Options for a single API request */
+interface RequestOptions {
+  /**
+   * Retry on 502/503/504 with exponential backoff. Defaults to true for
+   * writes (a dropped write would otherwise be lost) and false for GETs
+   * (the next poll is the retry, so retrying only burns the daily quota).
+   */
+  retryGatewayErrors?: boolean;
+}
+
+/** A queued PATCH that has not started yet and can still absorb newer values */
+interface PendingWrite {
+  body: { value: unknown; path?: string };
+  promise?: Promise<void>;
+}
 
 export class RateLimitedError extends Error {
   constructor(
@@ -47,6 +64,9 @@ export class DaikinApi {
   // Per-device write queues: serializes PATCH requests for each device independently,
   // so multiple devices can write in parallel while each device's writes are ordered.
   private writeQueues: Map<string, Promise<unknown>> = new Map();
+  // Writes queued but not yet sent, keyed by device/management point/data point/path.
+  // A newer write for the same key replaces the queued value (last write wins).
+  private pendingWrites: Map<string, PendingWrite> = new Map();
 
   constructor(
         private readonly oauth: OAuthProvider,
@@ -119,11 +139,15 @@ export class DaikinApi {
   // =========================================================================
 
   /**
-     * Get all gateway devices with runtime validation
+     * Get all gateway devices with runtime validation.
+     *
+     * Gateway errors (5xx) are not retried by default: for periodic polling the
+     * next poll is the retry. Pass `retryGatewayErrors: true` for one-off reads
+     * (e.g. initial discovery) where a transient failure would be costly.
      */
-  async getDevices(): Promise<GatewayDevice[]> {
-    const rawDevices = await this.request<unknown[]>('/v1/gateway-devices');
-    return z.array(GatewayDeviceSchema).parse(rawDevices) as GatewayDevice[];
+  async getDevices(options: RequestOptions = {}): Promise<GatewayDevice[]> {
+    const rawDevices = await this.request<unknown[]>('/v1/gateway-devices', 'GET', undefined, 0, options);
+    return z.array(GatewayDeviceSchema).parse(rawDevices);
   }
 
   /**
@@ -142,9 +166,26 @@ export class DaikinApi {
     value: unknown,
     dataPath?: string,
   ): Promise<void> {
-    const urlPath = `/v1/gateway-devices/${deviceId}/management-points/${embeddedId}/characteristics/${dataPoint}`;
+    const urlPath = `${this.managementPointPath(deviceId, embeddedId)}/characteristics/${encodeURIComponent(dataPoint)}`;
     const body = dataPath ? { value, path: dataPath } : { value };
-    await this.enqueueWriteForDevice(deviceId, () => this.request(urlPath, 'PATCH', body));
+    const key = `${deviceId}|${embeddedId}|${dataPoint}|${dataPath ?? ''}`;
+
+    // Coalesce: a queued-but-unsent write to the same target just takes the new value,
+    // and both callers share the outcome of the single request that is sent.
+    const pending = this.pendingWrites.get(key);
+    if (pending?.promise) {
+      pending.body = body;
+      return pending.promise;
+    }
+
+    const entry: PendingWrite = { body };
+    this.pendingWrites.set(key, entry);
+    entry.promise = this.enqueueWriteForDevice(deviceId, () => {
+      // Once the request starts, later writes must queue behind it instead of merging.
+      this.pendingWrites.delete(key);
+      return this.request<void>(urlPath, 'PATCH', entry.body);
+    });
+    return entry.promise;
   }
 
   /**
@@ -164,7 +205,7 @@ export class DaikinApi {
     embeddedId: string,
     body: { enabled: boolean; startDate?: string; endDate?: string },
   ): Promise<void> {
-    const urlPath = `/v1/gateway-devices/${deviceId}/management-points/${embeddedId}/holiday-mode`;
+    const urlPath = `${this.managementPointPath(deviceId, embeddedId)}/holiday-mode`;
     await this.enqueueWriteForDevice(deviceId, () => this.request(urlPath, 'POST', body));
   }
 
@@ -181,8 +222,16 @@ export class DaikinApi {
      * @param firmwareId - The staged update's id from firmwareUpdate.value.id
      */
   async triggerFirmwareUpdate(deviceId: string, embeddedId: string, firmwareId: string): Promise<void> {
-    const urlPath = `/v1/gateway-devices/${deviceId}/management-points/${embeddedId}/firmware/${firmwareId}`;
+    const urlPath = `${this.managementPointPath(deviceId, embeddedId)}/firmware/${encodeURIComponent(firmwareId)}`;
     await this.enqueueWriteForDevice(deviceId, () => this.request(urlPath, 'PUT'));
+  }
+
+  /**
+   * Base path of a management point. IDs come from cloud responses and are
+   * encoded so a '/' or '?' in them cannot change which endpoint is hit.
+   */
+  private managementPointPath(deviceId: string, embeddedId: string): string {
+    return `/v1/gateway-devices/${encodeURIComponent(deviceId)}/management-points/${encodeURIComponent(embeddedId)}`;
   }
 
   /**
@@ -197,11 +246,11 @@ export class DaikinApi {
       .then(() => fn())
       .then(
         async (val) => {
-          await this.sleep(WRITE_INTER_REQUEST_DELAY_MS);
+          await sleep(WRITE_INTER_REQUEST_DELAY_MS);
           return val;
         },
         async (err) => {
-          await this.sleep(WRITE_INTER_REQUEST_DELAY_MS);
+          await sleep(WRITE_INTER_REQUEST_DELAY_MS);
           throw err;
         },
       );
@@ -230,13 +279,6 @@ export class DaikinApi {
     const exponentialDelay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
     const jitter = Math.random() * RETRY_BASE_DELAY_MS;
     return Math.min(exponentialDelay + jitter, RETRY_MAX_DELAY_MS);
-  }
-
-  /**
-     * Sleep for a specified duration
-     */
-  private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
@@ -282,6 +324,7 @@ export class DaikinApi {
     method: 'GET' | 'PATCH' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     body?: unknown,
     retryCount = 0,
+    options: RequestOptions = {},
   ): Promise<T> {
     // Check rate limit
     if (this.isRateLimited()) {
@@ -305,7 +348,8 @@ export class DaikinApi {
       remainingDay: this.parseHeader(response.headers['x-ratelimit-remaining-day']),
     };
 
-    if (this.onRateLimitStatus) {
+    // Only report when the response actually carried rate-limit headers
+    if (this.onRateLimitStatus && Object.values(rateLimit).some(v => v !== undefined)) {
       this.onRateLimitStatus(rateLimit);
     }
 
@@ -339,8 +383,8 @@ export class DaikinApi {
           await this.refreshPromise;
           // Apply exponential backoff delay before retry
           const delay = this.getRetryDelay(retryCount);
-          await this.sleep(delay);
-          return this.request<T>(path, method, body, retryCount + 1);
+          await sleep(delay);
+          return this.request<T>(path, method, body, retryCount + 1, options);
         } catch {
           throw new Error(`Unauthorized (${HTTP_STATUS.UNAUTHORIZED}): Token refresh failed. Please re-authenticate.`);
         }
@@ -368,8 +412,9 @@ export class DaikinApi {
       case HTTP_STATUS.SERVICE_UNAVAILABLE:
       case HTTP_STATUS.GATEWAY_TIMEOUT: {
         const errorName = this.getGatewayErrorName(response.statusCode);
-        // If we've exhausted retries, throw ApiTimeoutError
-        if (retryCount >= MAX_RETRY_ATTEMPTS) {
+        const retryGatewayErrors = options.retryGatewayErrors ?? method !== 'GET';
+        // If retries are disabled or exhausted, throw ApiTimeoutError
+        if (!retryGatewayErrors || retryCount >= MAX_RETRY_ATTEMPTS) {
           throw new ApiTimeoutError(
             `${errorName} (${response.statusCode}): The Daikin API is temporarily unavailable after ${retryCount + 1} attempts.`,
             response.statusCode,
@@ -378,8 +423,8 @@ export class DaikinApi {
         }
         // Retry with exponential backoff
         const delay = this.getRetryDelay(retryCount);
-        await this.sleep(delay);
-        return this.request<T>(path, method, body, retryCount + 1);
+        await sleep(delay);
+        return this.request<T>(path, method, body, retryCount + 1, options);
       }
 
       default:

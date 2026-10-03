@@ -7,7 +7,11 @@ Daikin Cloud API integration layer with support for both Developer Portal and Mo
 - `daikin-controller.ts` - Main controller orchestrating OAuth, API, and WebSocket
 - `daikin-oauth.ts` - Developer Portal OAuth 2.0 authentication
 - `daikin-mobile-oauth.ts` - Mobile App OAuth with Gigya/PKCE authentication
-- `daikin-api.ts` - REST API client for Daikin Cloud endpoints
+- `daikin-api.ts` - REST API client: rate-limit tracking, retries/backoff, per-device write queue with coalescing
+- `token-client.ts` - Shared token endpoint client used by both OAuth providers
+- `token-storage.ts` - Token persistence (atomic writes, 0600 permissions)
+- `http-transport.ts` / `http-defaults.ts` - Shared HTTP transport (`node` or `curl`) and TLS/User-Agent defaults
+- `daikin-schemas.ts` - Zod schemas for API payloads and config
 - `daikin-websocket.ts` - WebSocket client for real-time device updates
 - `daikin-device.ts` - Device data model with get/set operations
 - `daikin-types.ts` - TypeScript interfaces and constants
@@ -40,5 +44,9 @@ The controller emits the following events:
 - `rate_limit_status` - After each API call with rate limit info
 - `websocket_connected` - WebSocket connection established
 - `websocket_disconnected` - WebSocket disconnected
-- `websocket_device_update` - Real-time device state change
+- `websocket_device_update` - Real-time device state change (informational only; the platform just logs it at debug level)
 - `error` - On errors
+
+Device state updates do not flow through `websocket_device_update`. The WebSocket
+handler applies each change to the in-memory `DaikinCloudDevice`, which emits
+`'updated'`; accessories listen for that and call `refreshValues()` on their services.

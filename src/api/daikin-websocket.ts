@@ -10,12 +10,17 @@ import { EventEmitter } from 'node:events';
 import type { OAuthProvider } from './daikin-types';
 import { DAIKIN_WEBSOCKET_URL } from '../constants';
 import { withHttpDefaults } from './http-defaults';
+import { toMessage } from '../utils/errors';
 
 // Reconnection settings
 const INITIAL_RECONNECT_DELAY = 1000;  // 1 second
 const MAX_RECONNECT_DELAY = 300000;    // 5 minutes
 const RECONNECT_BACKOFF_MULTIPLIER = 2;
 const MAX_RECONNECT_ATTEMPTS = 50;     // Give up after 50 consecutive failures
+const RECONNECT_JITTER_RATIO = 0.25;   // ±25% randomisation so many clients don't reconnect in lockstep
+// A connection must stay open this long before the backoff is reset; a server that accepts
+// and immediately drops the socket must not cause a tight reconnect loop.
+const STABLE_CONNECTION_MS = 60000;
 
 // Heartbeat settings
 const PING_INTERVAL = 30000;  // 30 seconds
@@ -67,11 +72,6 @@ export interface GroupCharacteristicEvent {
 }
 
 /**
- * Union type for all WebSocket events
- */
-export type DaikinWebSocketEvent = GatewayCharacteristicEvent | GroupCharacteristicEvent;
-
-/**
  * WebSocket connection state
  */
 export type WebSocketState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
@@ -94,6 +94,7 @@ export class DaikinWebSocket extends EventEmitter {
   private pongTimeout: NodeJS.Timeout | null = null;
   private shouldReconnect = true;
   private connectionAttempts = 0;
+  private stableConnectionTimeout: NodeJS.Timeout | null = null;
 
   constructor(
         private readonly oauth: OAuthProvider,
@@ -157,7 +158,7 @@ export class DaikinWebSocket extends EventEmitter {
 
       this.setupEventHandlers();
     } catch (error) {
-      this.handleError(error as Error);
+      this.handleError(error instanceof Error ? error : new Error(toMessage(error)));
       this.scheduleReconnect();
     }
   }
@@ -172,8 +173,12 @@ export class DaikinWebSocket extends EventEmitter {
 
     this.ws.on('open', () => {
       this.state = 'connected';
-      this.reconnectDelay = INITIAL_RECONNECT_DELAY;
-      this.connectionAttempts = 0;
+      this.clearStableConnectionTimeout();
+      this.stableConnectionTimeout = setTimeout(() => {
+        this.stableConnectionTimeout = null;
+        this.reconnectDelay = INITIAL_RECONNECT_DELAY;
+        this.connectionAttempts = 0;
+      }, STABLE_CONNECTION_MS);
       this.startHeartbeat();
       this.emit('connected');
     });
@@ -196,43 +201,40 @@ export class DaikinWebSocket extends EventEmitter {
   }
 
   /**
-     * Handle incoming WebSocket messages
+     * Handle incoming WebSocket messages. Anything that is not valid JSON or does
+     * not have the minimal expected shape is ignored.
      */
   private handleMessage(data: WebSocket.Data): void {
+    let message: unknown;
     try {
-      const message = JSON.parse(data.toString());
+      message = JSON.parse(data.toString());
+    } catch {
+      return;
+    }
+    if (!isRecord(message) || !isRecord(message.data) || typeof message.data.name !== 'string') {
+      return;
+    }
 
-      // Check for error messages
-      if (message.message === 'Internal server error') {
-        // Ignore internal server errors for invalid message formats
+    if (message.event === 'gateway:managementpoint:characteristic') {
+      if (typeof message.gatewayDeviceId !== 'string' || typeof message.embeddedId !== 'string') {
         return;
       }
-
-      // Handle gateway device characteristic updates
-      if (message.event === 'gateway:managementpoint:characteristic') {
-        const event = message as GatewayCharacteristicEvent;
-        this.emit('device_update', {
-          deviceId: event.gatewayDeviceId,
-          embeddedId: event.embeddedId,
-          managementPointId: event.managementPointId,
-          characteristicName: event.data.name,
-          data: event.data,
-        });
-      }
-
-      // Handle group characteristic updates (alternative event format)
-      if (message.event === 'group:characteristic') {
-        const event = message as GroupCharacteristicEvent;
-        this.emit('group_update', {
-          groupId: event.groupId,
-          siteId: event.siteId,
-          characteristicName: event.data.name,
-          data: event.data,
-        });
-      }
-
-    } catch (error) {
-      // Ignore parse errors for non-JSON messages
+      const event = message as unknown as GatewayCharacteristicEvent;
+      this.emit('device_update', {
+        deviceId: event.gatewayDeviceId,
+        embeddedId: event.embeddedId,
+        managementPointId: event.managementPointId,
+        characteristicName: event.data.name,
+        data: event.data,
+      });
+    } else if (message.event === 'group:characteristic') {
+      const event = message as unknown as GroupCharacteristicEvent;
+      this.emit('group_update', {
+        groupId: event.groupId,
+        siteId: event.siteId,
+        characteristicName: event.data.name,
+        data: event.data,
+      });
     }
   }
 
@@ -279,15 +281,16 @@ export class DaikinWebSocket extends EventEmitter {
       return;
     }
 
+    const jitter = 1 + (Math.random() * 2 - 1) * RECONNECT_JITTER_RATIO;
     this.reconnectTimeout = setTimeout(async () => {
       this.reconnectTimeout = null;
       try {
         await this.establishConnection();
       } catch (error) {
-        this.handleError(error as Error);
+        this.handleError(error instanceof Error ? error : new Error(toMessage(error)));
         this.scheduleReconnect();
       }
-    }, this.reconnectDelay);
+    }, Math.round(this.reconnectDelay * jitter));
 
     // Exponential backoff with max delay
     this.reconnectDelay = Math.min(
@@ -344,11 +347,19 @@ export class DaikinWebSocket extends EventEmitter {
     }
   }
 
+  private clearStableConnectionTimeout(): void {
+    if (this.stableConnectionTimeout) {
+      clearTimeout(this.stableConnectionTimeout);
+      this.stableConnectionTimeout = null;
+    }
+  }
+
   /**
      * Clean up resources
      */
   private cleanup(): void {
     this.stopHeartbeat();
+    this.clearStableConnectionTimeout();
 
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -357,10 +368,19 @@ export class DaikinWebSocket extends EventEmitter {
 
     if (this.ws) {
       this.ws.removeAllListeners();
-      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+      // Closing a CONNECTING socket aborts the handshake and emits 'error' asynchronously;
+      // without a listener that would be an uncaught exception.
+      this.ws.on('error', () => {});
+      if (this.ws.readyState === WebSocket.CONNECTING) {
+        this.ws.terminate();
+      } else if (this.ws.readyState === WebSocket.OPEN) {
         this.ws.close();
       }
       this.ws = null;
     }
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

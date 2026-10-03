@@ -54,6 +54,7 @@ describe('DaikinApi', () => {
       on: vi.fn().mockReturnThis(),
       write: vi.fn(),
       end: vi.fn(),
+      setTimeout: vi.fn(),
     };
     (https.request as ReturnType<typeof vi.fn>).mockImplementation((options: any, callback: any) => {
       callback(mockResponse);
@@ -82,6 +83,7 @@ describe('DaikinApi', () => {
         on: vi.fn().mockReturnThis(),
         write: vi.fn(),
         end: vi.fn(),
+        setTimeout: vi.fn(),
       };
 
       (https.request as ReturnType<typeof vi.fn>).mockImplementation((options: any, callback: any) => {
@@ -132,45 +134,35 @@ describe('DaikinApi', () => {
     });
 
     it('should throw error if retry after refresh still returns 401', async () => {
-      vi.useRealTimers(); // Use real timers for this test
       // Always return 401
       mockHttpsRequest(401, 'Unauthorized');
 
       const api = new DaikinApi(mockOAuth);
 
-      // Temporarily override sleep to be instant for testing
-      const originalSleep = (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep;
-      (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
-
-      await expect(api.getDevices()).rejects.toThrow(
-        'Unauthorized (401): Token expired or invalid',
-      );
+      const promise = api.getDevices().catch((e) => e);
+      await vi.runAllTimersAsync();
+      const error = await promise;
+      expect(error.message).toBe('Unauthorized (401): Token expired or invalid');
       // Should retry MAX_RETRY_ATTEMPTS times
       expect(mockOAuth.refreshToken).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS);
       // Initial request + MAX_RETRY_ATTEMPTS retries
       expect(https.request).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS + 1);
-
-      // Restore original sleep
-      (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = originalSleep;
     });
 
     it('should not retry more than MAX_RETRY_ATTEMPTS times on 401', async () => {
-      vi.useRealTimers(); // Use real timers for this test
       // Always return 401
       mockHttpsRequest(401, 'Unauthorized');
 
       const api = new DaikinApi(mockOAuth);
 
-      // Temporarily override sleep to be instant for testing
-      (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
-
-      await expect(api.getDevices()).rejects.toThrow('Unauthorized');
+      const promise = api.getDevices().catch((e) => e);
+      await vi.runAllTimersAsync();
+      expect((await promise).message).toContain('Unauthorized');
       // Should only refresh MAX_RETRY_ATTEMPTS times
       expect(mockOAuth.refreshToken).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS);
     });
 
     it('should deduplicate concurrent token refresh requests', async () => {
-      vi.useRealTimers();
 
       // Create a slow refresh that we can control
       let resolveRefresh!: () => void;
@@ -222,7 +214,6 @@ describe('DaikinApi', () => {
       });
 
       const api = new DaikinApi(mockOAuth);
-      (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
 
       mockOAuth.getAccessToken
         .mockResolvedValueOnce('expired-token')
@@ -235,6 +226,7 @@ describe('DaikinApi', () => {
 
       // Let the refresh complete
       resolveRefresh();
+      await vi.runAllTimersAsync();
 
       await Promise.all([p1, p2]);
 
@@ -269,175 +261,182 @@ describe('DaikinApi', () => {
     });
   });
 
+  /** Respond with `statusCodes[i]` to the i-th request (last one repeats) */
+  function mockHttpsSequence(statusCodes: number[], okBody = '[]') {
+    let callCount = 0;
+    const mockRequest = {
+      on: vi.fn().mockReturnThis(),
+      write: vi.fn(),
+      end: vi.fn(),
+      setTimeout: vi.fn(),
+    };
+    (https.request as ReturnType<typeof vi.fn>).mockImplementation((options: any, callback: any) => {
+      const statusCode = statusCodes[Math.min(callCount, statusCodes.length - 1)];
+      callCount++;
+      const body = statusCode < 300 ? okBody : 'Gateway error';
+      const mockResponse: any = {
+        statusCode,
+        headers: {},
+        on: vi.fn((event, cb) => {
+          if (event === 'data') {
+            cb(body);
+          }
+          if (event === 'end') {
+            cb();
+          }
+          return mockResponse;
+        }),
+      };
+      callback(mockResponse);
+      return mockRequest;
+    });
+    return mockRequest;
+  }
+
   describe('gateway errors', () => {
-    it('should retry on 504 Gateway Timeout and succeed', async () => {
-      const devices = [{ id: 'device-1', managementPoints: [] }];
-      let callCount = 0;
-
-      const mockRequest = {
-        on: vi.fn().mockReturnThis(),
-        write: vi.fn(),
-        end: vi.fn(),
-      };
-
-      (https.request as ReturnType<typeof vi.fn>).mockImplementation((options: any, callback: any) => {
-        callCount++;
-        // First call returns 504, second returns 200
-        const statusCode = callCount === 1 ? 504 : 200;
-        const body = callCount === 1 ? 'Gateway Timeout' : JSON.stringify(devices);
-
-        const mockResponse: any = {
-          statusCode,
-          headers: {},
-          on: vi.fn((event, cb) => {
-            if (event === 'data') {
-              cb(body);
-            }
-            if (event === 'end') {
-              cb();
-            }
-            return mockResponse;
-          }),
-        };
-        callback(mockResponse);
-        return mockRequest;
-      });
+    it.each([502, 503, 504])('does not retry a polling GET on %i (the next poll is the retry)', async (status) => {
+      mockHttpsSequence([status, 200]);
 
       const api = new DaikinApi(mockOAuth);
-      const result = await runWithTimers(api.getDevices());
+      const promise = api.getDevices().catch((e) => e);
+      await vi.runAllTimersAsync();
+      const error = await promise;
+
+      expect(error).toBeInstanceOf(ApiTimeoutError);
+      expect(error.statusCode).toBe(status);
+      expect(error.attemptsMade).toBe(1);
+      expect(https.request).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries a GET on gateway errors when explicitly requested (discovery)', async () => {
+      const devices = [{ id: 'device-1', managementPoints: [] }];
+      mockHttpsSequence([504, 200], JSON.stringify(devices));
+
+      const api = new DaikinApi(mockOAuth);
+      const result = await runWithTimers(api.getDevices({ retryGatewayErrors: true }));
 
       expect(result).toEqual(devices);
       expect(https.request).toHaveBeenCalledTimes(2);
     });
 
-    it('should retry on 502 Bad Gateway and succeed', async () => {
-      const devices = [{ id: 'device-1', managementPoints: [] }];
-      let callCount = 0;
-
-      const mockRequest = {
-        on: vi.fn().mockReturnThis(),
-        write: vi.fn(),
-        end: vi.fn(),
-      };
-
-      (https.request as ReturnType<typeof vi.fn>).mockImplementation((options: any, callback: any) => {
-        callCount++;
-        const statusCode = callCount === 1 ? 502 : 200;
-        const body = callCount === 1 ? 'Bad Gateway' : JSON.stringify(devices);
-
-        const mockResponse: any = {
-          statusCode,
-          headers: {},
-          on: vi.fn((event, cb) => {
-            if (event === 'data') {
-              cb(body);
-            }
-            if (event === 'end') {
-              cb();
-            }
-            return mockResponse;
-          }),
-        };
-        callback(mockResponse);
-        return mockRequest;
-      });
+    it.each([502, 503, 504])('retries a PATCH on %i and succeeds', async (status) => {
+      mockHttpsSequence([status, 204]);
 
       const api = new DaikinApi(mockOAuth);
-      const result = await runWithTimers(api.getDevices());
+      await runWithTimers(api.updateDevice('device-1', 'climateControl', 'onOffMode', 'on'));
 
-      expect(result).toEqual(devices);
       expect(https.request).toHaveBeenCalledTimes(2);
     });
 
-    it('should retry on 503 Service Unavailable and succeed', async () => {
-      const devices = [{ id: 'device-1', managementPoints: [] }];
-      let callCount = 0;
-
-      const mockRequest = {
-        on: vi.fn().mockReturnThis(),
-        write: vi.fn(),
-        end: vi.fn(),
-      };
-
-      (https.request as ReturnType<typeof vi.fn>).mockImplementation((options: any, callback: any) => {
-        callCount++;
-        const statusCode = callCount === 1 ? 503 : 200;
-        const body = callCount === 1 ? 'Service Unavailable' : JSON.stringify(devices);
-
-        const mockResponse: any = {
-          statusCode,
-          headers: {},
-          on: vi.fn((event, cb) => {
-            if (event === 'data') {
-              cb(body);
-            }
-            if (event === 'end') {
-              cb();
-            }
-            return mockResponse;
-          }),
-        };
-        callback(mockResponse);
-        return mockRequest;
-      });
+    it('retries a holiday-mode POST on gateway errors', async () => {
+      mockHttpsSequence([503, 204]);
 
       const api = new DaikinApi(mockOAuth);
-      const result = await runWithTimers(api.getDevices());
+      await runWithTimers(api.setHolidayMode('device-1', 'climateControl', { enabled: true }));
 
-      expect(result).toEqual(devices);
       expect(https.request).toHaveBeenCalledTimes(2);
     });
 
-    it('should throw ApiTimeoutError after exhausting retries on 504', async () => {
-      // Always return 504
-      mockHttpsRequest(504, 'Gateway Timeout');
+    it.each([
+      [502, 'Bad Gateway'],
+      [503, 'Service Unavailable'],
+      [504, 'Gateway Timeout'],
+    ])('throws ApiTimeoutError after exhausting write retries on %i', async (status, name) => {
+      mockHttpsSequence([status]);
 
       const api = new DaikinApi(mockOAuth);
+      const promise = api.updateDevice('device-1', 'climateControl', 'onOffMode', 'on').catch((e) => e);
+      await vi.runAllTimersAsync();
+      const error = await promise;
 
-      // Temporarily override sleep to be instant for testing
-      (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
-
-      await expect(api.getDevices()).rejects.toThrow(ApiTimeoutError);
-      // Initial request + MAX_RETRY_ATTEMPTS retries
+      expect(error).toBeInstanceOf(ApiTimeoutError);
+      expect(error.statusCode).toBe(status);
+      expect(error.attemptsMade).toBe(MAX_RETRY_ATTEMPTS + 1);
+      expect(error.message).toContain(name);
+      expect(error.message).toContain(String(status));
       expect(https.request).toHaveBeenCalledTimes(MAX_RETRY_ATTEMPTS + 1);
     });
+  });
 
-    it('should include status code and attempts in ApiTimeoutError', async () => {
-      mockHttpsRequest(504, 'Gateway Timeout');
+  describe('write coalescing', () => {
+    it('replaces the value of a queued write to the same target and resolves both callers', async () => {
+      const mockRequest = mockHttpsSequence([204]);
 
       const api = new DaikinApi(mockOAuth);
-      (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
+      const p1 = api.updateDevice('device-1', 'climateControl', 'temperatureControl', 20, '/a');
+      await vi.advanceTimersByTimeAsync(0); // p1 has been sent; the queue is in its inter-request gap
+      // These two queue behind p1 for the same target: the second replaces the first's value
+      const p2 = api.updateDevice('device-1', 'climateControl', 'temperatureControl', 21, '/a');
+      const p3 = api.updateDevice('device-1', 'climateControl', 'temperatureControl', 22, '/a');
 
-      const error = await api.getDevices().catch((e) => e);
-      expect(error).toBeInstanceOf(ApiTimeoutError);
-      expect(error.statusCode).toBe(504);
-      expect(error.attemptsMade).toBe(MAX_RETRY_ATTEMPTS + 1);
-      expect(error.message).toContain('Gateway Timeout');
-      expect(error.message).toContain('504');
+      await vi.runAllTimersAsync();
+      await Promise.all([p1, p2, p3]);
+
+      expect(https.request).toHaveBeenCalledTimes(2);
+      const bodies = mockRequest.write.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+      expect(bodies).toEqual([{ value: 20, path: '/a' }, { value: 22, path: '/a' }]);
     });
 
-    it('should throw ApiTimeoutError with correct name for 502', async () => {
-      mockHttpsRequest(502, 'Bad Gateway');
+    it('does not coalesce writes to different targets', async () => {
+      const mockRequest = mockHttpsSequence([204]);
 
       const api = new DaikinApi(mockOAuth);
-      (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
+      const p1 = api.updateDevice('device-1', 'climateControl', 'onOffMode', 'on');
+      const p2 = api.updateDevice('device-1', 'climateControl', 'temperatureControl', 21, '/a');
+      const p3 = api.updateDevice('device-1', 'climateControl', 'temperatureControl', 22, '/b');
 
-      const error = await api.getDevices().catch((e) => e);
-      expect(error).toBeInstanceOf(ApiTimeoutError);
-      expect(error.statusCode).toBe(502);
-      expect(error.message).toContain('Bad Gateway');
+      await vi.runAllTimersAsync();
+      await Promise.all([p1, p2, p3]);
+
+      expect(https.request).toHaveBeenCalledTimes(3);
+      expect(mockRequest.write).toHaveBeenCalledTimes(3);
     });
 
-    it('should throw ApiTimeoutError with correct name for 503', async () => {
-      mockHttpsRequest(503, 'Service Unavailable');
+    it('rejects all coalesced callers with the same error', async () => {
+      mockHttpsSequence([400]);
 
       const api = new DaikinApi(mockOAuth);
-      (api as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
+      const p1 = api.updateDevice('device-1', 'climateControl', 'onOffMode', 'on').catch((e) => e);
+      await vi.advanceTimersByTimeAsync(0);
+      const p2 = api.updateDevice('device-1', 'climateControl', 'onOffMode', 'off').catch((e) => e);
+      const p3 = api.updateDevice('device-1', 'climateControl', 'onOffMode', 'on').catch((e) => e);
+      await vi.runAllTimersAsync();
 
-      const error = await api.getDevices().catch((e) => e);
-      expect(error).toBeInstanceOf(ApiTimeoutError);
-      expect(error.statusCode).toBe(503);
-      expect(error.message).toContain('Service Unavailable');
+      const [e1, e2, e3] = await Promise.all([p1, p2, p3]);
+      expect(e1).not.toBe(e2);
+      expect(e2).toBe(e3);
+      expect(https.request).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the inter-request gap between writes for the same device', async () => {
+      mockHttpsSequence([204]);
+
+      const api = new DaikinApi(mockOAuth);
+      void api.updateDevice('device-1', 'climateControl', 'onOffMode', 'on');
+      void api.updateDevice('device-1', 'climateControl', 'operationMode', 'cooling');
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(https.request).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(399);
+      expect(https.request).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(https.request).toHaveBeenCalledTimes(2);
+      await vi.runAllTimersAsync();
+    });
+  });
+
+  describe('rate limit reporting', () => {
+    it('reports rate-limit headers when present and stays silent otherwise', async () => {
+      const onStatus = vi.fn();
+      mockHttpsRequest(200, '[]', { 'x-ratelimit-remaining-day': '0', 'x-ratelimit-limit-day': '200' });
+      const api = new DaikinApi(mockOAuth, onStatus);
+      await api.getDevices();
+      expect(onStatus).toHaveBeenCalledWith(expect.objectContaining({ remainingDay: 0, limitDay: 200 }));
+
+      onStatus.mockClear();
+      mockHttpsRequest(200, '[]');
+      await api.getDevices();
+      expect(onStatus).not.toHaveBeenCalled();
     });
   });
 
@@ -478,6 +477,26 @@ describe('DaikinApi', () => {
       const error = await promise;
 
       expect(error.message).toContain('Bad Request (400)');
+    });
+  });
+
+  describe('URL path encoding', () => {
+    it('encodes cloud-supplied identifiers so they cannot change the endpoint', async () => {
+      mockHttpsRequest(204, '');
+
+      const api = new DaikinApi(mockOAuth);
+      const p1 = api.updateDevice('dev/../x', 'mp?y=1', 'name#z', 'v');
+      const p2 = api.setHolidayMode('dev/1', 'mp/2', { enabled: true });
+      const p3 = api.triggerFirmwareUpdate('dev/1', 'gateway', 'fw/../../evil?a');
+      await vi.runAllTimersAsync();
+      await Promise.all([p1, p2, p3]);
+
+      const paths = vi.mocked(https.request).mock.calls.map(c => (c[0] as any).path);
+      expect(paths).toEqual([
+        '/v1/gateway-devices/dev%2F..%2Fx/management-points/mp%3Fy%3D1/characteristics/name%23z',
+        '/v1/gateway-devices/dev%2F1/management-points/mp%2F2/holiday-mode',
+        '/v1/gateway-devices/dev%2F1/management-points/gateway/firmware/fw%2F..%2F..%2Fevil%3Fa',
+      ]);
     });
   });
 
