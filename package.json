@@ -24,6 +24,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "schema:check": "tsx scripts/check-schema-drift.ts",
     "watch": "npm run build && npm link && nodemon",
     "copy:ui-kit": "mkdir -p homebridge-ui/public/lib && cp node_modules/@mp-consulting/homebridge-ui-kit/dist/kit.css homebridge-ui/public/lib/ && cp node_modules/@mp-consulting/homebridge-ui-kit/dist/kit.js homebridge-ui/public/lib/",
@@ -37,7 +38,6 @@
   ],
   "dependencies": {
     "@homebridge/plugin-ui-utils": "^2.2.6",
-    "class-validator": "^0.15.1",
     "ws": "^8.21.3",
     "zod": "^4.5.4"
   },
@@ -48,7 +48,6 @@
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^5.0.0",
     "eslint": "^10.10.0",
-    "hap-nodejs": "^1.2.0",
     "homebridge": "^2.4.0",
     "homebridge-config-ui-x": "^5.29.0",
     "nodemon": "^3.1.14",
