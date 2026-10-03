@@ -22,7 +22,7 @@
         "default": "developer_portal",
         "oneOf": [
           {"title": "Developer Portal (200 API calls/day)", "enum": ["developer_portal"]},
-          {"title": "Mobile App (5000 API calls/day + WebSocket)", "enum": ["mobile_app"]}
+          {"title": "Mobile App (3000 API calls/day + WebSocket)", "enum": ["mobile_app"]}
         ]
       },
       "clientId": {
@@ -68,15 +68,15 @@
       },
       "oidcCallbackServerBindAddr": {
         "title": "Callback Server Bind Address",
-        "description": "Network interface to bind the callback server. Use 127.0.0.1 for local only, or 0.0.0.0 for all interfaces.",
+        "description": "Network interface the temporary OAuth callback server listens on during authentication. The browser you log in with must be able to reach it: use 0.0.0.0 unless that browser runs on the Homebridge host itself, in which case 127.0.0.1 keeps the server off the network.",
         "type": "string",
         "required": false,
-        "default": "127.0.0.1",
-        "enum": ["127.0.0.1", "0.0.0.0"],
+        "default": "0.0.0.0",
+        "enum": ["0.0.0.0", "127.0.0.1"],
         "x-schema-form": {
           "titleMap": {
-            "127.0.0.1": "127.0.0.1 (localhost only - recommended)",
-            "0.0.0.0": "0.0.0.0 (all network interfaces)"
+            "0.0.0.0": "0.0.0.0 (all network interfaces)",
+            "127.0.0.1": "127.0.0.1 (localhost only - browser on the Homebridge host)"
           },
           "condition": "model.authMode !== 'mobile_app'"
         }
@@ -107,12 +107,59 @@
         "default": false,
         "description": "Expose extra features like Streamer, Econo, and Powerful modes as HomeKit switches (only if supported by your device)"
       },
+      "showPowerfulMode": {
+        "title": "Powerful Mode Switch",
+        "type": "boolean",
+        "required": false,
+        "description": "Boost heating/cooling performance (only if supported by your device). When not set, follows 'Show Extra Features'."
+      },
+      "showEconoMode": {
+        "title": "Econo Mode Switch",
+        "type": "boolean",
+        "required": false,
+        "description": "Energy-saving operation (only if supported by your device). When not set, follows 'Show Extra Features'."
+      },
+      "showStreamerMode": {
+        "title": "Streamer Mode Switch",
+        "type": "boolean",
+        "required": false,
+        "description": "Air purification (Streamer) (only if supported by your device). When not set, follows 'Show Extra Features'."
+      },
+      "showOutdoorSilentMode": {
+        "title": "Outdoor Silent Mode Switch",
+        "type": "boolean",
+        "required": false,
+        "description": "Reduce outdoor unit noise (only if supported by your device). When not set, follows 'Show Extra Features'."
+      },
+      "showIndoorSilentMode": {
+        "title": "Indoor Silent Mode Switch",
+        "type": "boolean",
+        "required": false,
+        "description": "Quiet indoor fan operation (only if supported by your device). When not set, follows 'Show Extra Features'."
+      },
+      "showAutoFanMode": {
+        "title": "Auto Fan Mode Switch",
+        "type": "boolean",
+        "required": false,
+        "description": "Automatic fan speed as a switch (only if supported by your device). When not set, follows 'Show Extra Features'."
+      },
+      "showDryMode": {
+        "title": "Dry Mode Switch",
+        "type": "boolean",
+        "required": false,
+        "description": "Dehumidification mode as a switch (only if supported by your device). When not set, follows 'Show Extra Features'."
+      },
+      "showFanOnlyMode": {
+        "title": "Fan Only Mode Switch",
+        "type": "boolean",
+        "required": false,
+        "description": "Fan without heating/cooling as a switch (only if supported by your device). When not set, follows 'Show Extra Features'."
+      },
       "showOscillationSwitch": {
         "title": "Show Oscillation Switch",
         "type": "boolean",
         "required": false,
-        "default": false,
-        "description": "Expose fan oscillation (swing) as a separate HomeKit switch. Useful because the built-in swing control disappears when the accessory is grouped into a single tile in the Home app."
+        "description": "Expose fan oscillation (swing) as a separate HomeKit switch. Useful because the built-in swing control disappears when the accessory is grouped into a single tile in the Home app. When not set, follows 'Show Extra Features'."
       },
       "showSeparateFanControl": {
         "title": "Show Separate Fan Tile",
@@ -125,8 +172,7 @@
         "title": "Show Holiday Mode Switch",
         "type": "boolean",
         "required": false,
-        "default": false,
-        "description": "Expose holiday (away) mode as a separate HomeKit switch (only if supported by your device). Turn it on to put the unit into holiday mode and off to resume normal operation."
+        "description": "Expose holiday (away) mode as a separate HomeKit switch (only if supported by your device). Turn it on to put the unit into holiday mode and off to resume normal operation. When not set, follows 'Show Extra Features'."
       },
       "showFirmwareUpdateSwitch": {
         "title": "Show Firmware Update Switch",
@@ -164,7 +210,7 @@
         "default": 15,
         "minimum": 1,
         "maximum": 60,
-        "description": "How often to poll the Daikin API. Developer Portal: 15+ min recommended (200 calls/day limit). Mobile App: 1-5 min recommended (5000 calls/day)."
+        "description": "How often to poll the Daikin API. Developer Portal: 15+ min recommended (200 calls/day limit). Mobile App: 1-5 min recommended (3000 calls/day)."
       },
       "forceUpdateDelay": {
         "title": "Force Update Delay (ms)",
@@ -196,7 +242,7 @@
     {
       "type": "fieldset",
       "title": "Mobile App Authentication",
-      "description": "Use your Daikin Onecta account credentials (same as the mobile app). Benefits: 5000 API calls/day + real-time WebSocket updates.",
+      "description": "Use your Daikin Onecta account credentials (same as the mobile app). Benefits: 3000 API calls/day + real-time WebSocket updates.",
       "expandable": false,
       "condition": "model.authMode === 'mobile_app'",
       "items": [
@@ -236,6 +282,14 @@
       "expanded": false,
       "items": [
         "showExtraFeatures",
+        "showPowerfulMode",
+        "showEconoMode",
+        "showStreamerMode",
+        "showOutdoorSilentMode",
+        "showIndoorSilentMode",
+        "showAutoFanMode",
+        "showDryMode",
+        "showFanOnlyMode",
         "showOscillationSwitch",
         "showSeparateFanControl",
         "showHolidayMode",

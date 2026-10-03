@@ -1,387 +1,447 @@
 /**
  * Configuration Manager
  *
- * Centralizes configuration management with validation,
- * defaults, and type-safe access to config values.
+ * Single source of truth for the plugin configuration: the raw Homebridge
+ * platform config is normalized once (type coercion, schema bounds, defaults)
+ * and every consumer reads it through the typed getters below.
  */
 
-import type { AuthMode } from '../api/daikin-types';
-import { safeValidateData, DaikinControllerConfigSchema } from '../api/daikin-schemas';
+import type { AuthMode, DaikinControllerConfig } from '../api/daikin-types';
+import type { HttpTransportMode } from '../api/http-transport';
 import {
   DEFAULT_UPDATE_INTERVAL_MINUTES,
   DEFAULT_FORCE_UPDATE_DELAY_MS,
+  DEFAULT_CALLBACK_PORT,
+  DEFAULT_CALLBACK_BIND_ADDR,
   ONE_MINUTE_MS,
+  ONE_SECOND_MS,
 } from '../constants';
+import { StringUtils } from '../utils/strings';
 
-export interface PluginConfig {
-    // Platform identification
-    platform: string;
-    name?: string;
+/**
+ * Per-feature config toggles (the `show*` keys of config.schema.json).
+ *
+ * - `extra`: switches that follow the legacy `showExtraFeatures` catch-all when
+ *   their own key is not set.
+ * - `standalone`: default off and never follow `showExtraFeatures` (a separate
+ *   Fan tile, and a switch that installs firmware).
+ *
+ * Kept in sync with config.schema.json and homebridge-ui/public/script.js by
+ * test/unit/config/feature-config-keys.test.ts.
+ */
+export const FEATURE_CONFIG_KEYS = {
+  extra: [
+    'showPowerfulMode',
+    'showEconoMode',
+    'showStreamerMode',
+    'showOutdoorSilentMode',
+    'showIndoorSilentMode',
+    'showAutoFanMode',
+    'showOscillationSwitch',
+    'showDryMode',
+    'showFanOnlyMode',
+    'showHolidayMode',
+  ],
+  standalone: [
+    'showSeparateFanControl',
+    'showFirmwareUpdateSwitch',
+  ],
+} as const;
 
-    // Authentication mode
-    authMode?: AuthMode;
+export type ExtraFeatureConfigKey = typeof FEATURE_CONFIG_KEYS.extra[number];
+export type StandaloneFeatureConfigKey = typeof FEATURE_CONFIG_KEYS.standalone[number];
+export type FeatureConfigKey = ExtraFeatureConfigKey | StandaloneFeatureConfigKey;
 
-    // Developer Portal credentials
-    clientId?: string;
-    clientSecret?: string;
-    callbackServerExternalAddress?: string;
-    callbackServerPort?: number;
-    oidcCallbackServerBindAddr?: string;
+/** Schema bounds (config.schema.json) the numeric settings are clamped to */
+const UPDATE_INTERVAL_MINUTES_MIN = 1;
+const UPDATE_INTERVAL_MINUTES_MAX = 60;
+const FORCE_UPDATE_DELAY_MS_MIN = 5 * ONE_SECOND_MS;
+const FORCE_UPDATE_DELAY_MS_MAX = 300 * ONE_SECOND_MS;
+const PORT_MIN = 1;
+const PORT_MAX = 65535;
+const PRIVILEGED_PORT_MAX = 1023;
+const DEVELOPER_PORTAL_RECOMMENDED_INTERVAL_MINUTES = 15;
 
-    // Mobile App credentials
-    daikinEmail?: string;
-    daikinPassword?: string;
+/**
+ * Raw plugin config as written by Homebridge. Values come from a user-edited
+ * JSON file, so the declared types are what the schema intends, not a guarantee.
+ */
+export interface PluginConfig extends Partial<Record<FeatureConfigKey, boolean | null>> {
+  // Platform identification
+  platform: string;
+  name?: string;
 
-    /**
-     * Legacy aliases. The README documented `email`/`password` up to v1.3.31
-     * while the code has always read `daikinEmail`/`daikinPassword`, so configs
-     * written against the docs silently looked "unconfigured". Accepted as a
-     * fallback (with a warning) so those configs keep working.
-     */
-    email?: string;
-    password?: string;
+  // Authentication mode
+  authMode?: AuthMode;
 
-    // Update intervals
-    updateIntervalInMinutes?: number;
-    forceUpdateDelay?: number;
+  // Developer Portal credentials
+  clientId?: string;
+  clientSecret?: string;
+  callbackServerExternalAddress?: string;
+  callbackServerPort?: number | string;
+  oidcCallbackServerBindAddr?: string;
 
-    // Device exclusions
-    excludedDevicesByDeviceId?: string[];
+  // Mobile App credentials
+  daikinEmail?: string;
+  daikinPassword?: string;
 
-    // Feature toggles
-    showPowerfulMode?: boolean;
-    showEconoMode?: boolean;
-    showStreamerMode?: boolean;
-    showOutdoorSilentMode?: boolean;
-    showIndoorSilentMode?: boolean;
-    showAutoFanMode?: boolean;
-    showOscillationSwitch?: boolean;
-    showDryMode?: boolean;
-    showFanOnlyMode?: boolean;
-    showHolidayMode?: boolean;
-    showExtraFeatures?: boolean; // Legacy
+  /**
+   * Legacy aliases. The README documented `email`/`password` up to v1.3.31
+   * while the code has always read `daikinEmail`/`daikinPassword`, so configs
+   * written against the docs silently looked "unconfigured". Accepted as a
+   * fallback (with a warning) so those configs keep working.
+   */
+  email?: string;
+  password?: string;
 
-    // Standalone Fan (Fanv2) service exposing fan speed + oscillation as its own tile
-    showSeparateFanControl?: boolean;
+  // Update intervals
+  updateIntervalInMinutes?: number | string;
+  forceUpdateDelay?: number | string;
 
-    // Gateway firmware updates as a HomeKit switch. Deliberately excluded from
-    // the legacy showExtraFeatures catch-all — must be enabled explicitly.
-    showFirmwareUpdateSwitch?: boolean;
+  // Device exclusions
+  excludedDevicesByDeviceId?: string[];
 
-    // HTTP transport: 'node' (default) or 'curl' subprocess — escape hatch for
-    // networks whose WAF drops Node's TLS fingerprint (GitHub issue #6).
-    httpTransport?: 'node' | 'curl';
+  // Legacy catch-all for the `extra` feature toggles
+  showExtraFeatures?: boolean | null;
 
-    // WebSocket
-    enableWebSocket?: boolean;
+  // HTTP transport: 'node' (default) or 'curl' subprocess — escape hatch for
+  // networks whose WAF drops Node's TLS fingerprint (GitHub issue #6).
+  httpTransport?: HttpTransportMode;
+
+  // WebSocket
+  enableWebSocket?: boolean;
 }
 
-export interface NormalizedConfig {
-    authMode: AuthMode;
-    updateIntervalMs: number;
-    forceUpdateDelayMs: number;
-    excludedDeviceIds: Set<string>;
-    features: {
-        powerfulMode: boolean;
-        econoMode: boolean;
-        streamerMode: boolean;
-        outdoorSilentMode: boolean;
-        indoorSilentMode: boolean;
-        autoFanMode: boolean;
-        oscillationMode: boolean;
-        dryMode: boolean;
-        fanOnlyMode: boolean;
-        holidayMode: boolean;
-    };
-    websocketEnabled: boolean;
+export interface ConfigValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+interface NormalizedConfig {
+  name?: string;
+  authMode: AuthMode;
+  httpTransport?: HttpTransportMode;
+  clientId?: string;
+  clientSecret?: string;
+  callbackServerExternalAddress?: string;
+  callbackServerPort: number;
+  oidcCallbackServerBindAddr: string;
+  email?: string;
+  password?: string;
+  updateIntervalMs: number;
+  forceUpdateDelayMs: number;
+  excludedDeviceIds: ReadonlySet<string>;
+  features: Readonly<Record<FeatureConfigKey, boolean>>;
+  webSocketEnabled: boolean;
+}
+
+/** Number from a number or numeric string; NaN for anything else (including '' and null). */
+function toNumber(value: unknown): number {
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    return Number(value);
+  }
+  return NaN;
+}
+
+function isSet(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== '';
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function resolveAuthMode(config: PluginConfig): AuthMode {
+  return config.authMode === 'mobile_app' ? 'mobile_app' : 'developer_portal';
+}
+
+/** Parsed port, or undefined when it is not an integer within 1-65535. */
+function parsePort(value: unknown): number | undefined {
+  const port = toNumber(value);
+  return Number.isInteger(port) && port >= PORT_MIN && port <= PORT_MAX ? port : undefined;
+}
+
+/** Update interval in minutes: unset/0/non-numeric uses the default, the rest is clamped to the schema bounds. */
+function resolveUpdateIntervalMinutes(value: unknown): number {
+  const minutes = toNumber(value);
+  if (!Number.isFinite(minutes) || minutes === 0) {
+    return DEFAULT_UPDATE_INTERVAL_MINUTES;
+  }
+  return clamp(minutes, UPDATE_INTERVAL_MINUTES_MIN, UPDATE_INTERVAL_MINUTES_MAX);
+}
+
+/** Force update delay in ms: unset/0/non-numeric uses the default, the rest is clamped to the schema bounds. */
+function resolveForceUpdateDelayMs(value: unknown): number {
+  const delay = toNumber(value);
+  if (!Number.isFinite(delay) || delay === 0) {
+    return DEFAULT_FORCE_UPDATE_DELAY_MS;
+  }
+  return clamp(delay, FORCE_UPDATE_DELAY_MS_MIN, FORCE_UPDATE_DELAY_MS_MAX);
+}
+
+/**
+ * Feature toggle semantics, defined once:
+ * - the per-feature key is a boolean: that value
+ * - otherwise (absent, null, anything else): `extra` features follow
+ *   `showExtraFeatures`, `standalone` features are off
+ */
+function resolveFeatures(config: PluginConfig): Record<FeatureConfigKey, boolean> {
+  const legacy = config.showExtraFeatures === true;
+  const features = {} as Record<FeatureConfigKey, boolean>;
+  for (const key of FEATURE_CONFIG_KEYS.extra) {
+    const value = config[key];
+    features[key] = typeof value === 'boolean' ? value : legacy;
+  }
+  for (const key of FEATURE_CONFIG_KEYS.standalone) {
+    features[key] = config[key] === true;
+  }
+  return features;
+}
+
+function normalize(config: PluginConfig): NormalizedConfig {
+  const excluded = Array.isArray(config.excludedDevicesByDeviceId) ? config.excludedDevicesByDeviceId : [];
+  return {
+    name: nonEmptyString(config.name),
+    authMode: resolveAuthMode(config),
+    httpTransport: config.httpTransport === 'curl' || config.httpTransport === 'node' ? config.httpTransport : undefined,
+    clientId: nonEmptyString(config.clientId),
+    clientSecret: nonEmptyString(config.clientSecret),
+    callbackServerExternalAddress: nonEmptyString(config.callbackServerExternalAddress),
+    callbackServerPort: parsePort(config.callbackServerPort) ?? DEFAULT_CALLBACK_PORT,
+    oidcCallbackServerBindAddr: nonEmptyString(config.oidcCallbackServerBindAddr) ?? DEFAULT_CALLBACK_BIND_ADDR,
+    email: nonEmptyString(config.daikinEmail) ?? nonEmptyString(config.email),
+    password: nonEmptyString(config.daikinPassword) ?? nonEmptyString(config.password),
+    updateIntervalMs: resolveUpdateIntervalMinutes(config.updateIntervalInMinutes) * ONE_MINUTE_MS,
+    forceUpdateDelayMs: resolveForceUpdateDelayMs(config.forceUpdateDelay),
+    excludedDeviceIds: new Set(excluded.filter((id): id is string => typeof id === 'string')),
+    features: resolveFeatures(config),
+    webSocketEnabled: config.enableWebSocket !== false,
+  };
+}
+
+/** Legacy credential keys that are in use because the canonical key is absent */
+function legacyCredentialKeysInUse(config: PluginConfig): string[] {
+  const keys: string[] = [];
+  if (!config.daikinEmail && config.email) {
+    keys.push('email');
+  }
+  if (!config.daikinPassword && config.password) {
+    keys.push('password');
+  }
+  return keys;
+}
+
+/**
+ * Validate a raw plugin config. Pure: also used by the custom UI server
+ * (homebridge-ui/server.js) for its /config/validate endpoint.
+ *
+ * Errors are configurations the plugin cannot work with; out-of-range numeric
+ * settings are only warnings, because normalization clamps them.
+ */
+export function validateConfig(config: PluginConfig): ConfigValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const authMode = resolveAuthMode(config);
+
+  // Validate authentication credentials
+  if (authMode === 'developer_portal') {
+    if (!config.clientId) {
+      errors.push('Client ID is required for Developer Portal mode');
+    }
+    if (!config.clientSecret) {
+      errors.push('Client Secret is required for Developer Portal mode');
+    }
+    if (!config.callbackServerExternalAddress) {
+      errors.push('Callback Server Address is required for Developer Portal mode');
+    } else if (config.callbackServerExternalAddress === 'localhost' || config.callbackServerExternalAddress === '127.0.0.1') {
+      // The Daikin redirect must reach this host from the user's browser
+      errors.push('Callback address cannot be localhost. Use your external IP or domain.');
+    }
+  } else {
+    if (!config.daikinEmail && !config.email) {
+      errors.push('Email is required for Mobile App mode (config key: "daikinEmail")');
+    }
+    if (!config.daikinPassword && !config.password) {
+      errors.push('Password is required for Mobile App mode (config key: "daikinPassword")');
+    }
+    const legacyKeys = legacyCredentialKeysInUse(config);
+    if (legacyKeys.length > 0) {
+      warnings.push(
+        `Using deprecated config key(s) ${legacyKeys.map(k => `"${k}"`).join(' and ')}. `
+        + 'Rename to "daikinEmail"/"daikinPassword" — the old names will stop working in a future release.',
+      );
+    }
+  }
+
+  // Validate port
+  if (isSet(config.callbackServerPort)) {
+    const port = parsePort(config.callbackServerPort);
+    if (port === undefined) {
+      errors.push(`Invalid port number: ${config.callbackServerPort}. Must be between ${PORT_MIN} and ${PORT_MAX}.`);
+    } else if (port <= PRIVILEGED_PORT_MAX) {
+      warnings.push(`Port ${port} is privileged (< 1024) and may require root permissions.`);
+    }
+  }
+
+  // Validate update interval
+  if (isSet(config.updateIntervalInMinutes)) {
+    const raw = toNumber(config.updateIntervalInMinutes);
+    const minutes = resolveUpdateIntervalMinutes(config.updateIntervalInMinutes);
+    if (raw !== minutes) {
+      warnings.push(`Update interval must be between ${UPDATE_INTERVAL_MINUTES_MIN} and ${UPDATE_INTERVAL_MINUTES_MAX} minutes, `
+        + `got: ${config.updateIntervalInMinutes}. Using ${minutes} minutes.`);
+    } else if (authMode === 'developer_portal' && minutes < DEVELOPER_PORTAL_RECOMMENDED_INTERVAL_MINUTES) {
+      warnings.push(`Update interval ${minutes}min may exceed Developer Portal rate limit (200 calls/day). Recommended: 15+ minutes.`);
+    }
+  }
+
+  // Validate force update delay
+  if (isSet(config.forceUpdateDelay)) {
+    const raw = toNumber(config.forceUpdateDelay);
+    const delay = resolveForceUpdateDelayMs(config.forceUpdateDelay);
+    if (raw !== delay) {
+      warnings.push(`Force update delay must be between ${FORCE_UPDATE_DELAY_MS_MIN} and ${FORCE_UPDATE_DELAY_MS_MAX} ms, `
+        + `got: ${config.forceUpdateDelay}. Using ${delay} ms.`);
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+  };
 }
 
 export class ConfigManager {
   private readonly config: PluginConfig;
-  private normalized: NormalizedConfig | null = null;
+  private readonly normalized: NormalizedConfig;
 
   constructor(config: PluginConfig) {
     this.config = config;
+    this.normalized = normalize(config);
   }
 
-  /**
-     * Get the normalized configuration with defaults applied
-     */
-  getNormalized(): NormalizedConfig {
-    if (!this.normalized) {
-      this.normalized = this.normalize();
-    }
-    return this.normalized;
+  // ---------------------------------------------------------------------------
+  // Platform
+  // ---------------------------------------------------------------------------
+
+  /** Platform name as configured in Homebridge */
+  getName(): string | undefined {
+    return this.normalized.name;
   }
 
-  /**
-     * Get authentication mode
-     */
+  /** HTTP transport from the config (the DAIKIN_HTTP_TRANSPORT env var still wins, see configureHttpTransport) */
+  getHttpTransport(): HttpTransportMode | undefined {
+    return this.normalized.httpTransport;
+  }
+
+  /** Polling interval in milliseconds, clamped to 1-60 minutes */
+  getUpdateIntervalMs(): number {
+    return this.normalized.updateIntervalMs;
+  }
+
+  /** Delay before refreshing after a change, in milliseconds, clamped to 5-300 seconds */
+  getForceUpdateDelayMs(): number {
+    return this.normalized.forceUpdateDelayMs;
+  }
+
+  /** Whether the device (raw Daikin device ID) is listed in excludedDevicesByDeviceId */
+  isDeviceExcluded(deviceId: string): boolean {
+    return this.normalized.excludedDeviceIds.has(deviceId);
+  }
+
+  /** WebSocket push updates are on unless explicitly disabled */
+  isWebSocketEnabled(): boolean {
+    return this.normalized.webSocketEnabled;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Authentication / controller
+  // ---------------------------------------------------------------------------
+
   getAuthMode(): AuthMode {
-    return this.config.authMode === 'mobile_app' ? 'mobile_app' : 'developer_portal';
+    return this.normalized.authMode;
   }
 
-  /**
-     * Check if mobile app mode is enabled
-     */
   isMobileAppMode(): boolean {
-    return this.getAuthMode() === 'mobile_app';
+    return this.normalized.authMode === 'mobile_app';
   }
 
-  /**
-     * Check if developer portal mode is enabled
-     */
-  isDeveloperPortalMode(): boolean {
-    return this.getAuthMode() === 'developer_portal';
+  /** Client ID and secret are present (the minimum to start the Developer Portal controller) */
+  hasDeveloperCredentials(): boolean {
+    return this.normalized.clientId !== undefined && this.normalized.clientSecret !== undefined;
   }
 
-  /**
-     * Get developer portal credentials
-     */
-  getDeveloperCredentials(): {
-        clientId: string;
-        clientSecret: string;
-        callbackServerExternalAddress: string;
-        callbackServerPort: number;
-        oidcCallbackServerBindAddr?: string;
-    } | null {
-    const { clientId, clientSecret, callbackServerExternalAddress, callbackServerPort } = this.config;
-
-    if (!clientId || !clientSecret || !callbackServerExternalAddress) {
-      return null;
-    }
-
-    return {
-      clientId,
-      clientSecret,
-      callbackServerExternalAddress,
-      callbackServerPort: callbackServerPort || 8582,
-      oidcCallbackServerBindAddr: this.config.oidcCallbackServerBindAddr,
-    };
-  }
-
-  /**
-     * Get mobile app credentials
-     */
+  /** Mobile app email and password (falling back to the legacy keys), or null when either is missing */
   getMobileCredentials(): { email: string; password: string } | null {
-    const email = this.getMobileEmail();
-    const password = this.getMobilePassword();
-
+    const { email, password } = this.normalized;
     if (!email || !password) {
       return null;
     }
-
     return { email, password };
   }
 
-  /**
-     * Mobile app email, falling back to the legacy `email` key
-     */
-  getMobileEmail(): string | undefined {
-    return this.config.daikinEmail || this.config.email;
-  }
-
-  /**
-     * Mobile app password, falling back to the legacy `password` key
-     */
-  getMobilePassword(): string | undefined {
-    return this.config.daikinPassword || this.config.password;
-  }
-
-  /**
-     * Legacy credential keys that are in use because the canonical key is absent
-     */
+  /** Legacy credential keys that are in use because the canonical key is absent */
   getLegacyCredentialKeysInUse(): string[] {
-    const keys: string[] = [];
-    if (!this.config.daikinEmail && this.config.email) {
-      keys.push('email');
-    }
-    if (!this.config.daikinPassword && this.config.password) {
-      keys.push('password');
-    }
-    return keys;
+    return legacyCredentialKeysInUse(this.config);
   }
 
-  /**
-     * Get update interval in milliseconds
-     */
-  getUpdateIntervalMs(): number {
-    const minutes = this.config.updateIntervalInMinutes || DEFAULT_UPDATE_INTERVAL_MINUTES;
-    return ONE_MINUTE_MS * minutes;
-  }
-
-  /**
-     * Get force update delay in milliseconds
-     */
-  getForceUpdateDelayMs(): number {
-    return this.config.forceUpdateDelay ?? DEFAULT_FORCE_UPDATE_DELAY_MS;
-  }
-
-  /**
-     * Get excluded device IDs as a Set
-     */
-  getExcludedDeviceIds(): Set<string> {
-    return new Set(this.config.excludedDevicesByDeviceId || []);
-  }
-
-  /**
-     * Check if a device is excluded
-     */
-  isDeviceExcluded(deviceId: string): boolean {
-    return this.getExcludedDeviceIds().has(deviceId);
-  }
-
-  /**
-     * Get feature configuration
-     */
-  getFeatures(): NormalizedConfig['features'] {
-    const legacy = this.config.showExtraFeatures === true;
-
+  /** Configuration for the DaikinCloudController, with defaults applied */
+  getControllerConfig(tokenFilePath: string): DaikinControllerConfig {
+    const n = this.normalized;
     return {
-      powerfulMode: this.config.showPowerfulMode ?? legacy,
-      econoMode: this.config.showEconoMode ?? legacy,
-      streamerMode: this.config.showStreamerMode ?? legacy,
-      outdoorSilentMode: this.config.showOutdoorSilentMode ?? legacy,
-      indoorSilentMode: this.config.showIndoorSilentMode ?? legacy,
-      autoFanMode: this.config.showAutoFanMode ?? legacy,
-      oscillationMode: this.config.showOscillationSwitch ?? legacy,
-      dryMode: this.config.showDryMode ?? legacy,
-      fanOnlyMode: this.config.showFanOnlyMode ?? legacy,
-      holidayMode: this.config.showHolidayMode ?? legacy,
+      authMode: n.authMode,
+      tokenFilePath,
+      // Developer Portal fields
+      clientId: n.clientId,
+      clientSecret: n.clientSecret,
+      callbackServerExternalAddress: n.callbackServerExternalAddress,
+      callbackServerPort: n.callbackServerPort,
+      oidcCallbackServerBindAddr: n.oidcCallbackServerBindAddr,
+      // Mobile App fields
+      email: n.email,
+      password: n.password,
     };
   }
 
-  /**
-     * Check if WebSocket is enabled
-     */
-  isWebSocketEnabled(): boolean {
-    return this.config.enableWebSocket !== false;
+  // ---------------------------------------------------------------------------
+  // Features
+  // ---------------------------------------------------------------------------
+
+  /** Whether a feature switch / service is enabled (see resolveFeatures for the semantics) */
+  isFeatureEnabled(key: FeatureConfigKey): boolean {
+    return this.normalized.features[key];
   }
 
-  /**
-     * Validate configuration using Zod schemas
-     */
-  validateWithZod(): { valid: boolean; errors: string[] } {
-    const configData = {
-      authMode: this.getAuthMode(),
-      tokenFilePath: '', // This will be set by the controller
-      clientId: this.config.clientId,
-      clientSecret: this.config.clientSecret,
-      callbackServerExternalAddress: this.config.callbackServerExternalAddress,
-      callbackServerPort: this.config.callbackServerPort,
-      oidcCallbackServerBindAddr: this.config.oidcCallbackServerBindAddr,
-      email: this.getMobileEmail(),
-      password: this.getMobilePassword(),
-    };
+  // ---------------------------------------------------------------------------
+  // Validation / diagnostics
+  // ---------------------------------------------------------------------------
 
-    const result = safeValidateData(DaikinControllerConfigSchema, configData);
-    if (!result.success) {
-      return {
-        valid: false,
-        errors: [result.error],
-      };
-    }
-
-    return { valid: true, errors: [] };
+  validate(): ConfigValidationResult {
+    return validateConfig(this.config);
   }
 
-  /**
-     * Validate configuration
-     */
-  validate(): { valid: boolean; errors: string[]; warnings: string[] } {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-    const authMode = this.getAuthMode();
-
-    // Validate authentication credentials
-    if (authMode === 'developer_portal') {
-      if (!this.config.clientId) {
-        errors.push('Client ID is required for Developer Portal mode');
-      }
-      if (!this.config.clientSecret) {
-        errors.push('Client Secret is required for Developer Portal mode');
-      }
-      if (!this.config.callbackServerExternalAddress) {
-        errors.push('Callback Server Address is required for Developer Portal mode');
-      }
-      // Warn about localhost
-      if (this.config.callbackServerExternalAddress === 'localhost' ||
-                this.config.callbackServerExternalAddress === '127.0.0.1') {
-        errors.push('Callback address cannot be localhost. Use your external IP or domain.');
-      }
-    } else if (authMode === 'mobile_app') {
-      if (!this.getMobileEmail()) {
-        errors.push('Email is required for Mobile App mode (config key: "daikinEmail")');
-      }
-      if (!this.getMobilePassword()) {
-        errors.push('Password is required for Mobile App mode (config key: "daikinPassword")');
-      }
-      const legacyKeys = this.getLegacyCredentialKeysInUse();
-      if (legacyKeys.length > 0) {
-        warnings.push(
-          `Using deprecated config key(s) ${legacyKeys.map(k => `"${k}"`).join(' and ')}. `
-          + 'Rename to "daikinEmail"/"daikinPassword" — the old names will stop working in a future release.',
-        );
-      }
-    }
-
-    // Validate port
-    if (this.config.callbackServerPort !== undefined) {
-      const port = typeof this.config.callbackServerPort === 'string'
-        ? parseInt(this.config.callbackServerPort, 10)
-        : this.config.callbackServerPort;
-
-      if (isNaN(port) || port < 1 || port > 65535) {
-        errors.push(`Invalid port number: ${this.config.callbackServerPort}. Must be between 1 and 65535.`);
-      } else if (port < 1024) {
-        warnings.push(`Port ${port} is privileged (< 1024) and may require root permissions.`);
-      }
-    }
-
-    // Validate update interval
-    if (this.config.updateIntervalInMinutes !== undefined) {
-      const interval = this.config.updateIntervalInMinutes;
-      if (interval < 1 || interval > 60) {
-        errors.push(`Update interval must be between 1 and 60 minutes, got: ${interval}`);
-      } else if (authMode === 'developer_portal' && interval < 15) {
-        warnings.push(`Update interval ${interval}min may exceed Developer Portal rate limit (200 calls/day). Recommended: 15+ minutes.`);
-      }
-    }
-
-    // Validate force update delay
-    if (this.config.forceUpdateDelay !== undefined) {
-      const delay = this.config.forceUpdateDelay;
-      const delaySeconds = Math.floor(delay / 1000);
-      if (delaySeconds < 1 || delaySeconds > 300) {
-        errors.push(`Force update delay must be between 1 and 300 seconds, got: ${delaySeconds}`);
-      }
-    }
-
+  /** The raw config with credentials and device IDs masked, for debug logging */
+  getRedactedConfig(): object {
+    const config = this.config;
     return {
-      valid: errors.length === 0,
-      errors,
-      warnings,
+      ...config,
+      clientId: StringUtils.mask(config.clientId),
+      clientSecret: StringUtils.mask(config.clientSecret),
+      daikinEmail: StringUtils.mask(config.daikinEmail),
+      daikinPassword: config.daikinPassword ? '***' : undefined,
+      // Legacy aliases, masked too so they never leak into debug logs
+      email: StringUtils.mask(config.email),
+      password: config.password ? '***' : undefined,
+      excludedDevicesByDeviceId: [...this.normalized.excludedDeviceIds].map(deviceId => StringUtils.mask(deviceId)),
     };
-  }
-
-  /**
-     * Normalize the configuration with all defaults applied
-     */
-  private normalize(): NormalizedConfig {
-    return {
-      authMode: this.getAuthMode(),
-      updateIntervalMs: this.getUpdateIntervalMs(),
-      forceUpdateDelayMs: this.getForceUpdateDelayMs(),
-      excludedDeviceIds: this.getExcludedDeviceIds(),
-      features: this.getFeatures(),
-      websocketEnabled: this.isWebSocketEnabled(),
-    };
-  }
-
-  /**
-     * Get raw config value (escape hatch for migration)
-     */
-  getRawConfig(): PluginConfig {
-    return this.config;
   }
 }

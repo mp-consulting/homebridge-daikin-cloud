@@ -1,7 +1,7 @@
 /**
  * Device Constants
  *
- * Constants related to device characteristics, temperatures, and fan speeds.
+ * Constants related to device characteristics and temperatures.
  */
 
 // =============================================================================
@@ -31,16 +31,3 @@ export const HEATING_TEMP_CLAMP_MIN = 0;
 
 /** Heating temperature clamp maximum (°C) */
 export const HEATING_TEMP_CLAMP_MAX = 25;
-
-// =============================================================================
-// Fan Speed Constants
-// =============================================================================
-
-/** Fan speed levels (1-5) to HomeKit percentage multiplier */
-export const FAN_SPEED_TO_PERCENTAGE_MULTIPLIER = 20;
-
-/** Minimum fan speed level */
-export const FAN_SPEED_MIN = 1;
-
-/** Maximum fan speed level */
-export const FAN_SPEED_MAX = 5;
