@@ -23,7 +23,7 @@ const Utils = {
 
   escapeHtml(text) {
     const div = document.createElement('div');
-    div.textContent = text;
+    div.textContent = text === null || text === undefined ? '' : String(text);
     return div.innerHTML;
   },
 
@@ -379,7 +379,7 @@ const Wizard = {
     try {
       const validation = await homebridge.request('/config/validate', config);
       if (!validation.valid) {
-        El.validationErrors.innerHTML = validation.errors.map(e => `<div>${e}</div>`).join('');
+        El.validationErrors.innerHTML = validation.errors.map(e => `<div>${Utils.escapeHtml(e)}</div>`).join('');
         DOM.show(El.validationErrors);
         UI.hideLoading();
         State.isValidating = false;
@@ -401,7 +401,7 @@ const Wizard = {
       Polling.start();
       this.goToStep(2);
     } catch (error) {
-      El.validationErrors.innerHTML = `<div>${error.message}</div>`;
+      El.validationErrors.innerHTML = `<div>${Utils.escapeHtml(error.message)}</div>`;
       DOM.show(El.validationErrors);
     }
 
@@ -564,6 +564,37 @@ const Config = {
 };
 
 // ============================================================================
+// Device List Request (shared)
+// ============================================================================
+
+/**
+ * Settings and Devices both need /devices/list on page load. Share one
+ * in-flight request so the page spends at most one API call; an explicit
+ * refresh bypasses both this and the server-side cache.
+ */
+const DeviceList = {
+  _inFlight: null,
+  _mode: null,
+
+  fetch({ refresh = false } = {}) {
+    const mode = AuthMode.current;
+    if (!refresh && this._inFlight && this._mode === mode) {
+      return this._inFlight;
+    }
+
+    const request = homebridge.request('/devices/list', { mode, refresh })
+      .finally(() => {
+        if (this._inFlight === request) {
+          this._inFlight = null;
+        }
+      });
+    this._inFlight = request;
+    this._mode = mode;
+    return request;
+  },
+};
+
+// ============================================================================
 // Settings Module
 // ============================================================================
 
@@ -571,6 +602,7 @@ const Settings = {
   devices: [],
   excludedIds: [],
   saveTimeout: null,
+  toggleListenerAttached: false,
 
   // Feature switches that honour the legacy "Show Extra Features" flag as their default.
   FEATURE_KEYS: [
@@ -642,10 +674,12 @@ const Settings = {
   populateForm(config) {
     const showAllLegacy = config.showExtraFeatures === true;
 
+    // Same rule as the plugin (resolveFeatures in config-manager): only a boolean
+    // overrides; absent or null follows showExtraFeatures.
     this.FEATURE_KEYS.forEach(key => {
       const el = $id(key);
       if (el) {
-        el.checked = key in config ? config[key] === true : showAllLegacy;
+        el.checked = typeof config[key] === 'boolean' ? config[key] : showAllLegacy;
       }
     });
 
@@ -693,11 +727,11 @@ const Settings = {
     DOM.hide(empty);
 
     try {
-      const result = await homebridge.request('/devices/list', { mode: AuthMode.current });
+      const result = await DeviceList.fetch();
       DOM.hide(loading);
 
       if (!result.success) {
-        empty.innerHTML = `<p class="mb-0">${result.message || 'No devices found. Authenticate first to see your devices.'}</p>`;
+        empty.innerHTML = `<p class="mb-0">${Utils.escapeHtml(result.message || 'No devices found. Authenticate first to see your devices.')}</p>`;
         DOM.show(empty);
         return;
       }
@@ -711,18 +745,21 @@ const Settings = {
       this.devices = result.devices;
       list.innerHTML = this.devices.map((d, i) => this.renderDeviceToggle(d, i)).join('');
 
-      list.addEventListener('change', (e) => {
-        if (e.target.classList.contains('device-visibility-toggle')) {
-          const idx = parseInt(e.target.dataset.index, 10);
-          const device = this.devices[idx];
-          if (device) {
-            this.toggleDevice(device.id, e.target.checked, idx);
+      if (!this.toggleListenerAttached) {
+        this.toggleListenerAttached = true;
+        list.addEventListener('change', (e) => {
+          if (e.target.classList.contains('device-visibility-toggle')) {
+            const idx = parseInt(e.target.dataset.index, 10);
+            const device = this.devices[idx];
+            if (device) {
+              this.toggleDevice(device.id, e.target.checked, idx);
+            }
           }
-        }
-      });
+        });
+      }
     } catch (error) {
       DOM.hide(loading);
-      empty.innerHTML = `<p class="mb-0">Failed to load: ${error.message}</p>`;
+      empty.innerHTML = `<p class="mb-0">Failed to load: ${Utils.escapeHtml(error.message)}</p>`;
       DOM.show(empty);
     }
   },
@@ -730,12 +767,12 @@ const Settings = {
   renderDeviceToggle(device, index) {
     const visible = !this.excludedIds.includes(device.id);
     return `
-            <div class="list-group-item d-flex justify-content-between align-items-center">
-                <div>
+            <div class="list-group-item d-flex justify-content-between align-items-center gap-3">
+                <div class="min-w-0">
                     <div class="fw-medium">${Utils.escapeHtml(device.name)}</div>
-                    <small class="text-muted">${Utils.escapeHtml(device.id)}</small>
+                    <small class="device-id text-muted">${Utils.escapeHtml(device.id)}</small>
                 </div>
-                <div class="d-flex align-items-center gap-2">
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
                     <span class="device-toggle-label small ${visible ? 'visible' : 'hidden-label'}" data-label-index="${index}">${visible ? 'Visible' : 'Hidden'}</span>
                     <div class="form-check form-switch mb-0">
                         <input type="checkbox" class="form-check-input device-visibility-toggle" role="switch" data-index="${index}" ${visible ? 'checked' : ''}>
@@ -816,14 +853,14 @@ const Settings = {
 // ============================================================================
 
 const Devices = {
-  async load() {
+  async load({ refresh = false } = {}) {
     DOM.show(El.devicesLoading);
     El.devicesList.innerHTML = '';
     DOM.hide(El.devicesEmpty);
     DOM.hide(El.devicesError);
 
     try {
-      const result = await homebridge.request('/devices/list', { mode: AuthMode.current });
+      const result = await DeviceList.fetch({ refresh });
       DOM.hide(El.devicesLoading);
 
       if (!result.success) {
@@ -862,7 +899,7 @@ const Devices = {
     const powerOn = device.powerState === 'on';
     const mode = device.operationMode ? Utils.capitalize(device.operationMode) : '-';
     const features = device.features?.length
-      ? device.features.map(f => `<span class="badge bg-secondary bg-opacity-50 me-1">${f}</span>`).join('')
+      ? device.features.map(f => `<span class="badge bg-secondary bg-opacity-50">${Utils.escapeHtml(f)}</span>`).join('')
       : '';
 
     const meta = [
@@ -874,18 +911,22 @@ const Devices = {
 
     return `
             <div class="list-group-item">
-                <div class="d-flex align-items-center">
-                    <span class="device-power ${powerOn ? 'power-on' : 'power-off'} me-2">${powerOn ? 'ON' : 'OFF'}</span>
-                    <span class="fw-semibold">${Utils.escapeHtml(device.name)}</span>
-                    ${features ? `<div class="ms-2">${features}</div>` : ''}
-                    <span class="device-status ${online ? 'online' : 'offline'} ms-auto">${online ? 'Online' : 'Offline'}</span>
+                <div class="device-header">
+                    <span class="device-power ${powerOn ? 'power-on' : 'power-off'}">${powerOn ? 'ON' : 'OFF'}</span>
+                    <span class="device-name fw-semibold">${Utils.escapeHtml(device.name)}</span>
+                    ${features ? `<div class="device-features">${features}</div>` : ''}
+                    <span class="device-status ${online ? 'online' : 'offline'}">${online ? 'Online' : 'Offline'}</span>
                 </div>
                 <div class="device-meta mt-1">${meta}</div>
             </div>`;
   },
 
-  refresh() {
-    this.load(); 
+  async refresh() {
+    // Bypass the shared request and the server cache, then let the Settings
+    // device toggles reuse the same fresh request.
+    const pending = this.load({ refresh: true });
+    Settings.loadDeviceToggles();
+    await pending;
   },
 };
 
@@ -894,11 +935,16 @@ const Devices = {
 // ============================================================================
 
 const RateLimit = {
+  MODE_LABELS: { developer_portal: 'Developer Portal', mobile_app: 'Mobile App' },
+
   async check() {
     const display = El.rateLimitDisplay;
+    const updated = El.rateLimitUpdated;
     display.textContent = 'Checking...';
+    DOM.hide(updated);
 
     try {
+      // Reads the status the running plugin last recorded; no API call is made.
       const result = await homebridge.request('/api/rate-limit', { mode: AuthMode.current });
       if (result.success && result.rateLimit) {
         const { limitDay, remainingDay, limitMinute, remainingMinute } = result.rateLimit;
@@ -906,13 +952,29 @@ const RateLimit = {
         if (remainingMinute !== undefined) {
           text += text ? `, ${remainingMinute}/${limitMinute}/min` : `${remainingMinute}/${limitMinute}/min`;
         }
-        display.textContent = text || 'No rate limit headers';
+        display.textContent = text || 'No rate limit headers in the last response';
+        this.showUpdated(updated, result);
       } else {
         display.textContent = result.message || 'No info';
       }
     } catch (error) {
       display.textContent = 'Error: ' + error.message;
     }
+  },
+
+  showUpdated(el, result) {
+    if (!el || !result.updatedAt) {
+      return;
+    }
+    const parts = [`as of ${new Date(result.updatedAt).toLocaleString()}`];
+    if (typeof result.ageMs === 'number') {
+      parts.push(`(${Utils.formatTime(result.ageMs)} ago)`);
+    }
+    if (result.mode && result.mode !== AuthMode.current) {
+      parts.push(`— recorded in ${this.MODE_LABELS[result.mode] || result.mode} mode`);
+    }
+    el.textContent = parts.join(' ');
+    DOM.show(el);
   },
 };
 
@@ -976,8 +1038,8 @@ const MobileAuth = {
       if (result.success) {
         await this.saveCredentials(email, password);
         success.innerHTML = `
-                    <strong>Success!</strong> Found ${result.deviceCount || 0} device(s).<br>
-                    Rate limit: ${result.rateLimit?.remainingDay || '?'}/${result.rateLimit?.limitDay || '3000'}/day<br>
+                    <strong>Success!</strong> Found ${Utils.escapeHtml(result.deviceCount || 0)} device(s).<br>
+                    Rate limit: ${Utils.escapeHtml(result.rateLimit?.remainingDay ?? '?')}/${Utils.escapeHtml(result.rateLimit?.limitDay ?? '3000')}/day<br>
                     <small>Restart Homebridge to apply.</small>`;
         DOM.show(success);
         setTimeout(() => {
@@ -1154,6 +1216,7 @@ function cacheElements() {
     devicesError: $id('devices-error'),
     settingsStatus: $id('settings-status'),
     rateLimitDisplay: $id('rate-limit-display'),
+    rateLimitUpdated: $id('rate-limit-updated'),
     loading: $id('loading'),
     globalError: $id('global-error'),
   };

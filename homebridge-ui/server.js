@@ -5,6 +5,7 @@ const https = require('https');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 const os = require('os');
+const net = require('net');
 
 // Import from compiled src/api modules (single source of truth)
 // Use path relative to this file, not cwd
@@ -13,12 +14,78 @@ const { DaikinOAuth } = require(join(distPath, 'daikin-oauth'));
 const { DaikinMobileOAuth } = require(join(distPath, 'daikin-mobile-oauth'));
 const { DaikinApi } = require(join(distPath, 'daikin-api'));
 const { configureHttpTransport } = require(join(distPath, 'http-transport'));
+const { loadTokenFromFile, saveTokenToFile, deleteTokenFile } = require(join(distPath, 'token-storage'));
+const {
+  TOKEN_FILES,
+  DEFAULT_CALLBACK_PORT,
+  DEFAULT_CALLBACK_BIND_ADDR,
+  PENDING_AUTH_TTL_MS,
+  RATE_LIMIT_STATUS_FILE,
+} = require(join(__dirname, '..', 'dist', 'src', 'constants'));
+const { validateConfig } = require(join(__dirname, '..', 'dist', 'src', 'config', 'config-manager'));
 
 // =============================================================================
 // Configuration
 // =============================================================================
 
 const CLIMATE_CONTROL_IDS = ['climateControl', 'climateControlMainZone', 'climateControlSecondaryZone'];
+
+/** How long a /devices/list result is reused before calling the Daikin API again */
+const DEVICES_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/** Security headers for the OAuth callback page */
+const CALLBACK_RESPONSE_HEADERS = {
+  'Content-Type': 'text/html; charset=utf-8',
+  'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+  'X-Content-Type-Options': 'nosniff',
+};
+
+// =============================================================================
+// Network Helpers
+// =============================================================================
+
+const NetUtils = {
+  /**
+   * Return the bind address if it is a valid IPv4/IPv6 literal, otherwise the default.
+   */
+  resolveBindAddress(bindAddr) {
+    const value = typeof bindAddr === 'string' ? bindAddr.trim() : '';
+    return value && net.isIP(value) !== 0 ? value : DEFAULT_CALLBACK_BIND_ADDR;
+  },
+
+  /**
+   * True for loopback hosts: 127.0.0.0/8, ::1, IPv4-mapped loopback and "localhost".
+   */
+  isLoopback(host) {
+    if (!host || typeof host !== 'string') {
+      return false;
+    }
+    const value = host.trim().toLowerCase().replace(/^\[|\]$/g, '');
+    if (value === 'localhost' || value.endsWith('.localhost')) {
+      return true;
+    }
+    if (net.isIPv4(value)) {
+      return value.startsWith('127.');
+    }
+    if (net.isIPv6(value)) {
+      return value === '::1' || /^::ffff:127\./.test(value);
+    }
+    return false;
+  },
+};
+
+// =============================================================================
+// HTML Helpers
+// =============================================================================
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 // =============================================================================
 // SSL Certificate Utilities
@@ -95,30 +162,10 @@ const SSLUtils = {
 // =============================================================================
 
 const TokenManager = {
-  load(filePath) {
-    try {
-      if (fs.existsSync(filePath)) {
-        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      }
-    } catch (error) {
-      console.error('Error loading token set:', error.message);
-    }
-    return null;
-  },
-
-  save(filePath, tokenSet) {
-    fs.writeFileSync(filePath, JSON.stringify(tokenSet, null, 2), { encoding: 'utf8', mode: 0o600 });
-  },
-
-  delete(filePath) {
-    try {
-      fs.unlinkSync(filePath);
-    } catch (error) {
-      if (error.code !== 'ENOENT') {
-        throw error;
-      }
-    }
-  },
+  // File access is shared with the plugin (Zod-validated reads, 0600 writes)
+  load: (filePath) => loadTokenFromFile(filePath),
+  save: (filePath, tokenSet) => saveTokenToFile(filePath, tokenSet),
+  delete: (filePath) => deleteTokenFile(filePath),
 
   getStatus(tokenSet) {
     if (!tokenSet || !tokenSet.access_token) {
@@ -273,10 +320,23 @@ class CallbackServer {
     this.server = null;
     this.port = null;
     this.connections = new Set();
+    this.ttlTimer = null;
   }
 
-  async start(port, hostname, certDir, requestHandler) {
+  /**
+   * Start the HTTPS callback server.
+   * @param {object} options
+   * @param {number} options.port - Port to listen on
+   * @param {string} options.hostname - External hostname/IP used for the certificate
+   * @param {string} [options.bindAddr] - Interface to bind (validated IP literal)
+   * @param {string} options.certDir - Directory for the self-signed certificate
+   * @param {Function} options.requestHandler - HTTPS request handler
+   * @param {number} [options.ttlMs] - Auto-stop delay (defaults to the pending auth lifetime)
+   */
+  async start({ port, hostname, bindAddr, certDir, requestHandler, ttlMs = PENDING_AUTH_TTL_MS }) {
     await this.stop();
+
+    const host = NetUtils.resolveBindAddress(bindAddr);
 
     return new Promise((resolve, reject) => {
       const tryStart = (attempt = 1) => {
@@ -296,14 +356,16 @@ class CallbackServer {
               setTimeout(() => tryStart(attempt + 1), 1000);
             } else {
               console.error('Callback server error:', err.message);
+              this.server = null;
               reject(err);
             }
           });
 
-          this.server.listen(port, '0.0.0.0', () => {
-            console.log(`HTTPS callback server listening on port ${port}`);
+          this.server.listen(port, host, () => {
+            console.log(`HTTPS callback server listening on ${host}:${port}`);
             this.port = port;
-            resolve({ success: true, port });
+            this.scheduleAutoStop(ttlMs);
+            resolve({ success: true, port, host });
           });
         } catch (error) {
           reject(error);
@@ -314,7 +376,28 @@ class CallbackServer {
     });
   }
 
+  scheduleAutoStop(ttlMs) {
+    this.clearAutoStop();
+    this.ttlTimer = setTimeout(() => {
+      this.ttlTimer = null;
+      console.log('[DaikinCloud] Authorization window expired, stopping callback server');
+      this.stop().catch(() => {});
+    }, ttlMs);
+    if (typeof this.ttlTimer.unref === 'function') {
+      this.ttlTimer.unref();
+    }
+  }
+
+  clearAutoStop() {
+    if (this.ttlTimer) {
+      clearTimeout(this.ttlTimer);
+      this.ttlTimer = null;
+    }
+  }
+
   async stop() {
+    this.clearAutoStop();
+
     return new Promise((resolve) => {
       if (!this.server) {
         resolve({ success: true });
@@ -409,7 +492,7 @@ const HtmlTemplates = {
     <div class="container">
         <div class="icon">${icon}</div>
         <h1>${success ? 'Success!' : 'Error'}</h1>
-        <p class="message">${message}</p>
+        <p class="message">${escapeHtml(message)}</p>
         <p class="hint">You can close this window and return to Homebridge.</p>
     </div>
 </body>
@@ -428,10 +511,25 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     this.pendingAuth = null;
     this.authResult = null;
     this.callbackServer = new CallbackServer();
+    this.devicesCache = new Map();
 
     this.applyTransportFromConfig();
     this.registerHandlers();
     this.ready();
+  }
+
+  getStoragePath() {
+    return this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '';
+  }
+
+  /**
+   * Read the DaikinCloud platform block from the Homebridge config.json.
+   * Throws if the config file cannot be read or parsed.
+   */
+  readPlatformConfig() {
+    const configPath = this.homebridgeConfigPath || resolve(this.getStoragePath(), 'config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    return (config.platforms || []).find((p) => p.platform === 'DaikinCloud') || null;
   }
 
   /**
@@ -441,35 +539,89 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
    */
   applyTransportFromConfig() {
     try {
-      const configPath = resolve(this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '', 'config.json');
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      const platform = (config.platforms || []).find((p) => p.platform === 'DaikinCloud');
+      const platform = this.readPlatformConfig();
       configureHttpTransport(platform && platform.httpTransport);
     } catch (e) {
       console.log('[DaikinCloud] Could not read httpTransport from config, using default:', e.message);
     }
   }
 
+  /**
+   * Resolve the callback server bind address from the request payload, then the
+   * saved platform config, falling back to DEFAULT_CALLBACK_BIND_ADDR when the
+   * value is missing or not an IPv4/IPv6 literal.
+   */
+  getCallbackBindAddress(payload) {
+    let configured = payload?.oidcCallbackServerBindAddr;
+    if (configured === undefined || configured === null || configured === '') {
+      try {
+        configured = this.readPlatformConfig()?.oidcCallbackServerBindAddr;
+      } catch (e) {
+        configured = undefined;
+      }
+    }
+
+    const bindAddr = NetUtils.resolveBindAddress(configured);
+    if (configured && bindAddr !== String(configured).trim()) {
+      console.warn(`[DaikinCloud] Invalid callback bind address "${configured}", using ${bindAddr}`);
+    }
+    return bindAddr;
+  }
+
   getTokenFilePath() {
-    return resolve(this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '', '.daikin-controller-cloud-tokenset');
+    return resolve(this.getStoragePath(), TOKEN_FILES.developer_portal);
   }
 
   getMobileTokenFilePath() {
-    return resolve(this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '', '.daikin-mobile-tokenset');
+    return resolve(this.getStoragePath(), TOKEN_FILES.mobile_app);
   }
 
   getCertDir() {
-    return resolve(this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || '', 'daikin-cloud-certs');
+    return resolve(this.getStoragePath(), 'daikin-cloud-certs');
+  }
+
+  getRateLimitFilePath() {
+    return resolve(this.getStoragePath(), RATE_LIMIT_STATUS_FILE);
+  }
+
+  /**
+   * Active token set and the auth mode it belongs to (mobile takes precedence).
+   */
+  getActiveToken() {
+    const mobileTokenSet = TokenManager.load(this.getMobileTokenFilePath());
+    if (mobileTokenSet?.access_token) {
+      return { tokenSet: mobileTokenSet, mode: 'mobile_app' };
+    }
+    return { tokenSet: TokenManager.load(this.getTokenFilePath()), mode: 'developer_portal' };
   }
 
   getActiveTokenSet() {
-    // Check mobile token first (takes precedence)
-    const mobileTokenSet = TokenManager.load(this.getMobileTokenFilePath());
-    if (mobileTokenSet?.access_token) {
-      return mobileTokenSet;
+    return this.getActiveToken().tokenSet;
+  }
+
+  /**
+   * Token set for the requested mode, falling back to the active token set.
+   */
+  resolveToken(mode) {
+    let tokenSet = null;
+    if (mode === 'mobile_app') {
+      tokenSet = TokenManager.load(this.getMobileTokenFilePath());
+    } else if (mode === 'developer_portal') {
+      tokenSet = TokenManager.load(this.getTokenFilePath());
     }
-    // Fall back to developer portal token
-    return TokenManager.load(this.getTokenFilePath());
+
+    if (tokenSet?.access_token) {
+      return { tokenSet, mode };
+    }
+    return this.getActiveToken();
+  }
+
+  invalidateDevicesCache() {
+    this.devicesCache.clear();
+  }
+
+  isPendingAuthExpired() {
+    return !!this.pendingAuth && Date.now() - this.pendingAuth.createdAt > PENDING_AUTH_TTL_MS;
   }
 
   registerHandlers() {
@@ -562,16 +714,26 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
       throw new Error('Callback Server Address is required');
     }
 
-    const port = parseInt(callbackServerPort || '8582', 10);
+    const bindAddr = this.getCallbackBindAddress(payload);
+    if (NetUtils.isLoopback(bindAddr) && !NetUtils.isLoopback(callbackServerExternalAddress)) {
+      // The browser is redirected to the external address, which can never reach a loopback-only server
+      throw new Error(
+        `The callback server bind address is ${bindAddr} (this machine only), but the callback address is ` +
+        `${callbackServerExternalAddress}, so Daikin's redirect could never reach it. Set "Callback Server Bind Address" ` +
+        'to 0.0.0.0 (or this host\'s LAN IP) in Settings > Network, then start authentication again.',
+      );
+    }
+
+    const port = parseInt(callbackServerPort || String(DEFAULT_CALLBACK_PORT), 10);
     const redirectUri = `https://${callbackServerExternalAddress}:${port}`;
     const state = crypto.randomBytes(32).toString('hex');
 
     this.pendingAuth = { state, clientId, clientSecret, redirectUri, port, createdAt: Date.now() };
     this.authResult = null;
+    this.invalidateDevicesCache();
 
     // Use static method from compiled src/api
     const authUrl = DaikinOAuth.buildAuthUrlStatic(clientId, redirectUri, state);
-    console.log('[DaikinCloud] Generated auth URL:', authUrl);
     console.log('[DaikinCloud] Redirect URI:', redirectUri);
 
     // Try to start callback server for automatic code capture
@@ -579,12 +741,13 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     let callbackServerError = null;
 
     try {
-      await this.callbackServer.start(
+      await this.callbackServer.start({
         port,
-        callbackServerExternalAddress,
-        this.getCertDir(),
-        this.handleHttpsCallback.bind(this),
-      );
+        hostname: callbackServerExternalAddress,
+        bindAddr,
+        certDir: this.getCertDir(),
+        requestHandler: this.handleHttpsCallback.bind(this),
+      });
       callbackServerRunning = true;
       console.log('[DaikinCloud] Callback server started successfully');
     } catch (error) {
@@ -609,12 +772,33 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
   // -------------------------------------------------------------------------
 
   handleHttpsCallback(req, res) {
-    const url = new URL(req.url, `https://${req.headers.host}`);
+    let url;
+    try {
+      url = new URL(req.url, 'https://localhost');
+    } catch (e) {
+      this.sendCallbackResponse(res, false, 'Invalid request', 400);
+      return;
+    }
 
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
     const error = url.searchParams.get('error');
     const errorDescription = url.searchParams.get('error_description');
+
+    // Requests that do not carry the pending state are not ours: reject them
+    // without touching authResult so they cannot disrupt a running login.
+    if (!this.pendingAuth || !state || state !== this.pendingAuth.state) {
+      this.sendCallbackResponse(res, false, 'Invalid or missing state parameter', 400);
+      return;
+    }
+
+    if (this.isPendingAuthExpired()) {
+      this.pendingAuth = null;
+      this.authResult = { success: false, error: 'Authorization request expired. Please try again.' };
+      this.sendCallbackResponse(res, false, 'Authorization request expired. Please start again from Homebridge.', 400);
+      this.callbackServer.stop().catch(() => {});
+      return;
+    }
 
     if (error) {
       this.authResult = { success: false, error: errorDescription || error };
@@ -622,24 +806,19 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
       return;
     }
 
-    if (!code || !state) {
-      this.authResult = { success: false, error: 'Missing code or state parameter' };
-      this.sendCallbackResponse(res, false, 'Missing authorization code');
-      return;
-    }
-
-    if (!this.pendingAuth || state !== this.pendingAuth.state) {
-      this.authResult = { success: false, error: 'Invalid state parameter' };
-      this.sendCallbackResponse(res, false, 'Invalid state parameter');
+    if (!code) {
+      this.authResult = { success: false, error: 'Missing code parameter' };
+      this.sendCallbackResponse(res, false, 'Missing authorization code', 400);
       return;
     }
 
     const { clientId, clientSecret, redirectUri } = this.pendingAuth;
 
     // Use static method from compiled src/api
-    DaikinOAuth.exchangeCodeStatic(code, clientId, clientSecret, redirectUri)
+    return DaikinOAuth.exchangeCodeStatic(code, clientId, clientSecret, redirectUri)
       .then((tokenSet) => {
         TokenManager.save(this.getTokenFilePath(), tokenSet);
+        this.invalidateDevicesCache();
         this.authResult = {
           success: true,
           message: 'Authentication successful!',
@@ -655,8 +834,8 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
       });
   }
 
-  sendCallbackResponse(res, success, message) {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  sendCallbackResponse(res, success, message, statusCode = 200) {
+    res.writeHead(statusCode, CALLBACK_RESPONSE_HEADERS);
     res.end(HtmlTemplates.callbackResponse(success, message));
   }
 
@@ -683,10 +862,10 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     if (!this.pendingAuth) {
       throw new Error('No pending authorization. Please start the auth flow again.');
     }
-    if (state && state !== this.pendingAuth.state) {
-      throw new Error('Invalid state parameter. Please try again.');
+    if (!state || state !== this.pendingAuth.state) {
+      throw new Error('Invalid or missing state parameter. Please paste the full callback URL or start again.');
     }
-    if (Date.now() - this.pendingAuth.createdAt > 10 * 60 * 1000) {
+    if (this.isPendingAuthExpired()) {
       this.pendingAuth = null;
       throw new Error('Authorization request expired. Please try again.');
     }
@@ -697,6 +876,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
       // Use static method from compiled src/api
       const tokenSet = await DaikinOAuth.exchangeCodeStatic(code, clientId, clientSecret, redirectUri);
       TokenManager.save(this.getTokenFilePath(), tokenSet);
+      this.invalidateDevicesCache();
       this.pendingAuth = null;
 
       await this.callbackServer.stop();
@@ -759,6 +939,7 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
     }
 
     const tokenFilePath = this.getMobileTokenFilePath();
+    this.invalidateDevicesCache();
 
     try {
       // Create a temporary mobile OAuth client
@@ -806,6 +987,8 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
   // -------------------------------------------------------------------------
 
   async handleRevokeAuth(payload) {
+    this.invalidateDevicesCache();
+
     const devPortalTokenSet = TokenManager.load(this.getTokenFilePath());
     const mobileTokenSet = TokenManager.load(this.getMobileTokenFilePath());
 
@@ -859,25 +1042,20 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
   // -------------------------------------------------------------------------
 
   async handleListDevices(payload) {
-    const mode = payload?.mode;
-
-    // Get token based on mode parameter, or fall back to active token
-    let tokenSet;
-    if (mode === 'mobile_app') {
-      tokenSet = TokenManager.load(this.getMobileTokenFilePath());
-    } else if (mode === 'developer_portal') {
-      tokenSet = TokenManager.load(this.getTokenFilePath());
-    } else {
-      tokenSet = this.getActiveTokenSet();
-    }
-
-    // If the requested mode's token doesn't exist or is invalid, fall back to active token
-    if (!tokenSet?.access_token) {
-      tokenSet = this.getActiveTokenSet();
-    }
+    // Token for the requested mode, or fall back to the active token
+    const { tokenSet, mode } = this.resolveToken(payload?.mode);
 
     if (!tokenSet?.access_token) {
       return { success: false, devices: [], message: 'Not authenticated. Please authenticate first.' };
+    }
+
+    // Reuse a recent result to spare the daily API quota (explicit refresh bypasses it)
+    if (payload?.refresh) {
+      this.devicesCache.delete(mode);
+    }
+    const cached = this.devicesCache.get(mode);
+    if (cached && Date.now() - cached.fetchedAt < DEVICES_CACHE_TTL_MS) {
+      return { ...cached.result, cached: true, fetchedAt: new Date(cached.fetchedAt).toISOString() };
     }
 
     try {
@@ -888,7 +1066,10 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
         ? gatewayDevices.map(device => DeviceExtractor.extractAll(device))
         : [];
 
-      return { success: true, devices, message: `Found ${devices.length} device(s).` };
+      const response = { success: true, devices, message: `Found ${devices.length} device(s).` };
+      const fetchedAt = Date.now();
+      this.devicesCache.set(mode, { result: response, fetchedAt });
+      return { ...response, cached: false, fetchedAt: new Date(fetchedAt).toISOString() };
     } catch (error) {
       return { success: false, devices: [], message: `Failed to fetch devices: ${error.message}`, error: error.message };
     }
@@ -898,62 +1079,61 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
   // Get Rate Limit Handler
   // -------------------------------------------------------------------------
 
-  async handleGetRateLimit(payload) {
-    const mode = payload?.mode;
-
-    // Get token based on mode parameter, or fall back to active token
-    let tokenSet;
-    if (mode === 'mobile_app') {
-      tokenSet = TokenManager.load(this.getMobileTokenFilePath());
-    } else if (mode === 'developer_portal') {
-      tokenSet = TokenManager.load(this.getTokenFilePath());
-    } else {
-      tokenSet = this.getActiveTokenSet();
-    }
-
-    if (!tokenSet?.access_token) {
-      return { success: false, message: 'Not authenticated' };
-    }
-
+  /**
+   * Report the rate limit status the running plugin records after each API
+   * response, instead of spending an API call just to read the headers.
+   */
+  async handleGetRateLimit() {
+    let status;
     try {
-      // Use static method from compiled src/api
-      const result = await DaikinApi.requestStatic('/v1/gateway-devices', tokenSet.access_token);
-      return { success: true, rateLimit: result.rateLimit };
+      status = JSON.parse(fs.readFileSync(this.getRateLimitFilePath(), 'utf8'));
     } catch (error) {
-      return { success: false, message: error.message };
+      if (error.code === 'ENOENT') {
+        return {
+          success: false,
+          noData: true,
+          message: 'No data yet — the plugin records this after its next API call.',
+        };
+      }
+      return { success: false, message: `Could not read rate limit status: ${error.message}` };
     }
+
+    if (!status || typeof status !== 'object') {
+      return { success: false, message: 'Could not read rate limit status: invalid file contents' };
+    }
+
+    const { limitMinute, remainingMinute, limitDay, remainingDay, mode, updatedAt } = status;
+    const updatedAtMs = typeof updatedAt === 'number' ? updatedAt : Date.parse(updatedAt);
+    const hasTime = Number.isFinite(updatedAtMs);
+
+    return {
+      success: true,
+      rateLimit: { limitMinute, remainingMinute, limitDay, remainingDay },
+      mode: mode || null,
+      updatedAt: hasTime ? new Date(updatedAtMs).toISOString() : null,
+      ageMs: hasTime ? Math.max(0, Date.now() - updatedAtMs) : null,
+    };
   }
 
   // -------------------------------------------------------------------------
   // Validate Config Handler
   // -------------------------------------------------------------------------
 
+  /**
+   * Validate the Developer Portal wizard fields with the plugin's own rules
+   * (ConfigManager), so the UI and the plugin can never disagree.
+   * Response: { valid, errors, warnings }.
+   */
   async handleValidateConfig(payload) {
-    const errors = [];
-    const warnings = [];
-    const { clientId, clientSecret, callbackServerExternalAddress, callbackServerPort } = payload;
-
-    if (!clientId) {
-      errors.push('Client ID is required. Get it from the Daikin Developer Portal.');
-    }
-    if (!clientSecret) {
-      errors.push('Client Secret is required. Get it from the Daikin Developer Portal.');
-    }
-
-    if (!callbackServerExternalAddress) {
-      errors.push('Callback Server External Address is required.');
-    } else if (callbackServerExternalAddress === 'localhost' || callbackServerExternalAddress === '127.0.0.1') {
-      errors.push('Callback address cannot be localhost. Use your external IP or domain.');
-    }
-
-    const port = parseInt(callbackServerPort || '8582', 10);
-    if (isNaN(port) || port < 1 || port > 65535) {
-      errors.push('Invalid port number. Must be between 1 and 65535.');
-    } else if (port < 1024) {
-      warnings.push('Using a privileged port (< 1024) may require root permissions.');
-    }
-
-    return { valid: errors.length === 0, errors, warnings };
+    const { clientId, clientSecret, callbackServerExternalAddress, callbackServerPort } = payload || {};
+    return validateConfig({
+      platform: 'DaikinCloud',
+      authMode: 'developer_portal',
+      clientId,
+      clientSecret,
+      callbackServerExternalAddress,
+      callbackServerPort,
+    });
   }
 }
 
@@ -961,4 +1141,20 @@ class DaikinCloudUiServer extends HomebridgePluginUiServer {
 // Initialize Server
 // =============================================================================
 
-(() => new DaikinCloudUiServer())();
+module.exports = {
+  DaikinCloudUiServer,
+  CallbackServer,
+  SSLUtils,
+  NetUtils,
+  TokenManager,
+  DeviceExtractor,
+  HtmlTemplates,
+  escapeHtml,
+  DEVICES_CACHE_TTL_MS,
+};
+
+// Homebridge UI forks this file as a child process; only start the server then,
+// so tests can require it without side effects.
+if (require.main === module) {
+  (() => new DaikinCloudUiServer())();
+}

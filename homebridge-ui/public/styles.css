@@ -105,16 +105,86 @@
     color: var(--bs-danger-text-emphasis);
 }
 
+/* Device header row: power, name, features, status */
+.device-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+}
+
+.device-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.device-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.device-header .device-status {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
 /* Device meta row */
 .device-meta {
+    display: flex;
+    flex-wrap: wrap;
     font-size: 0.75rem;
     color: var(--bs-tertiary-color);
     opacity: 0.55;
 }
 
+.device-meta-item {
+    white-space: nowrap;
+}
+
 .device-meta-sep {
     margin: 0 0.4rem;
     opacity: 0.4;
+}
+
+.device-id {
+    font-family: var(--bs-font-monospace);
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+}
+
+.min-w-0 {
+    min-width: 0;
+}
+
+/* Header status (token expiry + badge) */
+.mp-header {
+    flex-wrap: wrap;
+}
+
+.header-status {
+    white-space: nowrap;
+}
+
+/* Tabs: keep on one row, scroll horizontally if they still don't fit */
+.app-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.app-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.app-tabs .nav-link {
+    white-space: nowrap;
+}
+
+/* Lists inside a card body: align with the card's own padding */
+.card-body > .list-group-flush > .list-group-item {
+    padding-left: 0;
+    padding-right: 0;
 }
 
 /* Device Toggle Labels */
@@ -237,4 +307,43 @@
 
 #token-expires.text-danger {
     color: var(--bs-danger) !important;
+}
+
+/* Mobile */
+@media (max-width: 575.98px) {
+    .container-fluid {
+        padding: 0.75rem !important;
+    }
+
+    .mp-header-title {
+        font-size: 1.25rem;
+    }
+
+    /* Status drops to its own line under the title */
+    .header-status {
+        width: 100%;
+        margin-left: 0 !important;
+        justify-content: space-between;
+    }
+
+    .app-tabs .nav-link {
+        padding: 0.375rem 0.625rem;
+        font-size: 0.875rem;
+    }
+
+    /* Name takes the row, features move under it */
+    .device-name {
+        flex: 1 1 0;
+    }
+
+    .device-features {
+        order: 1;
+        width: 100%;
+    }
+}
+
+@media (max-width: 359.98px) {
+    .app-tabs .nav-link {
+        padding: 0.375rem 0.4rem;
+    }
 }
