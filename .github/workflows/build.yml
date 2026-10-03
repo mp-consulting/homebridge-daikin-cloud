@@ -102,16 +102,17 @@ jobs:
       - name: Install production dependencies
         run: npm ci --omit=dev --ignore-scripts
 
-      - name: Load plugin and UI server modules
+      - name: Load plugin
         run: |
           node -e "
             const plugin = require('./dist/src/index.js');
             const registered = [];
             plugin({ registerPlatform: (...args) => registered.push(args) });
             if (registered.length !== 1) throw new Error('platform was not registered');
-            for (const m of ['api/index', 'api/daikin-oauth', 'api/daikin-mobile-oauth', 'api/http-transport', 'api/token-storage', 'config/config-manager', 'constants']) {
-              require('./dist/src/' + m);
-            }
-            require('@homebridge/plugin-ui-utils');
-            console.log('Loaded on Node ' + process.version);
+            console.log('Plugin loaded on Node ' + process.version);
           "
+
+      # Forks homebridge-ui/server.js as homebridge-config-ui-x does and makes a
+      # request; catches ESM-only dependencies that cannot be require()d here.
+      - name: Start UI server
+        run: npm run smoke:ui

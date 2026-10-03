@@ -88,9 +88,9 @@ export default tseslint.config(
       '@typescript-eslint/no-require-imports': 'off',
     },
   },
-  // homebridge-ui server globals
+  // homebridge-ui server (and its smoke test) globals
   {
-    files: ['homebridge-ui/server.js'],
+    files: ['homebridge-ui/server.js', 'scripts/smoke-ui-server.js'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: {

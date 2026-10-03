@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-10-03
+
+### Fixed
+
+- **Settings UI failed to start on Node 22.10/22.11 and Node 20.5-20.18**: `@homebridge/plugin-ui-utils` is ESM-only and was loaded with `require()`, which those versions do not support for ES modules. The UI server now falls back to `import()`. (Present since the dependency moved to v2; the plugin itself was not affected.)
+
+### Tests
+
+- CI now starts the settings UI server on the minimum supported Node versions and makes a request (`npm run smoke:ui`).
+
 ## [1.6.0] - 2026-10-03
 
 ### Security

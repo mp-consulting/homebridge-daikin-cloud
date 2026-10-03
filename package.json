@@ -25,6 +25,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "smoke:ui": "node scripts/smoke-ui-server.js",
     "schema:check": "tsx scripts/check-schema-drift.ts",
     "watch": "npm run build && npm link && nodemon",
     "copy:ui-kit": "mkdir -p homebridge-ui/public/lib && cp node_modules/@mp-consulting/homebridge-ui-kit/dist/kit.css homebridge-ui/public/lib/ && cp node_modules/@mp-consulting/homebridge-ui-kit/dist/kit.js homebridge-ui/public/lib/",
