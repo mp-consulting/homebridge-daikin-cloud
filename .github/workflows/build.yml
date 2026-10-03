@@ -32,8 +32,86 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Type-checks src/ and test/ (vitest strips types without checking them)
+      - name: Type check
+        run: npm run typecheck
+
       - name: Build
         run: npm run build
 
       - name: Test
         run: npm test
+
+  coverage:
+    name: Coverage (Node 24.x)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # test/unit/ui loads homebridge-ui/server.js, which requires compiled code from dist/
+      - name: Build
+        run: npm run build
+
+      # vitest.config.mts holds the thresholds; the run fails if coverage drops below them.
+      - name: Test with coverage
+        run: npm run test:coverage
+
+  min-node:
+    # The dev toolchain (vitest, vite, eslint) needs newer Node than the plugin's
+    # engines floor, so the suite cannot run on these versions. Instead, build on a
+    # current Node and smoke-load the compiled plugin with production dependencies
+    # only on the exact minimum versions from package.json "engines".
+    name: Runtime smoke (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20.5.0, 22.10.0]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js (build)
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install production dependencies
+        run: npm ci --omit=dev --ignore-scripts
+
+      - name: Load plugin and UI server modules
+        run: |
+          node -e "
+            const plugin = require('./dist/src/index.js');
+            const registered = [];
+            plugin({ registerPlatform: (...args) => registered.push(args) });
+            if (registered.length !== 1) throw new Error('platform was not registered');
+            for (const m of ['api/index', 'api/daikin-oauth', 'api/daikin-mobile-oauth', 'api/http-transport', 'api/token-storage', 'config/config-manager', 'constants']) {
+              require('./dist/src/' + m);
+            }
+            require('@homebridge/plugin-ui-utils');
+            console.log('Loaded on Node ' + process.version);
+          "
