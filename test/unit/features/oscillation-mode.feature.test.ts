@@ -2,25 +2,15 @@ import { vi } from 'vitest';
 import { OscillationModeFeature } from '../../../src/features/modes';
 import type { DaikinApi } from '../../../src/api';
 import { DaikinCloudDevice } from '../../../src/api';
-import { MockPlatformConfig } from '../../mocks';
 import type { DaikinCloudAccessoryContext } from '../../../src/platform';
-import { DaikinCloudPlatform } from '../../../src/platform';
 import { PlatformAccessory } from 'homebridge/lib/platformAccessory';
-import { Service, uuid } from 'hap-nodejs';
 import { dx4Airco } from '../../fixtures/dx4-airco';
 import { dx23Airco } from '../../fixtures/dx23-airco';
+import { createTestPlatform, hap, useFakeTimersPerTest } from '../../helpers/platform';
 
-import { HomebridgeAPI } from 'homebridge/lib/api.js';
-import { Logger } from 'homebridge/lib/logger.js';
+const { Service, uuid } = hap;
 
-beforeEach(() => {
-  vi.useFakeTimers();
-});
-
-afterEach(() => {
-  vi.clearAllTimers();
-  vi.useRealTimers();
-});
+useFakeTimersPerTest();
 
 const buildFeature = (
   fixture: unknown,
@@ -34,10 +24,7 @@ const buildFeature = (
   const accessory = new PlatformAccessory<DaikinCloudAccessoryContext>('TEST', uuid.generate(device.getId()));
   accessory.context.device = device;
 
-  const config = new MockPlatformConfig(false);
-  (config as any).showOscillationSwitch = showOscillationSwitch;
-
-  const platform = new DaikinCloudPlatform(new Logger(), config, new HomebridgeAPI());
+  const platform = createTestPlatform({ showOscillationSwitch });
   const feature = new OscillationModeFeature(platform, accessory, 'climateControl');
   return { feature, accessory, setDataMock };
 };
@@ -89,10 +76,15 @@ describe('OscillationModeFeature — get/set', () => {
     );
   });
 
-  it('turns oscillation off by writing stop to both axes (dx4)', async () => {
-    const { feature, setDataMock } = buildFeature(dx4Airco, true);
+  it('turns oscillation off by writing stop to both axes (dx4 swinging)', async () => {
+    const fixture = JSON.parse(JSON.stringify(dx4Airco));
+    const heating = fixture.managementPoints[1].fanControl.value.operationModes.heating.fanDirection;
+    heating.horizontal.currentMode.value = 'swing';
+    heating.vertical.currentMode.value = 'swing';
+    const { feature, setDataMock } = buildFeature(fixture, true);
     setDataMock.mockClear();
 
+    await expect(feature.handleGet()).resolves.toBe(true);
     await feature.handleSet(false);
 
     expect(setDataMock).toHaveBeenCalledWith(
@@ -102,6 +94,30 @@ describe('OscillationModeFeature — get/set', () => {
     expect(setDataMock).toHaveBeenCalledWith(
       'climateControl', 'fanControl',
       '/operationModes/heating/fanDirection/vertical/currentMode', 'stop',
+    );
+  });
+
+  it('skips the write when oscillation is already off (dx4 default)', async () => {
+    const { feature, setDataMock } = buildFeature(dx4Airco, true);
+    setDataMock.mockClear();
+
+    await feature.handleSet(false);
+
+    expect(setDataMock).not.toHaveBeenCalled();
+  });
+
+  it('only writes the axis that differs from the requested state', async () => {
+    const fixture = JSON.parse(JSON.stringify(dx4Airco));
+    fixture.managementPoints[1].fanControl.value.operationModes.heating.fanDirection.vertical.currentMode.value = 'swing';
+    const { feature, setDataMock } = buildFeature(fixture, true);
+    setDataMock.mockClear();
+
+    await feature.handleSet(true);
+
+    expect(setDataMock).toHaveBeenCalledTimes(1);
+    expect(setDataMock).toHaveBeenCalledWith(
+      'climateControl', 'fanControl',
+      '/operationModes/heating/fanDirection/horizontal/currentMode', 'swing',
     );
   });
 });

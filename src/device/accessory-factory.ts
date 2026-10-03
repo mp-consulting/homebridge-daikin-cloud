@@ -72,14 +72,4 @@ export class AccessoryFactory {
 
     return { accessory, profile };
   }
-
-  /**
-     * Get the profile for a device without creating an accessory.
-     * Useful for logging and diagnostics.
-     */
-  getDeviceProfile(
-    platformAccessory: PlatformAccessory<DaikinCloudAccessoryContext>,
-  ): DeviceProfile {
-    return matchDeviceProfile(platformAccessory.context.device);
-  }
 }

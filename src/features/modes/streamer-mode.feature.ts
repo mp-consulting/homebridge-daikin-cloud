@@ -4,45 +4,17 @@
  * Enables/disables the streamer mode on the device.
  */
 
-import type { CharacteristicValue } from 'homebridge';
-import { BaseFeature } from '../base-feature';
+import { OnOffDataPointFeature } from '../on-off-data-point-feature';
 import { DaikinStreamerModes } from '../../types';
 
-export class StreamerModeFeature extends BaseFeature {
-  get featureName(): string {
-    return 'Streamer mode';
-  }
-
-  get serviceSubtype(): string {
-    return 'streamer_mode';
-  }
-
-  get configKey(): string {
-    return 'showStreamerMode';
-  }
-
-  isSupported(): boolean {
-    // device.getData() returns { value: undefined } when the characteristic is missing,
-    // so Boolean(data) is always true. Check the inner value to detect real support.
-    const streamerMode = this.getData('streamerMode') as { value?: unknown } | undefined;
-    const supported = streamerMode?.value !== undefined;
-    this.log.debug(`[${this.name}] hasStreamerModeFeature: ${supported}`);
-    return supported;
-  }
-
-  async handleGet(): Promise<CharacteristicValue> {
-    const data = this.getData('streamerMode') as { value: string } | undefined;
-    const isOn = data?.value === DaikinStreamerModes.ON;
-    this.log.debug(
-      `[${this.name}] GET StreamerMode: ${isOn}, ` +
-            `last update: ${this.accessory.context.device.getLastUpdated()}`,
-    );
-    return isOn;
-  }
-
-  async handleSet(value: CharacteristicValue): Promise<void> {
-    this.log.debug(`[${this.name}] SET StreamerMode to: ${value}`);
-    const mode = value ? DaikinStreamerModes.ON : DaikinStreamerModes.OFF;
-    await this.setData('streamerMode', mode);
-  }
+export class StreamerModeFeature extends OnOffDataPointFeature {
+  protected readonly spec = {
+    name: 'Streamer mode',
+    subtype: 'streamer_mode',
+    configKey: 'showStreamerMode',
+    dataPoint: 'streamerMode',
+    onValue: DaikinStreamerModes.ON,
+    offValue: DaikinStreamerModes.OFF,
+    capability: 'hasStreamerMode',
+  } as const;
 }

@@ -7,10 +7,32 @@
 
 import type { CharacteristicValue, PlatformAccessory, Service, Logger } from 'homebridge';
 import type { DaikinCloudAccessoryContext, DaikinCloudPlatform } from '../platform';
+import type { DaikinCloudDevice, DeviceDataPoint } from '../api';
+import type { DeviceCapabilities } from '../types';
+import type { FeatureConfigKey } from '../config/config-manager';
+import { DeviceCapabilityDetector } from '../device/capability-detector';
+import { withHapWrite } from '../utils/hap-write';
+import { toMessage } from '../utils/errors';
+
+/** Management point types that host feature switches, in legacy-ownership order. */
+const FEATURE_HOST_TYPES = ['climateControl', 'domesticHotWaterTank'];
 
 /**
  * Abstract base class for feature modules.
  * Features are optional capabilities that can be enabled/disabled via switches.
+ *
+ * Switch services are identified by (Service.Switch, subtype), never by display
+ * name, and the subtype is namespaced per management point
+ * (`<managementPointId>:<serviceSubtype>`), so features of different management
+ * points (e.g. the Altherma climateControl and domesticHotWaterTank, which both
+ * know a "Powerful mode") can never find or remove each other's switches.
+ *
+ * Backwards compatibility: accessories cached before namespacing carry switches
+ * with the bare `serviceSubtype`. HomeKit identifies a service by its type and
+ * subtype, so renaming the subtype would show up as a brand-new switch and break
+ * existing automations/scenes. Instead the legacy switch is adopted as-is by the
+ * single management point that owns it (see ownsLegacyService), and only new
+ * switches get the namespaced subtype.
  */
 export abstract class BaseFeature {
   protected readonly platform: DaikinCloudPlatform;
@@ -20,167 +42,199 @@ export abstract class BaseFeature {
   protected readonly name: string;
 
   protected switchService?: Service;
+  private detectedCapabilities?: DeviceCapabilities;
 
   constructor(
     platform: DaikinCloudPlatform,
     accessory: PlatformAccessory<DaikinCloudAccessoryContext>,
     managementPointId: string,
+    capabilities?: DeviceCapabilities,
   ) {
     this.platform = platform;
     this.accessory = accessory;
     this.managementPointId = managementPointId;
     this.log = platform.log;
     this.name = accessory.displayName;
+    this.detectedCapabilities = capabilities;
   }
 
-    /**
-     * The display name for this feature (used for the switch service).
-     */
-    abstract get featureName(): string;
+  /**
+   * The display name for this feature (used for the switch service).
+   */
+  abstract get featureName(): string;
 
-    /**
-     * The unique identifier for this feature's switch service.
-     */
-    abstract get serviceSubtype(): string;
+  /**
+   * The (un-namespaced) identifier for this feature's switch service.
+   */
+  abstract get serviceSubtype(): string;
 
-    /**
-     * The config key for this feature (e.g., 'showPowerfulMode').
-     * Used to enable/disable individual features.
-     */
-    abstract get configKey(): string;
+  /**
+   * The config key for this feature (e.g., 'showPowerfulMode'), one of
+   * FEATURE_CONFIG_KEYS. Used to enable/disable individual features.
+   */
+  abstract get configKey(): FeatureConfigKey;
 
-    /**
-     * Check if this feature is supported by the device.
-     */
-    abstract isSupported(): boolean;
+  /**
+   * Check if this feature is supported by the device.
+   */
+  abstract isSupported(): boolean;
 
-    /**
-     * Get the current state of the feature.
-     */
-    abstract handleGet(): Promise<CharacteristicValue>;
+  /**
+   * Get the current state of the feature.
+   */
+  abstract handleGet(): Promise<CharacteristicValue>;
 
-    /**
-     * Set the state of the feature.
-     */
-    abstract handleSet(value: CharacteristicValue): Promise<void>;
+  /**
+   * Set the state of the feature.
+   */
+  abstract handleSet(value: CharacteristicValue): Promise<void>;
 
-    /**
-     * Check if this feature is enabled in config.
-     * Supports both legacy `showExtraFeatures` (all features) and individual feature toggles.
-     */
-    protected isEnabledInConfig(): boolean {
-      const config = this.platform.config;
+  /** Subtype of switches created by this feature: namespaced per management point. */
+  get namespacedSubtype(): string {
+    return `${this.managementPointId}:${this.serviceSubtype}`;
+  }
 
-      // Check individual feature config first (e.g., showPowerfulMode)
-      if (this.configKey in config) {
-        return config[this.configKey] === true;
-      }
-
-      // Fall back to legacy showExtraFeatures (enables all features)
-      return config.showExtraFeatures === true;
+  /**
+   * Capabilities detected once for this management point (passed in by the
+   * FeatureManager; detected lazily when the feature is constructed on its own).
+   */
+  protected get capabilities(): DeviceCapabilities {
+    if (!this.detectedCapabilities) {
+      this.detectedCapabilities = new DeviceCapabilityDetector(this.device, this.managementPointId).getCapabilities();
     }
+    return this.detectedCapabilities;
+  }
 
-    /**
-     * Set up the feature. Creates or removes the switch service based on support and config.
-     */
-    setup(): void {
-      if (this.isSupported() && this.isEnabledInConfig()) {
-        this.log.debug(`[${this.name}] Device has ${this.featureName}, add Switch Service`);
-        this.createOrUpdateSwitchService();
-      } else {
-        this.removeServiceIfExists();
-      }
+  protected get device(): DaikinCloudDevice {
+    return this.accessory.context.device;
+  }
+
+  /**
+   * Check if this feature is enabled in config: the per-feature toggle, with the
+   * legacy `showExtraFeatures` fallback for extra features (see ConfigManager).
+   */
+  protected isEnabledInConfig(): boolean {
+    return this.platform.configManager.isFeatureEnabled(this.configKey);
+  }
+
+  /**
+   * Set up the feature. Creates or removes the switch service based on support and config.
+   */
+  setup(): void {
+    if (this.isSupported() && this.isEnabledInConfig()) {
+      this.log.debug(`[${this.name}] Device has ${this.featureName}, add Switch Service`);
+      this.createOrUpdateSwitchService();
+    } else {
+      this.removeServiceIfExists();
     }
+  }
 
-    /**
-     * Create or update the switch service for this feature.
-     */
-    protected createOrUpdateSwitchService(): void {
-      // Get existing service or create new one
-      this.switchService = this.accessory.getService(this.featureName) ||
-            this.accessory.addService(
-              this.platform.Service.Switch,
-              this.featureName,
-              this.serviceSubtype,
-            );
+  /**
+   * Create or update the switch service for this feature.
+   */
+  protected createOrUpdateSwitchService(): void {
+    const { Characteristic } = this.platform;
+    this.switchService = this.findExistingServices()[0] ||
+      this.accessory.addService(this.platform.Service.Switch, this.featureName, this.namespacedSubtype);
 
-      // Set the name
-      this.switchService.setCharacteristic(
-        this.platform.Characteristic.Name,
-        this.featureName,
-      );
+    this.switchService.setCharacteristic(Characteristic.Name, this.featureName);
+    this.switchService.addOptionalCharacteristic(Characteristic.ConfiguredName);
+    this.switchService.setCharacteristic(Characteristic.ConfiguredName, this.featureName);
 
-      // Add and set configured name
-      this.switchService.addOptionalCharacteristic(
-        this.platform.Characteristic.ConfiguredName,
-      );
-      this.switchService.setCharacteristic(
-        this.platform.Characteristic.ConfiguredName,
-        this.featureName,
-      );
+    this.switchService
+      .getCharacteristic(Characteristic.On)
+      .onGet(this.handleGet.bind(this))
+      .onSet(this.handleSet.bind(this));
+  }
 
-      // Set up handlers
-      this.switchService
-        .getCharacteristic(this.platform.Characteristic.On)
-        .onGet(this.handleGet.bind(this))
-        .onSet(this.handleSet.bind(this));
+  /**
+   * Remove this feature's switch service(s) if they exist.
+   */
+  protected removeServiceIfExists(): void {
+    for (const service of this.findExistingServices()) {
+      this.accessory.removeService(service);
     }
+    this.switchService = undefined;
+  }
 
-    /**
-     * Remove the switch service if it exists.
-     */
-    protected removeServiceIfExists(): void {
-      const existingService = this.accessory.getService(this.featureName);
-      if (existingService) {
-        this.accessory.removeService(existingService);
-        this.switchService = undefined;
-      }
+  /** This feature's switches on the accessory: the namespaced one first, then an owned legacy one. */
+  private findExistingServices(): Service[] {
+    const { Switch } = this.platform.Service;
+    const services = [this.accessory.getServiceById(Switch, this.namespacedSubtype)];
+    if (this.ownsLegacyService()) {
+      services.push(this.accessory.getServiceById(Switch, this.serviceSubtype));
     }
+    return services.filter((service): service is Service => service !== undefined);
+  }
 
-    /**
-     * Push current device state to the switch's On characteristic.
-     * Called after every poll / WebSocket update so HomeKit reflects state
-     * changes initiated from the Daikin app without waiting for the next onGet.
-     * No-op if the switch service isn't registered (feature unsupported/disabled).
-     */
-    refresh(): void {
-      if (!this.switchService) {
-        return;
-      }
-      void Promise.resolve(this.handleGet()).then(
-        (value) => {
-          this.switchService?.getCharacteristic(this.platform.Characteristic.On).updateValue(value);
-        },
-        // handleGet is just a getData read in practice — but guard against custom
-        // implementations throwing so one bad feature can't break the refresh loop.
-        (err) => this.log.debug(`[${this.name}] ${this.featureName} refresh failed: ${err instanceof Error ? err.message : err}`),
-      );
-    }
+  /**
+   * Data point that decides which management point owns the legacy
+   * (un-namespaced) switch. Undefined ⇒ climateControl owns it, as every legacy
+   * feature switch was created for climateControl — except the Altherma
+   * "Powerful mode", which lives on the domesticHotWaterTank.
+   */
+  protected get legacyOwnershipDataPoint(): string | undefined {
+    return undefined;
+  }
 
-    /**
-     * Get device data from the Daikin Cloud.
-     */
-    protected getData(dataPoint: string, path?: string): unknown {
-      return this.accessory.context.device.getData(this.managementPointId, dataPoint, path);
-    }
+  /**
+   * Whether the legacy un-namespaced switch belongs to this management point.
+   * Owner: the first feature-hosting management point (climateControl before
+   * domesticHotWaterTank) that supports legacyOwnershipDataPoint; otherwise the
+   * climateControl management point. Exactly one management point owns it, so
+   * features of different management points never adopt or remove the same switch.
+   */
+  protected ownsLegacyService(): boolean {
+    const hosts = FEATURE_HOST_TYPES.flatMap(type =>
+      (this.device.desc?.managementPoints ?? []).filter(mp => mp.managementPointType === type),
+    );
+    const dataPoint = this.legacyOwnershipDataPoint;
+    const owner = (dataPoint && hosts.find(mp => this.device.getData(mp.embeddedId, dataPoint, undefined).value !== undefined))
+      || hosts[0];
+    return (owner?.embeddedId ?? this.managementPointId) === this.managementPointId;
+  }
 
-    /**
-     * Set device data on the Daikin Cloud.
-     * Note: device.setData has different parameter order depending on whether path is used:
-     * - No path: setData(managementPointId, dataPoint, value, undefined)
-     * - With path: setData(managementPointId, dataPoint, path, value)
-     */
-    protected async setData(dataPoint: string, value: unknown, path?: string): Promise<void> {
-      try {
-        if (path) {
-          await this.accessory.context.device.setData(this.managementPointId, dataPoint, path, value);
-        } else {
-          await this.accessory.context.device.setData(this.managementPointId, dataPoint, value, undefined);
-        }
-        this.platform.forceUpdateDevices();
-      } catch (e) {
-        this.log.warn(`[${this.name}] Failed to set ${dataPoint}: ${e instanceof Error ? e.message : e}`);
-        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-      }
+  /**
+   * Push current device state to the switch's On characteristic.
+   * Called after every poll / WebSocket update so HomeKit reflects state
+   * changes initiated from the Daikin app without waiting for the next onGet.
+   * No-op if the switch service isn't registered (feature unsupported/disabled).
+   */
+  refresh(): void {
+    if (!this.switchService) {
+      return;
     }
+    void Promise.resolve(this.handleGet()).then(
+      (value) => {
+        this.switchService?.getCharacteristic(this.platform.Characteristic.On).updateValue(value);
+      },
+      // handleGet is just a getData read in practice — but guard against custom
+      // implementations throwing so one bad feature can't break the refresh loop.
+      (err) => this.log.debug(`[${this.name}] ${this.featureName} refresh failed: ${toMessage(err)}`),
+    );
+  }
+
+  /**
+   * Get device data from the Daikin Cloud.
+   */
+  protected getData(dataPoint: string, path?: string): DeviceDataPoint {
+    return this.device.getData(this.managementPointId, dataPoint, path);
+  }
+
+  /**
+   * Set device data on the Daikin Cloud.
+   * Note: device.setData has different parameter order depending on whether path is used:
+   * - No path: setData(managementPointId, dataPoint, value, undefined)
+   * - With path: setData(managementPointId, dataPoint, path, value)
+   */
+  protected async setData(dataPoint: string, value: unknown, path?: string): Promise<void> {
+    await this.write(dataPoint, () => path
+      ? this.device.setData(this.managementPointId, dataPoint, path, value)
+      : this.device.setData(this.managementPointId, dataPoint, value, undefined));
+  }
+
+  /** Run a device write with HAP error handling (see withHapWrite). */
+  protected write<T>(what: string, op: () => Promise<T>, refresh = true): Promise<T> {
+    return withHapWrite(this.platform, `[${this.name}] ${what}`, op, { refresh });
+  }
 }

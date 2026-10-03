@@ -2,25 +2,15 @@ import { vi } from 'vitest';
 import { ClimateControlService } from '../../../src/services';
 import type { DaikinApi } from '../../../src/api';
 import { DaikinCloudDevice } from '../../../src/api';
-import { MockPlatformConfig } from '../../mocks';
 import type { DaikinCloudAccessoryContext } from '../../../src/platform';
-import { DaikinCloudPlatform } from '../../../src/platform';
 import { PlatformAccessory } from 'homebridge/lib/platformAccessory';
-import { Characteristic, Service, uuid } from 'hap-nodejs';
 import { dx23Airco } from '../../fixtures/dx23-airco';
 import { dx4Airco } from '../../fixtures/dx4-airco';
+import { createTestPlatform, hap, useFakeTimersPerTest } from '../../helpers/platform';
 
-import { HomebridgeAPI } from 'homebridge/lib/api.js';
-import { Logger } from 'homebridge/lib/logger.js';
+const { Characteristic, Service, uuid } = hap;
 
-beforeEach(() => {
-  vi.useFakeTimers();
-});
-
-afterEach(() => {
-  vi.clearAllTimers();
-  vi.useRealTimers();
-});
+useFakeTimersPerTest();
 
 const buildService = (fixture: unknown): { service: ClimateControlService; accessory: PlatformAccessory<DaikinCloudAccessoryContext>; setDataMock: ReturnType<typeof vi.fn> } => {
   const setDataMock = vi.fn().mockResolvedValue(undefined);
@@ -32,7 +22,7 @@ const buildService = (fixture: unknown): { service: ClimateControlService; acces
   const accessory = new PlatformAccessory<DaikinCloudAccessoryContext>('TEST', uuid.generate(device.getId()));
   accessory.context.device = device;
 
-  const platform = new DaikinCloudPlatform(new Logger(), new MockPlatformConfig(true), new HomebridgeAPI());
+  const platform = createTestPlatform({ showExtraFeatures: true });
   const service = new ClimateControlService(platform, accessory, 'climateControl');
   return { service, accessory, setDataMock };
 };
@@ -53,18 +43,18 @@ describe('ClimateControlService — SwingMode support detection', () => {
     expect(heaterCooler!.testCharacteristic(Characteristic.SwingMode)).toBe(true);
   });
 
-  it('hasSwingModeFeature returns false on dx23 (no fanDirection)', () => {
+  it('swing controller reports no support on dx23 (no fanDirection)', () => {
     const { service } = buildService(dx23Airco);
-    expect(service.hasSwingModeFeature()).toBe(false);
-    expect(service.hasSwingModeVerticalFeature()).toBe(false);
-    expect(service.hasSwingModeHorizontalFeature()).toBe(false);
+    expect(service.swing.isSupported()).toBe(false);
+    expect(service.swing.hasAxis('vertical')).toBe(false);
+    expect(service.swing.hasAxis('horizontal')).toBe(false);
   });
 
-  it('hasSwingModeFeature returns true on dx4 (has both axes)', () => {
+  it('swing controller reports support on dx4 (has both axes)', () => {
     const { service } = buildService(dx4Airco);
-    expect(service.hasSwingModeFeature()).toBe(true);
-    expect(service.hasSwingModeVerticalFeature()).toBe(true);
-    expect(service.hasSwingModeHorizontalFeature()).toBe(true);
+    expect(service.swing.isSupported()).toBe(true);
+    expect(service.swing.hasAxis('vertical')).toBe(true);
+    expect(service.swing.hasAxis('horizontal')).toBe(true);
   });
 });
 

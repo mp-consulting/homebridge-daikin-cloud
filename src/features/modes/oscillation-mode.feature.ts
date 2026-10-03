@@ -9,19 +9,18 @@
  *   - ON  -> fanDirection vertical/horizontal currentMode = 'swing'
  *   - OFF -> fanDirection vertical/horizontal currentMode = 'stop'
  *
- * Mirrors the same paths the HeaterCooler's SwingMode handlers use, so toggling
- * either one keeps both in sync on the next refresh.
+ * Uses the same SwingController as the HeaterCooler's SwingMode handlers, so
+ * toggling either one keeps both in sync on the next refresh.
  */
 
 import type { CharacteristicValue } from 'homebridge';
 import { BaseFeature } from '../base-feature';
-import {
-  DaikinFanDirectionHorizontalModes,
-  DaikinFanDirectionVerticalModes,
-  DaikinOperationModes,
-} from '../../types';
+import type { FeatureConfigKey } from '../../config/config-manager';
+import { SwingController } from '../../services/climate-control/swing-controller';
 
 export class OscillationModeFeature extends BaseFeature {
+  private readonly swing = new SwingController(() => this.device, this.managementPointId);
+
   get featureName(): string {
     return 'Oscillation';
   }
@@ -30,66 +29,32 @@ export class OscillationModeFeature extends BaseFeature {
     return 'oscillation';
   }
 
-  get configKey(): string {
+  get configKey(): FeatureConfigKey {
     return 'showOscillationSwitch';
   }
 
   isSupported(): boolean {
-    const supported = this.hasVerticalSwing() || this.hasHorizontalSwing();
+    const supported = this.capabilities.hasSwingModeVertical || this.capabilities.hasSwingModeHorizontal;
     this.log.debug(`[${this.name}] hasOscillationFeature: ${supported}`);
     return supported;
   }
 
   async handleGet(): Promise<CharacteristicValue> {
-    const operationMode = this.getCurrentOperationMode();
-    const vertical = this.hasVerticalSwing()
-      ? (this.getData('fanControl', `/operationModes/${operationMode}/fanDirection/vertical/currentMode`) as { value: string }).value
-      : null;
-    const horizontal = this.hasHorizontalSwing()
-      ? (this.getData('fanControl', `/operationModes/${operationMode}/fanDirection/horizontal/currentMode`) as { value: string }).value
-      : null;
-
-    // Off only when an axis that exists is stopped — matches the HeaterCooler SwingMode logic.
-    const isOn = horizontal !== DaikinFanDirectionHorizontalModes.STOP
-      && vertical !== DaikinFanDirectionVerticalModes.STOP;
+    const isOn = this.swing.isSwinging();
     this.log.debug(
-      `[${this.name}] GET Oscillation: ${isOn} (vertical: ${vertical}, horizontal: ${horizontal}), ` +
-            `last update: ${this.accessory.context.device.getLastUpdated()}`,
+      `[${this.name}] GET Oscillation: ${isOn} (${this.swing.describe()}), ` +
+            `last update: ${this.device.getLastUpdated()}`,
     );
     return isOn;
   }
 
   async handleSet(value: CharacteristicValue): Promise<void> {
+    const enabled = Boolean(value);
+    if (this.swing.axesToWrite(enabled).length === 0) {
+      this.log.debug(`[${this.name}] SET Oscillation skipped — already ${enabled ? 'on' : 'off'}`);
+      return;
+    }
     this.log.debug(`[${this.name}] SET Oscillation to: ${value}`);
-    const operationMode = this.getCurrentOperationMode();
-    const mode = value ? DaikinFanDirectionHorizontalModes.SWING : DaikinFanDirectionHorizontalModes.STOP;
-
-    if (this.hasHorizontalSwing()) {
-      await this.setData('fanControl', mode, `/operationModes/${operationMode}/fanDirection/horizontal/currentMode`);
-    }
-    if (this.hasVerticalSwing()) {
-      await this.setData('fanControl', mode, `/operationModes/${operationMode}/fanDirection/vertical/currentMode`);
-    }
-  }
-
-  private hasVerticalSwing(): boolean {
-    const data = this.getData(
-      'fanControl',
-      `/operationModes/${this.getCurrentOperationMode()}/fanDirection/vertical/currentMode`,
-    ) as { value?: string } | undefined;
-    return data?.value !== undefined;
-  }
-
-  private hasHorizontalSwing(): boolean {
-    const data = this.getData(
-      'fanControl',
-      `/operationModes/${this.getCurrentOperationMode()}/fanDirection/horizontal/currentMode`,
-    ) as { value?: string } | undefined;
-    return data?.value !== undefined;
-  }
-
-  private getCurrentOperationMode(): DaikinOperationModes {
-    const data = this.getData('operationMode') as { value: DaikinOperationModes } | undefined;
-    return data?.value || DaikinOperationModes.AUTO;
+    await this.write('Oscillation', () => this.swing.set(enabled));
   }
 }

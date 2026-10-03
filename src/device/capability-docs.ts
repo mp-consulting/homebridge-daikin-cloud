@@ -43,6 +43,9 @@ export function getCapabilitySummary(capabilities: DeviceCapabilities): string {
   if (capabilities.hasFanOnlyOperationMode) {
     features.push('fan-only');
   }
+  if (capabilities.hasHolidayMode) {
+    features.push('holiday');
+  }
 
   return features.length > 0 ? features.join(', ') : 'basic';
 }

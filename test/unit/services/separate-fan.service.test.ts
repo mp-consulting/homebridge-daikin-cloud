@@ -2,25 +2,15 @@ import { vi } from 'vitest';
 import { ClimateControlService } from '../../../src/services';
 import type { DaikinApi } from '../../../src/api';
 import { DaikinCloudDevice } from '../../../src/api';
-import { MockPlatformConfig } from '../../mocks';
 import type { DaikinCloudAccessoryContext } from '../../../src/platform';
-import { DaikinCloudPlatform } from '../../../src/platform';
 import { PlatformAccessory } from 'homebridge/lib/platformAccessory';
-import { Characteristic, Service, uuid } from 'hap-nodejs';
 import { dx4Airco } from '../../fixtures/dx4-airco';
 import { dx23Airco } from '../../fixtures/dx23-airco';
+import { createTestPlatform, hap, useFakeTimersPerTest } from '../../helpers/platform';
 
-import { HomebridgeAPI } from 'homebridge/lib/api.js';
-import { Logger } from 'homebridge/lib/logger.js';
+const { Characteristic, Service, uuid } = hap;
 
-beforeEach(() => {
-  vi.useFakeTimers();
-});
-
-afterEach(() => {
-  vi.clearAllTimers();
-  vi.useRealTimers();
-});
+useFakeTimersPerTest();
 
 const FAN_SUBTYPE = 'separate_fan';
 
@@ -36,10 +26,7 @@ const buildService = (
   const accessory = new PlatformAccessory<DaikinCloudAccessoryContext>('TEST', uuid.generate(device.getId()));
   accessory.context.device = device;
 
-  const config = new MockPlatformConfig(false);
-  (config as any).showSeparateFanControl = showSeparateFanControl;
-
-  const platform = new DaikinCloudPlatform(new Logger(), config, new HomebridgeAPI());
+  const platform = createTestPlatform({ showSeparateFanControl });
   const service = new ClimateControlService(platform, accessory, 'climateControl');
   return { service, accessory, setDataMock };
 };

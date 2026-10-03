@@ -9,6 +9,7 @@
 
 import type { CharacteristicValue } from 'homebridge';
 import { BaseFeature } from '../base-feature';
+import type { FeatureConfigKey } from '../../config/config-manager';
 
 export class HolidayModeFeature extends BaseFeature {
   get featureName(): string {
@@ -19,39 +20,28 @@ export class HolidayModeFeature extends BaseFeature {
     return 'holiday_mode';
   }
 
-  get configKey(): string {
+  get configKey(): FeatureConfigKey {
     return 'showHolidayMode';
   }
 
   isSupported(): boolean {
-    // device.getData() returns { value: undefined } when the characteristic is
-    // missing, so check the inner enabled flag to detect real support.
-    const holidayMode = this.getData('holidayMode') as { value?: { enabled?: unknown } } | undefined;
-    const supported = holidayMode?.value?.enabled !== undefined;
+    const supported = this.capabilities.hasHolidayMode;
     this.log.debug(`[${this.name}] hasHolidayModeFeature: ${supported}`);
     return supported;
   }
 
   async handleGet(): Promise<CharacteristicValue> {
-    const data = this.getData('holidayMode') as { value?: { enabled?: boolean } } | undefined;
-    const isOn = data?.value?.enabled === true;
+    const value = this.getData('holidayMode').value as { enabled?: boolean } | undefined;
+    const isOn = value?.enabled === true;
     this.log.debug(
       `[${this.name}] GET HolidayMode: ${isOn}, ` +
-            `last update: ${this.accessory.context.device.getLastUpdated()}`,
+            `last update: ${this.device.getLastUpdated()}`,
     );
     return isOn;
   }
 
   async handleSet(value: CharacteristicValue): Promise<void> {
     this.log.debug(`[${this.name}] SET HolidayMode to: ${value}`);
-    try {
-      await this.accessory.context.device.setHolidayMode(this.managementPointId, Boolean(value));
-      this.platform.forceUpdateDevices();
-    } catch (e) {
-      this.log.warn(`[${this.name}] Failed to set holidayMode: ${e instanceof Error ? e.message : e}`);
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
-      );
-    }
+    await this.write('holidayMode', () => this.device.setHolidayMode(this.managementPointId, Boolean(value)));
   }
 }

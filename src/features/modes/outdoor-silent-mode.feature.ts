@@ -4,45 +4,17 @@
  * Enables/disables the outdoor silent mode on the device.
  */
 
-import type { CharacteristicValue } from 'homebridge';
-import { BaseFeature } from '../base-feature';
+import { OnOffDataPointFeature } from '../on-off-data-point-feature';
 import { DaikinOutdoorSilentModes } from '../../types';
 
-export class OutdoorSilentModeFeature extends BaseFeature {
-  get featureName(): string {
-    return 'Outdoor silent mode';
-  }
-
-  get serviceSubtype(): string {
-    return 'outdoor_silent_mode';
-  }
-
-  get configKey(): string {
-    return 'showOutdoorSilentMode';
-  }
-
-  isSupported(): boolean {
-    // device.getData() returns { value: undefined } when the characteristic is missing,
-    // so Boolean(data) is always true. Check the inner value to detect real support.
-    const outdoorSilentMode = this.getData('outdoorSilentMode') as { value?: unknown } | undefined;
-    const supported = outdoorSilentMode?.value !== undefined;
-    this.log.debug(`[${this.name}] hasOutdoorSilentModeFeature: ${supported}`);
-    return supported;
-  }
-
-  async handleGet(): Promise<CharacteristicValue> {
-    const data = this.getData('outdoorSilentMode') as { value: string } | undefined;
-    const isOn = data?.value === DaikinOutdoorSilentModes.ON;
-    this.log.debug(
-      `[${this.name}] GET OutdoorSilentMode: ${isOn}, ` +
-            `last update: ${this.accessory.context.device.getLastUpdated()}`,
-    );
-    return isOn;
-  }
-
-  async handleSet(value: CharacteristicValue): Promise<void> {
-    this.log.debug(`[${this.name}] SET OutdoorSilentMode to: ${value}`);
-    const mode = value ? DaikinOutdoorSilentModes.ON : DaikinOutdoorSilentModes.OFF;
-    await this.setData('outdoorSilentMode', mode);
-  }
+export class OutdoorSilentModeFeature extends OnOffDataPointFeature {
+  protected readonly spec = {
+    name: 'Outdoor silent mode',
+    subtype: 'outdoor_silent_mode',
+    configKey: 'showOutdoorSilentMode',
+    dataPoint: 'outdoorSilentMode',
+    onValue: DaikinOutdoorSilentModes.ON,
+    offValue: DaikinOutdoorSilentModes.OFF,
+    capability: 'hasOutdoorSilentMode',
+  } as const;
 }

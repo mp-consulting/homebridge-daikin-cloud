@@ -8,75 +8,28 @@
  *   - ON  -> fanSpeed/currentMode = 'auto'
  *   - OFF -> fanSpeed/currentMode = 'fixed' (back to manual speed control)
  *
+ * Only supported when the device can toggle between 'auto' and 'fixed' —
+ * otherwise the switch would have nothing to turn off to.
+ *
  * Moving the RotationSpeed slider switches currentMode back to 'fixed'
  * (see ClimateControlService.handleRotationSpeedSet), which turns this switch off
  * on the next refresh. Mutually exclusive with the Indoor silent (quiet) switch:
  * turning one on flips currentMode, so the other reconciles to off on refresh.
  */
 
-import type { CharacteristicValue } from 'homebridge';
-import { BaseFeature } from '../base-feature';
-import { DaikinFanSpeedModes, DaikinOperationModes } from '../../types';
+import { OnOffDataPointFeature } from '../on-off-data-point-feature';
+import { DaikinFanSpeedModes } from '../../types';
+import { DataPaths } from '../../device/data-paths';
 
-export class AutoFanModeFeature extends BaseFeature {
-  get featureName(): string {
-    return 'Auto fan mode';
-  }
-
-  get serviceSubtype(): string {
-    return 'auto_fan_mode';
-  }
-
-  get configKey(): string {
-    return 'showAutoFanMode';
-  }
-
-  isSupported(): boolean {
-    const currentModeFanControl = this.getData(
-      'fanControl',
-      `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/currentMode`,
-    ) as { values?: string[] } | undefined;
-
-    if (!currentModeFanControl) {
-      return false;
-    }
-
-    const fanSpeedValues = currentModeFanControl.values || [];
-    // Only meaningful when the device can toggle between 'auto' and a manual
-    // ('fixed') speed — otherwise the switch would have nothing to turn off to.
-    const hasAutoMode =
-      fanSpeedValues.includes(DaikinFanSpeedModes.AUTO) &&
-      fanSpeedValues.includes(DaikinFanSpeedModes.FIXED);
-    this.log.debug(`[${this.name}] hasAutoFanModeFeature: ${hasAutoMode}`);
-    return hasAutoMode;
-  }
-
-  async handleGet(): Promise<CharacteristicValue> {
-    const data = this.getData(
-      'fanControl',
-      `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/currentMode`,
-    ) as { value: string } | undefined;
-
-    const isOn = data?.value === DaikinFanSpeedModes.AUTO;
-    this.log.debug(
-      `[${this.name}] GET AutoFanMode: ${isOn}, ` +
-            `last update: ${this.accessory.context.device.getLastUpdated()}`,
-    );
-    return isOn;
-  }
-
-  async handleSet(value: CharacteristicValue): Promise<void> {
-    this.log.debug(`[${this.name}] SET AutoFanMode to: ${value}`);
-    const mode = value ? DaikinFanSpeedModes.AUTO : DaikinFanSpeedModes.FIXED;
-    await this.setData(
-      'fanControl',
-      mode,
-      `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/currentMode`,
-    );
-  }
-
-  private getCurrentOperationMode(): DaikinOperationModes {
-    const data = this.getData('operationMode') as { value: DaikinOperationModes } | undefined;
-    return data?.value || DaikinOperationModes.AUTO;
-  }
+export class AutoFanModeFeature extends OnOffDataPointFeature {
+  protected readonly spec = {
+    name: 'Auto fan mode',
+    subtype: 'auto_fan_mode',
+    configKey: 'showAutoFanMode',
+    dataPoint: 'fanControl',
+    path: DataPaths.fanSpeedCurrentMode,
+    onValue: DaikinFanSpeedModes.AUTO,
+    offValue: DaikinFanSpeedModes.FIXED,
+    capability: 'hasAutoFanMode',
+  } as const;
 }

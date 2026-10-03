@@ -1,6 +1,7 @@
 import type { PlatformAccessory } from 'homebridge';
 import type { DaikinCloudAccessoryContext, DaikinCloudPlatform } from '../platform';
-import { DeviceCapabilityDetector, getCapabilitySummary } from '../device';
+import type { DeviceCapabilities } from '../types';
+import { getCapabilitySummary } from '../device/capability-docs';
 
 export class BaseAccessory {
   readonly platform: DaikinCloudPlatform;
@@ -30,23 +31,25 @@ export class BaseAccessory {
     // Daikin reports versions like '4_0_3'; HomeKit expects dotted revisions
     const firmwareVersion = (firmwareData?.value as string | undefined)?.replace(/_/g, '.');
 
-        this.accessory.getService(this.platform.Service.AccessoryInformation)!
-          .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Daikin')
-          .setCharacteristic(this.platform.Characteristic.Model, modelInfo)
-          .setCharacteristic(this.platform.Characteristic.SerialNumber, serialNumber)
-          .setCharacteristic(this.platform.Characteristic.FirmwareRevision, firmwareVersion || '0.0.0');
+    const informationService = this.accessory.getService(this.platform.Service.AccessoryInformation)
+      ?? this.accessory.addService(this.platform.Service.AccessoryInformation);
+    informationService
+      .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Daikin')
+      .setCharacteristic(this.platform.Characteristic.Model, modelInfo)
+      .setCharacteristic(this.platform.Characteristic.SerialNumber, serialNumber)
+      .setCharacteristic(this.platform.Characteristic.FirmwareRevision, firmwareVersion || '0.0.0');
 
-        const updateListener = () => {
-          const name = this.accessory.displayName;
-          const uuid = this.accessory.UUID;
-          const lastUpdated = this.accessory.context.device.getLastUpdated();
-          this.platform.log.debug(
-            `[API Syncing] Updated ${name} (${uuid}), LastUpdated: ${lastUpdated}`,
-          );
-          this.refreshValues();
-        };
-        this.accessory.context.device.on('updated', updateListener);
-        this.platform.registerDeviceListener(this.accessory, updateListener);
+    const updateListener = () => {
+      const name = this.accessory.displayName;
+      const uuid = this.accessory.UUID;
+      const lastUpdated = this.accessory.context.device.getLastUpdated();
+      this.platform.log.debug(
+        `[API Syncing] Updated ${name} (${uuid}), LastUpdated: ${lastUpdated}`,
+      );
+      this.refreshValues();
+    };
+    this.accessory.context.device.on('updated', updateListener);
+    this.platform.registerDeviceListener(this.accessory, updateListener);
   }
 
   /**
@@ -73,18 +76,11 @@ export class BaseAccessory {
   }
 
   /**
-     * Log device capabilities for the given management point.
-     * Call this from subclasses after determining the management point ID.
-     */
-  protected logCapabilities(managementPointId: string): void {
-    const detector = new DeviceCapabilityDetector(
-      this.accessory.context.device,
-      managementPointId,
-    );
-    const capabilities = detector.getCapabilities();
-    const summary = getCapabilitySummary(capabilities);
-
-    this.platform.log.info(`[Platform]     capabilities: ${summary}`);
+   * Log the capabilities detected for a management point (the same detection
+   * result its FeatureManager uses to decide which feature switches to expose).
+   */
+  protected logCapabilities(capabilities: DeviceCapabilities): void {
+    this.platform.log.info(`[Platform]     capabilities: ${getCapabilitySummary(capabilities)}`);
     this.platform.log.debug(`[Platform]     operation modes: ${capabilities.supportedOperationModes.join(', ')}`);
   }
 

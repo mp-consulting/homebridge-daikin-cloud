@@ -11,6 +11,7 @@
 
 import type { CharacteristicValue } from 'homebridge';
 import { BaseFeature } from '../base-feature';
+import type { FeatureConfigKey } from '../../config/config-manager';
 
 const IN_PROGRESS = 'in-progress';
 const SWITCH_REVERT_DELAY_MS = 1000;
@@ -27,23 +28,20 @@ export class FirmwareUpdateFeature extends BaseFeature {
     return 'firmware_update';
   }
 
-  get configKey(): string {
+  /**
+   * A standalone toggle: unlike other features it never inherits the legacy
+   * `showExtraFeatures` catch-all (see FEATURE_CONFIG_KEYS). A switch that
+   * installs firmware should only appear when explicitly enabled, so an
+   * all-switches scene can't trigger it unnoticed.
+   */
+  get configKey(): FeatureConfigKey {
     return 'showFirmwareUpdateSwitch';
   }
 
   isSupported(): boolean {
     const gatewayId = this.gatewayId;
     return gatewayId !== undefined
-      && this.accessory.context.device.isFirmwareUpdateSupported(gatewayId);
-  }
-
-  /**
-   * Unlike other features, never inherit the legacy `showExtraFeatures`
-   * catch-all: a switch that installs firmware should only appear when
-   * explicitly enabled, so an all-switches scene can't trigger it unnoticed.
-   */
-  protected isEnabledInConfig(): boolean {
-    return this.platform.config[this.configKey] === true;
+      && this.device.isFirmwareUpdateSupported(gatewayId);
   }
 
   async handleGet(): Promise<CharacteristicValue> {
@@ -71,17 +69,17 @@ export class FirmwareUpdateFeature extends BaseFeature {
   }
 
   private get gatewayId(): string | undefined {
-    return this.accessory.context.device.getManagementPointIdByType('gateway');
+    return this.device.getManagementPointIdByType('gateway');
   }
 
   private get updateStatus(): string | undefined {
     const gatewayId = this.gatewayId;
-    return gatewayId ? this.accessory.context.device.getFirmwareUpdateStatus(gatewayId) : undefined;
+    return gatewayId ? this.device.getFirmwareUpdateStatus(gatewayId) : undefined;
   }
 
   private async installStagedUpdate(): Promise<void> {
     const gatewayId = this.gatewayId;
-    const info = gatewayId ? this.accessory.context.device.getFirmwareUpdateInfo(gatewayId) : undefined;
+    const info = gatewayId ? this.device.getFirmwareUpdateInfo(gatewayId) : undefined;
     if (!gatewayId || !info) {
       this.log.info(`[${this.name}] Firmware is up to date — no update staged by Daikin`);
       return this.revertSwitchTo(false);
@@ -90,16 +88,14 @@ export class FirmwareUpdateFeature extends BaseFeature {
   }
 
   private async triggerInstall(gatewayId: string, version?: string): Promise<void> {
-    try {
-      const info = await this.accessory.context.device.triggerFirmwareUpdate(gatewayId);
-      this.log.info(`[${this.name}] Installing firmware update ${info.version ?? version ?? ''} `
-        + '— the unit will be unavailable until it finishes');
-    } catch (e) {
-      this.log.warn(`[${this.name}] Failed to start firmware update: ${e instanceof Error ? e.message : e}`);
-      throw new this.platform.api.hap.HapStatusError(
-        this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
-      );
-    }
+    // No forced refresh: the update runs for minutes and the poll picks up its status.
+    const info = await this.write(
+      'firmware update',
+      () => this.device.triggerFirmwareUpdate(gatewayId),
+      false,
+    );
+    this.log.info(`[${this.name}] Installing firmware update ${info.version ?? version ?? ''} `
+      + '— the unit will be unavailable until it finishes');
   }
 
   private handleTurnOff(): void {
@@ -122,7 +118,7 @@ export class FirmwareUpdateFeature extends BaseFeature {
 
   private announceAvailability(): void {
     const gatewayId = this.gatewayId;
-    const info = gatewayId ? this.accessory.context.device.getFirmwareUpdateInfo(gatewayId) : undefined;
+    const info = gatewayId ? this.device.getFirmwareUpdateInfo(gatewayId) : undefined;
     if (info && info.version !== this.announcedVersion) {
       this.announcedVersion = info.version;
       this.log.info(`[${this.name}] Firmware update available: ${info.version ?? 'unknown version'}`

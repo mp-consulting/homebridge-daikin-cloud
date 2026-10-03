@@ -21,7 +21,7 @@ export class AlthermaAccessory extends BaseAccessory {
 
     if (climateControlEmbeddedId !== null) {
       this.service = new ClimateControlService(this.platform, this.accessory, climateControlEmbeddedId);
-      this.logCapabilities(climateControlEmbeddedId);
+      this.logCapabilities(this.service.featureManager.capabilities);
     } else {
       this.platform.log.warn(`[${this.name}] No climate control management point found`);
     }

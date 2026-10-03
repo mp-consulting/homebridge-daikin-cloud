@@ -27,12 +27,6 @@ export enum DaikinFanDirectionHorizontalModes {
     SWING = 'swing',
 }
 
-export enum DaikinFanDirectionVerticalModes {
-    STOP = 'stop',
-    SWING = 'swing',
-    WIND_NICE = 'windNice',
-}
-
 export enum DaikinPowerfulModes {
     ON = 'on',
     OFF = 'off',

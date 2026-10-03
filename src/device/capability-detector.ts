@@ -2,10 +2,12 @@
  * Device Capability Detector
  *
  * Centralized service for detecting device capabilities once and caching the results.
- * This replaces the scattered hasXxxFeature() methods in service classes.
+ * FeatureManager passes the result to every feature, so isSupported() reads one source.
  */
 
 import type { DaikinCloudDevice } from '../api';
+import type { FanAxis } from './data-paths';
+import { DataPaths } from './data-paths';
 import type {
   DeviceCapabilities,
   DeviceTemperatureCapabilities } from '../types';
@@ -63,7 +65,7 @@ export class DeviceCapabilityDetector {
       'operationMode',
       undefined,
     );
-    const supportedModes = (operationModeData?.values || []) as DaikinOperationModes[];
+    const supportedModes = (operationModeData.values || []) as DaikinOperationModes[];
 
     return {
       // Management points
@@ -81,6 +83,7 @@ export class DeviceCapabilityDetector {
       hasSwingModeVertical: this.hasSwingMode('vertical'),
       hasSwingModeHorizontal: this.hasSwingMode('horizontal'),
       hasFanControl: this.detectFanControl(),
+      hasHolidayMode: this.detectHolidayMode(),
 
       // Operation modes
       supportedOperationModes: supportedModes,
@@ -104,74 +107,53 @@ export class DeviceCapabilityDetector {
     );
   }
 
-  private hasFeature(feature: string): boolean {
-    return Boolean(this.device.getData(this.managementPointId, feature, undefined));
+  /**
+   * getData() returns `{ value: undefined }` when a data point is missing, so the
+   * wrapper itself is always truthy — support means the inner value is set.
+   */
+  private hasValue(dataPoint: string, path?: string): boolean {
+    return this.device.getData(this.managementPointId, dataPoint, path).value !== undefined;
   }
 
-  private hasSwingMode(direction: 'vertical' | 'horizontal'): boolean {
-    const operationMode = this.getCurrentOperationMode();
-    return Boolean(
-      this.device.getData(
-        this.managementPointId,
-        'fanControl',
-        `/operationModes/${operationMode}/fanDirection/${direction}/currentMode`,
-      ),
+  private hasFeature(feature: string): boolean {
+    return this.hasValue(feature);
+  }
+
+  private hasSwingMode(direction: FanAxis): boolean {
+    return this.hasValue('fanControl', DataPaths.fanDirection(this.getCurrentOperationMode(), direction));
+  }
+
+  private fanSpeedModes(): string[] {
+    const fanSpeedData = this.device.getData(
+      this.managementPointId,
+      'fanControl',
+      DataPaths.fanSpeedCurrentMode(this.getCurrentOperationMode()),
     );
+    return fanSpeedData.values || [];
   }
 
   private detectIndoorSilentMode(): boolean {
-    const operationMode = this.getCurrentOperationMode();
-    const fanSpeedData = this.device.getData(
-      this.managementPointId,
-      'fanControl',
-      `/operationModes/${operationMode}/fanSpeed/currentMode`,
-    );
-
-    if (!fanSpeedData) {
-      return false;
-    }
-
-    const fanSpeedValues = (fanSpeedData.values || []) as string[];
-    return fanSpeedValues.includes(DaikinFanSpeedModes.QUIET);
+    return this.fanSpeedModes().includes(DaikinFanSpeedModes.QUIET);
   }
 
+  /** Only meaningful when the device can toggle between 'auto' and a manual ('fixed') speed. */
   private detectAutoFanMode(): boolean {
-    const operationMode = this.getCurrentOperationMode();
-    const fanSpeedData = this.device.getData(
-      this.managementPointId,
-      'fanControl',
-      `/operationModes/${operationMode}/fanSpeed/currentMode`,
-    );
-
-    if (!fanSpeedData) {
-      return false;
-    }
-
-    const fanSpeedValues = (fanSpeedData.values || []) as string[];
-    return (
-      fanSpeedValues.includes(DaikinFanSpeedModes.AUTO) &&
-      fanSpeedValues.includes(DaikinFanSpeedModes.FIXED)
-    );
+    const fanSpeedValues = this.fanSpeedModes();
+    return fanSpeedValues.includes(DaikinFanSpeedModes.AUTO) && fanSpeedValues.includes(DaikinFanSpeedModes.FIXED);
   }
 
   private detectFanControl(): boolean {
-    const operationMode = this.getCurrentOperationMode();
-    return Boolean(
-      this.device.getData(
-        this.managementPointId,
-        'fanControl',
-        `/operationModes/${operationMode}/fanSpeed/modes/fixed`,
-      ),
-    );
+    return this.hasValue('fanControl', DataPaths.fanSpeedFixed(this.getCurrentOperationMode()));
+  }
+
+  private detectHolidayMode(): boolean {
+    const holidayMode = this.device.getData(this.managementPointId, 'holidayMode', undefined).value as { enabled?: unknown } | undefined;
+    return holidayMode?.enabled !== undefined;
   }
 
   private getCurrentOperationMode(): string {
-    const operationModeData = this.device.getData(
-      this.managementPointId,
-      'operationMode',
-      undefined,
-    );
-    return (operationModeData?.value as string) || 'auto';
+    const operationMode = this.device.getData(this.managementPointId, 'operationMode', undefined).value;
+    return typeof operationMode === 'string' && operationMode ? operationMode : DaikinOperationModes.AUTO;
   }
 
   private detectTemperatureCapabilities(): DeviceTemperatureCapabilities {
@@ -183,10 +165,10 @@ export class DeviceCapabilityDetector {
       const data = this.device.getData(
         this.managementPointId,
         'temperatureControl',
-        `/operationModes/${mode}/setpoints/roomTemperature`,
+        DataPaths.setpoint(mode, 'roomTemperature'),
       );
 
-      if (data && data.minValue !== undefined && data.maxValue !== undefined && data.stepValue !== undefined) {
+      if (data.minValue !== undefined && data.maxValue !== undefined && data.stepValue !== undefined) {
         capabilities[mode] = {
           minValue: data.minValue,
           maxValue: data.maxValue,
@@ -199,10 +181,10 @@ export class DeviceCapabilityDetector {
     const hotWaterData = this.device.getData(
       this.managementPointId,
       'temperatureControl',
-      '/operationModes/heating/setpoints/domesticHotWaterTemperature',
+      DataPaths.setpoint('heating', 'domesticHotWaterTemperature'),
     );
 
-    if (hotWaterData && hotWaterData.minValue !== undefined && hotWaterData.maxValue !== undefined && hotWaterData.stepValue !== undefined) {
+    if (hotWaterData.minValue !== undefined && hotWaterData.maxValue !== undefined && hotWaterData.stepValue !== undefined) {
       capabilities.domesticHotWater = {
         minValue: hotWaterData.minValue,
         maxValue: hotWaterData.maxValue,

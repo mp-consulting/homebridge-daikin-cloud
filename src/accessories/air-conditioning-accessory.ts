@@ -18,7 +18,7 @@ export class AirConditioningAccessory extends BaseAccessory {
     }
 
     this.service = new ClimateControlService(this.platform, this.accessory, climateControlEmbeddedId);
-    this.logCapabilities(climateControlEmbeddedId);
+    this.logCapabilities(this.service.featureManager.capabilities);
 
     // Push current device state into HomeKit immediately. At startup the device
     // is freshly built from getCloudDevices() which does not emit 'updated', so

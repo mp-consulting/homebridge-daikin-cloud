@@ -1,8 +1,6 @@
 import { vi } from 'vitest';
 import type { PlatformAccessory } from 'homebridge/lib/platformAccessory';
 import type { DaikinCloudAccessoryContext } from '../../src/platform';
-import { DaikinCloudPlatform } from '../../src/platform';
-import { MockPlatformConfig } from '../mocks';
 import { AirConditioningAccessory } from '../../src/accessories';
 import type { DaikinApi } from '../../src/api';
 import { DaikinCloudDevice, DaikinCloudController } from '../../src/api';
@@ -12,8 +10,6 @@ import { dx23Airco } from '../fixtures/dx23-airco';
 import { dx4Airco } from '../fixtures/dx4-airco';
 import { dx23Airco2 } from '../fixtures/dx23-airco-2';
 
-import { HomebridgeAPI } from 'homebridge/lib/api.js';
-import { Logger } from 'homebridge/lib/logger.js';
 import {
   PowerfulModeFeature,
   EconoModeFeature,
@@ -24,16 +20,9 @@ import {
   DryOperationModeFeature,
   FanOnlyOperationModeFeature,
 } from '../../src/features';
+import { createTestApi, createTestPlatform, useFakeTimersPerTest } from '../helpers/platform';
 
-// Use fake timers to prevent tests from hanging due to setInterval/setTimeout in platform
-beforeEach(() => {
-  vi.useFakeTimers();
-});
-
-afterEach(() => {
-  vi.clearAllTimers();
-  vi.useRealTimers();
-});
+useFakeTimersPerTest();
 
 type DeviceState = {
 	activeState: boolean;
@@ -51,6 +40,18 @@ type DeviceState = {
 	autoFanMode: number;
 	dryOperationMode: number;
 	fanOnlyOperationMode: number;
+	writes: ExpectedWrites;
+};
+
+/** Expected setData payloads for the setters exercised in the table test. */
+type ExpectedWrites = {
+	operationMode: string;
+	/** Writes for RotationSpeed=50%: [path, value] pairs. */
+	rotationSpeed50: Array<[string, string | number]>;
+	/** Axes written for SwingMode=1 (axes already swinging are skipped). */
+	swingOnAxes: Array<'horizontal' | 'vertical'>;
+	/** Auto-setpoint sync value after CoolingThreshold=21, or undefined when the device has no auto setpoint. */
+	autoSyncAfterCooling21?: number;
 };
 
 test.each<Array<string | string | any | DeviceState>>([
@@ -76,6 +77,13 @@ test.each<Array<string | string | any | DeviceState>>([
       autoFanMode: false,
       dryOperationMode: false,
       fanOnlyOperationMode: false,
+      writes: {
+        operationMode: 'heating',
+        rotationSpeed50: [['/operationModes/heating/fanSpeed/modes/fixed', 3]],
+        swingOnAxes: ['horizontal', 'vertical'],
+        // heating 22 + cooling 21 → 21.5
+        autoSyncAfterCooling21: 21.5,
+      },
     },
   ],
   [
@@ -100,6 +108,14 @@ test.each<Array<string | string | any | DeviceState>>([
       autoFanMode: undefined,
       dryOperationMode: false,
       fanOnlyOperationMode: false,
+      writes: {
+        operationMode: 'cooling',
+        // maxValue 3: 50% → 1.5 → 2
+        rotationSpeed50: [['/operationModes/cooling/fanSpeed/modes/fixed', 2]],
+        swingOnAxes: [],
+        // heating 17 + cooling 21 → 19
+        autoSyncAfterCooling21: 19,
+      },
     },
   ],
   [
@@ -124,6 +140,13 @@ test.each<Array<string | string | any | DeviceState>>([
       autoFanMode: false,
       dryOperationMode: false,
       fanOnlyOperationMode: false,
+      writes: {
+        operationMode: 'heating',
+        rotationSpeed50: [['/operationModes/heating/fanSpeed/modes/fixed', 3]],
+        swingOnAxes: ['vertical'],
+        // heating 13 + cooling 21 → 17, clamped to the auto minValue 18
+        autoSyncAfterCooling21: 18,
+      },
     },
   ],
   [
@@ -148,6 +171,16 @@ test.each<Array<string | string | any | DeviceState>>([
       autoFanMode: true,
       dryOperationMode: false,
       fanOnlyOperationMode: false,
+      writes: {
+        operationMode: 'cooling',
+        // fan is in 'auto': switch currentMode to fixed first; maxValue 3: 50% → 2
+        rotationSpeed50: [
+          ['/operationModes/cooling/fanSpeed/currentMode', 'fixed'],
+          ['/operationModes/cooling/fanSpeed/modes/fixed', 2],
+        ],
+        swingOnAxes: [],
+        autoSyncAfterCooling21: undefined,
+      },
     },
   ],
   [
@@ -172,6 +205,15 @@ test.each<Array<string | string | any | DeviceState>>([
       autoFanMode: true,
       dryOperationMode: false,
       fanOnlyOperationMode: false,
+      writes: {
+        operationMode: 'cooling',
+        rotationSpeed50: [
+          ['/operationModes/cooling/fanSpeed/currentMode', 'fixed'],
+          ['/operationModes/cooling/fanSpeed/modes/fixed', 2],
+        ],
+        swingOnAxes: [],
+        autoSyncAfterCooling21: undefined,
+      },
     },
   ],
 ])('Create DaikinCloudAirConditioningAccessory with %s device', async (name: string, climateControlEmbeddedId: string, deviceJson, state: DeviceState) => {
@@ -184,18 +226,18 @@ test.each<Array<string | string | any | DeviceState>>([
     return [device];
   });
 
-  const config = new MockPlatformConfig(true);
-  const api = new HomebridgeAPI();
+  const api = createTestApi();
+  const platform = createTestPlatform({ showExtraFeatures: true }, api);
 
   const uuid = api.hap.uuid.generate(device.getId());
   const accessory = new api.platformAccessory('NAME_FOR_TEST', uuid);
   accessory.context.device = device;
 
   expect(() => {
-    new AirConditioningAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
+    new AirConditioningAccessory(platform, accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
   }).not.toThrow();
 
-  const homebridgeAccessory = new AirConditioningAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
+  const homebridgeAccessory = new AirConditioningAccessory(platform, accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
 
   // Read-only assertions FIRST: setData now optimistically updates the in-memory
   // cache, so a setter run before a getter would change what the getter sees
@@ -275,26 +317,41 @@ test.each<Array<string | string | any | DeviceState>>([
     expect(await feature!.handleGet()).toBe(state.fanOnlyOperationMode);
   }
 
-  // Setters should not throw (run after all read-only assertions above).
-  if (typeof state.activeState !== 'undefined') {
-    await expect(homebridgeAccessory.service.handleActiveStateSet(1)).resolves.not.toThrow();
-    await expect(homebridgeAccessory.service.handleActiveStateSet(0)).resolves.not.toThrow();
-  }
-  if (typeof state.coolingThresholdTemperature !== 'undefined') {
-    await expect(homebridgeAccessory.service.handleCoolingThresholdTemperatureSet(21)).resolves.not.toThrow();
-  }
-  if (typeof state.heatingThresholdTemperature !== 'undefined') {
-    await expect(homebridgeAccessory.service.handleHeatingThresholdTemperatureSet(25)).resolves.not.toThrow();
-  }
-  if (typeof state.rotationSpeed !== 'undefined') {
-    await expect(homebridgeAccessory.service.handleRotationSpeedSet(50)).resolves.not.toThrow();
-  }
-  if (typeof state.targetHeaterCoolerState !== 'undefined') {
-    await expect(homebridgeAccessory.service.handleTargetHeaterCoolerStateSet(1)).resolves.not.toThrow();
-  }
-  if (typeof state.swingMode !== 'undefined') {
-    await expect(homebridgeAccessory.service.handleSwingModeSet(1)).resolves.not.toThrow();
-  }
+  // Setter payloads (run after all read-only assertions above). setData is
+  // mocked without the optimistic cache write, so every setter sees the fixture state.
+  const setData = vi.spyOn(device, 'setData').mockResolvedValue(undefined);
+  const service = homebridgeAccessory.service;
+  const { writes } = state;
+
+  setData.mockClear();
+  await service.handleActiveStateSet(state.activeState ? 0 : 1);
+  await service.handleActiveStateSet(state.activeState ? 1 : 0);
+  expect(setData.mock.calls).toEqual([['climateControl', 'onOffMode', state.activeState ? 'off' : 'on', undefined]]);
+
+  setData.mockClear();
+  await service.handleCoolingThresholdTemperatureSet(21);
+  expect(setData.mock.calls).toEqual([
+    ['climateControl', 'temperatureControl', '/operationModes/cooling/setpoints/roomTemperature', 21],
+    ...(writes.autoSyncAfterCooling21 === undefined
+      ? []
+      : [['climateControl', 'temperatureControl', '/operationModes/auto/setpoints/roomTemperature', writes.autoSyncAfterCooling21]]),
+  ]);
+
+  setData.mockClear();
+  await service.handleRotationSpeedSet(50);
+  expect(setData.mock.calls).toEqual(writes.rotationSpeed50.map(([path, value]) => ['climateControl', 'fanControl', path, value]));
+
+  setData.mockClear();
+  await service.handleTargetHeaterCoolerStateSet(1);
+  expect(setData.mock.calls).toEqual(
+    writes.operationMode === 'heating' ? [] : [['climateControl', 'operationMode', 'heating', undefined]],
+  );
+
+  setData.mockClear();
+  await service.handleSwingModeSet(1);
+  expect(setData.mock.calls).toEqual(writes.swingOnAxes.map(axis => [
+    'climateControl', 'fanControl', `/operationModes/${writes.operationMode}/fanDirection/${axis}/currentMode`, 'swing',
+  ]));
 });
 
 test.each<Array<string | string | any>>([
@@ -309,30 +366,31 @@ test.each<Array<string | string | any>>([
   });
 
 
-  const config = new MockPlatformConfig(false);
-  const api = new HomebridgeAPI();
+  const api = createTestApi();
+  const platform = createTestPlatform({}, api);
 
   const uuid = api.hap.uuid.generate(device.getId());
   const accessory = new api.platformAccessory('NAME_FOR_TEST', uuid);
 
-  accessory.addService(api.hap.Service.Switch, 'Powerful mode', 'Powerful_Mode');
-  accessory.addService(api.hap.Service.Switch, 'Econo mode', 'Econo_Mode');
-  accessory.addService(api.hap.Service.Switch, 'Streamer mode', 'Streamer_Mode');
-  accessory.addService(api.hap.Service.Switch, 'Outdoor silent mode', 'Outdoor_Silent_Mode');
-  accessory.addService(api.hap.Service.Switch, 'Indoor silent mode', 'Indoor_Silent_Mode');
+  // Switches cached by earlier plugin versions carry the un-namespaced subtype.
+  accessory.addService(api.hap.Service.Switch, 'Powerful mode', 'powerful_mode');
+  accessory.addService(api.hap.Service.Switch, 'Econo mode', 'econo_mode');
+  accessory.addService(api.hap.Service.Switch, 'Streamer mode', 'streamer_mode');
+  accessory.addService(api.hap.Service.Switch, 'Outdoor silent mode', 'outdoor_silent_mode');
+  accessory.addService(api.hap.Service.Switch, 'Indoor silent mode', 'indoor_silent_mode');
   accessory.context.device = device;
 
   const removeServiceSpy = vi.spyOn(accessory, 'removeService').mockImplementation(() => {});
 
   // Constructor side-effects register services on the accessory; the instance itself is unused
-  new AirConditioningAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
+  new AirConditioningAccessory(platform, accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
 
 
-  expect(removeServiceSpy).toHaveBeenNthCalledWith(1, expect.objectContaining({ displayName: 'Powerful mode', subtype: 'Powerful_Mode' }));
-  expect(removeServiceSpy).toHaveBeenNthCalledWith(2, expect.objectContaining({ displayName: 'Econo mode', subtype: 'Econo_Mode' }));
-  expect(removeServiceSpy).toHaveBeenNthCalledWith(3, expect.objectContaining({ displayName: 'Streamer mode', subtype: 'Streamer_Mode' }));
-  expect(removeServiceSpy).toHaveBeenNthCalledWith(4, expect.objectContaining({ displayName: 'Outdoor silent mode', subtype: 'Outdoor_Silent_Mode' }));
-  expect(removeServiceSpy).toHaveBeenNthCalledWith(5, expect.objectContaining({ displayName: 'Indoor silent mode', subtype: 'Indoor_Silent_Mode' }));
+  expect(removeServiceSpy).toHaveBeenNthCalledWith(1, expect.objectContaining({ displayName: 'Powerful mode', subtype: 'powerful_mode' }));
+  expect(removeServiceSpy).toHaveBeenNthCalledWith(2, expect.objectContaining({ displayName: 'Econo mode', subtype: 'econo_mode' }));
+  expect(removeServiceSpy).toHaveBeenNthCalledWith(3, expect.objectContaining({ displayName: 'Streamer mode', subtype: 'streamer_mode' }));
+  expect(removeServiceSpy).toHaveBeenNthCalledWith(4, expect.objectContaining({ displayName: 'Outdoor silent mode', subtype: 'outdoor_silent_mode' }));
+  expect(removeServiceSpy).toHaveBeenNthCalledWith(5, expect.objectContaining({ displayName: 'Indoor silent mode', subtype: 'indoor_silent_mode' }));
 
 });
 
@@ -344,14 +402,14 @@ test('DaikinCloudAirConditioningAccessory Getters', async () => {
     return [device];
   });
 
-  const config = new MockPlatformConfig(false);
-  const api = new HomebridgeAPI();
+  const api = createTestApi();
+  const platform = createTestPlatform({}, api);
 
   const uuid = api.hap.uuid.generate(device.getId());
   const accessory = new api.platformAccessory(device.getData('climateControl', 'name', undefined).value as string, uuid);
   accessory.context.device = device;
 
-  const homebridgeAccessory = new AirConditioningAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
+  const homebridgeAccessory = new AirConditioningAccessory(platform, accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
 
   expect(await homebridgeAccessory.service.handleActiveStateGet()).toEqual(true);
   expect(await homebridgeAccessory.service.handleCurrentTemperatureGet()).toEqual(25);
@@ -375,79 +433,85 @@ test('DaikinCloudAirConditioningAccessory Getters', async () => {
   expect(await indoorSilentFeature!.handleGet()).toEqual(false);
 });
 
-test('DaikinCloudAirConditioningAccessory Setters', async () => {
-  const mockApi = { updateDevice: vi.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
-  const device = new DaikinCloudDevice(JSON.parse(JSON.stringify(dx4Airco)) as any, mockApi);
+describe('DaikinCloudAirConditioningAccessory Setters (dx4)', () => {
+  const build = () => {
+    const mockApi = { updateDevice: vi.fn().mockResolvedValue(undefined) } as unknown as DaikinApi;
+    const device = new DaikinCloudDevice(JSON.parse(JSON.stringify(dx4Airco)) as any, mockApi);
+    vi.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => [device]);
+    const setData = vi.spyOn(device, 'setData').mockResolvedValue(undefined);
 
-  vi.spyOn(DaikinCloudController.prototype, 'getCloudDevices').mockImplementation(async () => {
-    return [device];
+    const api = createTestApi();
+    const accessory = new api.platformAccessory(device.getData('climateControl', 'name', undefined).value as string, api.hap.uuid.generate(device.getId()));
+    accessory.context.device = device;
+    const homebridgeAccessory = new AirConditioningAccessory(
+      createTestPlatform({}, api),
+      accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>,
+    );
+    setData.mockClear();
+    return { service: homebridgeAccessory.service, setData };
+  };
+
+  test('Active: already on is skipped, off writes onOffMode=off', async () => {
+    const { service, setData } = build();
+    await service.handleActiveStateSet(1);
+    expect(setData).not.toHaveBeenCalled();
+    await service.handleActiveStateSet(0);
+    expect(setData.mock.calls).toEqual([['climateControl', 'onOffMode', 'off', undefined]]);
   });
 
-  const setDataSpy = vi.spyOn(DaikinCloudDevice.prototype, 'setData').mockImplementation(() => {});
+  test('CoolingThreshold writes the setpoint, then mirrors the midpoint to auto', async () => {
+    const { service, setData } = build();
+    // dx4 heating=22 + new cooling=21 → midpoint 21.5.
+    await service.handleCoolingThresholdTemperatureSet(21);
+    expect(setData.mock.calls).toEqual([
+      ['climateControl', 'temperatureControl', '/operationModes/cooling/setpoints/roomTemperature', 21],
+      ['climateControl', 'temperatureControl', '/operationModes/auto/setpoints/roomTemperature', 21.5],
+    ]);
+  });
 
-  const config = new MockPlatformConfig(false);
-  const api = new HomebridgeAPI();
+  test('HeatingThreshold writes the setpoint, then mirrors the midpoint to auto', async () => {
+    const { service, setData } = build();
+    // New heating=25 + dx4 cooling=25 → midpoint 25.
+    await service.handleHeatingThresholdTemperatureSet(25);
+    expect(setData.mock.calls).toEqual([
+      ['climateControl', 'temperatureControl', '/operationModes/heating/setpoints/roomTemperature', 25],
+      ['climateControl', 'temperatureControl', '/operationModes/auto/setpoints/roomTemperature', 25],
+    ]);
+  });
 
-  const uuid = api.hap.uuid.generate(device.getId());
-  const accessory = new api.platformAccessory(device.getData('climateControl', 'name', undefined).value as string, uuid);
-  accessory.context.device = device;
+  test('RotationSpeed in fixed fan mode only writes the speed', async () => {
+    const { service, setData } = build();
+    // 50% of maxValue 5 = 2.5 → device speed 3.
+    await service.handleRotationSpeedSet(50);
+    expect(setData.mock.calls).toEqual([['climateControl', 'fanControl', '/operationModes/heating/fanSpeed/modes/fixed', 3]]);
+  });
 
-  const homebridgeAccessory = new AirConditioningAccessory(new DaikinCloudPlatform(new Logger(), config, api), accessory as unknown as PlatformAccessory<DaikinCloudAccessoryContext>);
+  test('TargetHeaterCoolerState only writes operationMode (never onOffMode)', async () => {
+    const { service, setData } = build();
+    await service.handleTargetHeaterCoolerStateSet(1);
+    expect(setData).not.toHaveBeenCalled(); // already heating
+    await service.handleTargetHeaterCoolerStateSet(2);
+    expect(setData.mock.calls).toEqual([['climateControl', 'operationMode', 'cooling', undefined]]);
+  });
 
-  // Device starts 'on'; setting Active=1 (already on) is skipped by the idempotency guard
-  await homebridgeAccessory.service.handleActiveStateSet(1);
-  expect(setDataSpy).toHaveBeenCalledTimes(0);
+  test('SwingMode writes both fan-direction axes', async () => {
+    const { service, setData } = build();
+    await service.handleSwingModeSet(1);
+    expect(setData.mock.calls).toEqual([
+      ['climateControl', 'fanControl', '/operationModes/heating/fanDirection/horizontal/currentMode', 'swing'],
+      ['climateControl', 'fanControl', '/operationModes/heating/fanDirection/vertical/currentMode', 'swing'],
+    ]);
+  });
 
-  await homebridgeAccessory.service.handleActiveStateSet(0);
-  expect(setDataSpy).toHaveBeenNthCalledWith(1, 'climateControl', 'onOffMode', 'off', undefined);
-
-  // Cooling threshold setter now also mirrors the heating/cooling midpoint
-  // to the auto setpoint (HomeKit range ↔ Daikin single-setpoint bridge).
-  // dx4 heating=22 + new cooling=21 → midpoint=21.5 → auto write.
-  await homebridgeAccessory.service.handleCoolingThresholdTemperatureSet(21);
-  expect(setDataSpy).toHaveBeenNthCalledWith(2, 'climateControl', 'temperatureControl', '/operationModes/cooling/setpoints/roomTemperature', 21);
-  expect(setDataSpy).toHaveBeenNthCalledWith(3, 'climateControl', 'temperatureControl', '/operationModes/auto/setpoints/roomTemperature', 21.5);
-
-  // dx4-airco in heating mode already has fanSpeed.currentMode = 'fixed',
-  // so the setter only updates the speed value (no redundant currentMode write).
-  // 50% of maxValue 5 = 2.5 → rounds to 3 → device speed 3.
-  await homebridgeAccessory.service.handleRotationSpeedSet(50);
-  expect(setDataSpy).toHaveBeenNthCalledWith(4, 'climateControl', 'fanControl', '/operationModes/heating/fanSpeed/modes/fixed', 3);
-
-  // Heating threshold setter also fires the auto sync.
-  // setDataSpy is a no-op mock so device state still has cooling=25 from
-  // the fixture (the earlier cooling=21 write didn't persist in memory).
-  // New heating=25 + device cooling=25 → midpoint=25.
-  await homebridgeAccessory.service.handleHeatingThresholdTemperatureSet(25);
-  expect(setDataSpy).toHaveBeenNthCalledWith(5, 'climateControl', 'temperatureControl', '/operationModes/heating/setpoints/roomTemperature', 25);
-  expect(setDataSpy).toHaveBeenNthCalledWith(6, 'climateControl', 'temperatureControl', '/operationModes/auto/setpoints/roomTemperature', 25);
-
-  // TargetHeaterCoolerState only sets operationMode; onOffMode is controlled exclusively by Active
-  await homebridgeAccessory.service.handleTargetHeaterCoolerStateSet(1);
-  expect(setDataSpy).toHaveBeenNthCalledWith(7, 'climateControl', 'operationMode', 'heating', undefined);
-
-  await homebridgeAccessory.service.handleSwingModeSet(1);
-  expect(setDataSpy).toHaveBeenNthCalledWith(8, 'climateControl', 'fanControl', '/operationModes/heating/fanDirection/horizontal/currentMode', 'swing');
-  expect(setDataSpy).toHaveBeenNthCalledWith(9, 'climateControl', 'fanControl', '/operationModes/heating/fanDirection/vertical/currentMode', 'swing');
-
-  // Feature-based setters via FeatureManager
-  const powerfulFeature = homebridgeAccessory.service.featureManager.getFeature(PowerfulModeFeature);
-  await powerfulFeature!.handleSet(true);
-  expect(setDataSpy).toHaveBeenNthCalledWith(10, 'climateControl', 'powerfulMode', 'on', undefined);
-
-  const econoFeature = homebridgeAccessory.service.featureManager.getFeature(EconoModeFeature);
-  await econoFeature!.handleSet(true);
-  expect(setDataSpy).toHaveBeenNthCalledWith(11, 'climateControl', 'econoMode', 'on', undefined);
-
-  const streamerFeature = homebridgeAccessory.service.featureManager.getFeature(StreamerModeFeature);
-  await streamerFeature!.handleSet(true);
-  expect(setDataSpy).toHaveBeenNthCalledWith(12, 'climateControl', 'streamerMode', 'on', undefined);
-
-  const outdoorSilentFeature = homebridgeAccessory.service.featureManager.getFeature(OutdoorSilentModeFeature);
-  await outdoorSilentFeature!.handleSet(true);
-  expect(setDataSpy).toHaveBeenNthCalledWith(13, 'climateControl', 'outdoorSilentMode', 'on', undefined);
-
-  const indoorSilentFeature = homebridgeAccessory.service.featureManager.getFeature(IndoorSilentModeFeature);
-  await indoorSilentFeature!.handleSet(true);
-  expect(setDataSpy).toHaveBeenNthCalledWith(14, 'climateControl', 'fanControl', '/operationModes/heating/fanSpeed/currentMode', 'quiet');
+  test.each([
+    ['PowerfulModeFeature', PowerfulModeFeature, ['climateControl', 'powerfulMode', 'on', undefined]],
+    ['EconoModeFeature', EconoModeFeature, ['climateControl', 'econoMode', 'on', undefined]],
+    ['StreamerModeFeature', StreamerModeFeature, ['climateControl', 'streamerMode', 'on', undefined]],
+    ['OutdoorSilentModeFeature', OutdoorSilentModeFeature, ['climateControl', 'outdoorSilentMode', 'on', undefined]],
+    ['IndoorSilentModeFeature', IndoorSilentModeFeature, ['climateControl', 'fanControl', '/operationModes/heating/fanSpeed/currentMode', 'quiet']],
+  ])('feature switch %s writes its data point', async (_name, featureClass, expected) => {
+    const { service, setData } = build();
+    await service.featureManager.getFeature(featureClass as typeof PowerfulModeFeature)!.handleSet(true);
+    expect(setData.mock.calls).toEqual([expected]);
+  });
 });

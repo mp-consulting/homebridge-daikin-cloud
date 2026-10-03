@@ -2,24 +2,14 @@ import { vi } from 'vitest';
 import { FirmwareUpdateFeature } from '../../../src/features/modes';
 import type { DaikinApi } from '../../../src/api';
 import { DaikinCloudDevice } from '../../../src/api';
-import { MockPlatformConfig } from '../../mocks';
 import type { DaikinCloudAccessoryContext } from '../../../src/platform';
-import { DaikinCloudPlatform } from '../../../src/platform';
 import { PlatformAccessory } from 'homebridge/lib/platformAccessory';
-import { uuid } from 'hap-nodejs';
 import { dx4Airco } from '../../fixtures/dx4-airco';
+import { createTestPlatform, hap, useFakeTimersPerTest } from '../../helpers/platform';
 
-import { HomebridgeAPI } from 'homebridge/lib/api.js';
-import { Logger } from 'homebridge/lib/logger.js';
+const { Service, uuid } = hap;
 
-beforeEach(() => {
-  vi.useFakeTimers();
-});
-
-afterEach(() => {
-  vi.clearAllTimers();
-  vi.useRealTimers();
-});
+useFakeTimersPerTest();
 
 const STAGED_UPDATE = {
   id: 'b28f1f7f-1111-2222-3333-444455556666',
@@ -67,10 +57,10 @@ const buildFeature = (
   const accessory = new PlatformAccessory<DaikinCloudAccessoryContext>('TEST', uuid.generate(device.getId()));
   accessory.context.device = device;
 
-  const platformConfig = new MockPlatformConfig(config.showExtraFeatures === true);
-  (platformConfig as any).showFirmwareUpdateSwitch = config.showFirmwareUpdateSwitch;
-
-  const platform = new DaikinCloudPlatform(new Logger(), platformConfig, new HomebridgeAPI());
+  const platform = createTestPlatform({
+    showExtraFeatures: config.showExtraFeatures === true,
+    showFirmwareUpdateSwitch: config.showFirmwareUpdateSwitch,
+  });
   const feature = new FirmwareUpdateFeature(platform, accessory, 'climateControl');
   return { feature, accessory, device, triggerMock };
 };
@@ -89,7 +79,7 @@ describe('FirmwareUpdateFeature — support and enablement', () => {
   it('exposes a Switch service when supported and explicitly enabled', () => {
     const { feature, accessory } = buildFeature(dx4WithFirmware(), { showFirmwareUpdateSwitch: true });
     feature.setup();
-    expect(accessory.getService('Firmware Update')).toBeDefined();
+    expect(accessory.getService('Firmware Update')!.UUID).toBe(Service.Switch.UUID);
   });
 
   it('is NOT enabled implicitly by the legacy showExtraFeatures flag', () => {

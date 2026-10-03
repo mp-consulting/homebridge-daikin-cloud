@@ -24,6 +24,7 @@ export interface DeviceCapabilities {
     hasSwingModeVertical: boolean;
     hasSwingModeHorizontal: boolean;
     hasFanControl: boolean;
+    hasHolidayMode: boolean;
 
     // Operation modes
     supportedOperationModes: DaikinOperationModes[];

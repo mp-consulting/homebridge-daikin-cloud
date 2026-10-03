@@ -2,24 +2,14 @@ import { vi } from 'vitest';
 import { ClimateControlService } from '../../../src/services';
 import type { DaikinApi } from '../../../src/api';
 import { DaikinCloudDevice } from '../../../src/api';
-import { MockPlatformConfig } from '../../mocks';
 import type { DaikinCloudAccessoryContext } from '../../../src/platform';
-import { DaikinCloudPlatform } from '../../../src/platform';
 import { PlatformAccessory } from 'homebridge/lib/platformAccessory';
-import { Characteristic, uuid } from 'hap-nodejs';
 import { dx4Airco } from '../../fixtures/dx4-airco';
+import { createTestPlatform, hap, useFakeTimersPerTest } from '../../helpers/platform';
 
-import { HomebridgeAPI } from 'homebridge/lib/api.js';
-import { Logger } from 'homebridge/lib/logger.js';
+const { Characteristic, uuid } = hap;
 
-beforeEach(() => {
-  vi.useFakeTimers();
-});
-
-afterEach(() => {
-  vi.clearAllTimers();
-  vi.useRealTimers();
-});
+useFakeTimersPerTest();
 
 // Note: setData is NOT mocked here — we want the real optimistic cache write to
 // run so the Auto fan mode switch reconciles. Only the underlying API call is mocked.
@@ -35,7 +25,7 @@ const buildService = (): { service: ClimateControlService; accessory: PlatformAc
   accessory.context.device = device;
 
   // showExtraFeatures = true → the Auto fan mode switch is created.
-  const platform = new DaikinCloudPlatform(new Logger(), new MockPlatformConfig(true), new HomebridgeAPI());
+  const platform = createTestPlatform({ showExtraFeatures: true });
   const service = new ClimateControlService(platform, accessory, 'climateControl');
   return { service, accessory };
 };

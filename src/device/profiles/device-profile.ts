@@ -26,7 +26,6 @@ export interface DeviceProfile {
         climateControl: boolean;
         domesticHotWaterTank: boolean;
     };
-    typicalFeatures: string[];
     matcher: (device: DaikinCloudDevice) => boolean;
 }
 
@@ -41,11 +40,6 @@ export const DEVICE_PROFILES: DeviceProfile[] = [
       climateControl: true,
       domesticHotWaterTank: true,
     },
-    typicalFeatures: [
-      'powerfulMode',
-      'controlMode',
-      'setpointMode',
-    ],
     matcher: (device: DaikinCloudDevice) => {
       const deviceModel = device.getDescription().deviceModel;
       return deviceModel === 'Altherma';
@@ -58,14 +52,6 @@ export const DEVICE_PROFILES: DeviceProfile[] = [
       climateControl: true,
       domesticHotWaterTank: false,
     },
-    typicalFeatures: [
-      'powerfulMode',
-      'econoMode',
-      'streamerMode',
-      'outdoorSilentMode',
-      'fanControl',
-      'swingMode',
-    ],
     matcher: (device: DaikinCloudDevice) => {
       const deviceModel = device.getDescription().deviceModel;
       // Match devices that are not Altherma and have climate control
@@ -116,14 +102,7 @@ function createUnknownProfile(device: DaikinCloudDevice): DeviceProfile {
       climateControl: hasClimateControl,
       domesticHotWaterTank: hasDomesticHotWaterTank,
     },
-    typicalFeatures: [],
     matcher: () => true,
   };
 }
 
-/**
- * Get device profile by type
- */
-export function getProfileByType(type: DeviceType): DeviceProfile | undefined {
-  return DEVICE_PROFILES.find(profile => profile.type === type);
-}

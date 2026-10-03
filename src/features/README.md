@@ -21,8 +21,21 @@ FeatureManager
     └── ... (see modes/ folder)
 ```
 
+## Switch identity
+
+Switches are found by `(Service.Switch, subtype)`, never by display name. New
+switches get a subtype namespaced to their management point
+(`<managementPointId>:<subtype>`), so the climateControl and the Altherma
+domesticHotWaterTank features cannot touch each other's switches. Switches cached
+by older versions (bare `<subtype>`) are adopted as-is by the one management point
+that owns them, keeping their HomeKit identity and automations (see
+`BaseFeature.ownsLegacyService`).
+
 ## Adding a New Feature
 
-1. Create a new file in `modes/` extending `BaseFeature`
-2. Implement `isSupported()`, `getDataKey()`, `getOnValue()`, `getOffValue()`
-3. Register in `feature-manager.ts`
+1. For a plain on/off data point, extend `OnOffDataPointFeature` and declare a
+   `spec` (name, subtype, configKey, dataPoint, optional path, onValue, offValue,
+   capability). Otherwise extend `BaseFeature`.
+2. Read support from `this.capabilities` (detected once per management point by
+   `DeviceCapabilityDetector`; add a field there if needed).
+3. Register it in `CLIMATE_CONTROL_FEATURES` (or `HOT_WATER_TANK_FEATURES`) in `feature-manager.ts`.

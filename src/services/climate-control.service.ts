@@ -1,16 +1,11 @@
-import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
+import type { Characteristic, CharacteristicValue, PlatformAccessory, Service, WithUUID } from 'homebridge';
 import type { DaikinCloudAccessoryContext, DaikinCloudPlatform } from '../platform';
-import {
-  DaikinControlModes,
-  DaikinFanDirectionHorizontalModes,
-  DaikinFanDirectionVerticalModes,
-  DaikinFanSpeedModes,
-  DaikinOnOffModes,
-  DaikinOperationModes,
-  DaikinSetpointModes,
-  DaikinTemperatureControlSetpoints,
-} from '../types';
+import type { DaikinCloudDevice, DeviceDataPoint } from '../api';
+import { DaikinOnOffModes, DaikinOperationModes } from '../types';
+import type { DaikinControlModes } from '../types';
 import { FeatureManager } from '../features';
+import { withHapWrite } from '../utils/hap-write';
+import { toMessage } from '../utils/errors';
 import {
   DEFAULT_ROOM_TEMPERATURE,
   HOMEKIT_TEMP_MIN,
@@ -18,6 +13,13 @@ import {
   HEATING_TEMP_CLAMP_MIN,
   HEATING_TEMP_CLAMP_MAX,
 } from '../constants';
+import { FanSpeedController, percentStep } from './climate-control/fan-speed';
+import { SwingController } from './climate-control/swing-controller';
+import { AutoSetpointSync, SetpointResolver } from './climate-control/setpoint-resolver';
+import type { ThresholdKind } from './climate-control/setpoint-resolver';
+import { SeparateFanService } from './climate-control/separate-fan.service';
+
+const DEFAULT_COOLING_TEMPERATURE = 25;
 
 export class ClimateControlService {
   readonly platform: DaikinCloudPlatform;
@@ -25,9 +27,14 @@ export class ClimateControlService {
   readonly managementPointId: string;
 
   private readonly name: string;
-  private readonly service?: Service;
-  private fanService?: Service;
+  private readonly service: Service;
   readonly featureManager: FeatureManager;
+  readonly swing: SwingController;
+  readonly fanSpeed: FanSpeedController;
+  readonly setpoints: SetpointResolver;
+  private readonly autoSetpointSync: AutoSetpointSync;
+  private readonly separateFan: SeparateFanService;
+  private lastOperationMode?: DaikinOperationModes;
 
   constructor(
     platform: DaikinCloudPlatform,
@@ -39,75 +46,47 @@ export class ClimateControlService {
     this.managementPointId = managementPointId;
     this.name = this.accessory.displayName;
 
-    this.service = this.accessory.getService(this.platform.Service.HeaterCooler);
+    const getDevice = () => this.device;
+    this.swing = new SwingController(getDevice, managementPointId);
+    this.fanSpeed = new FanSpeedController(getDevice, managementPointId, () => this.getCurrentOperationMode());
+    this.setpoints = new SetpointResolver(getDevice, managementPointId, accessory.UUID);
+    this.autoSetpointSync = new AutoSetpointSync(getDevice, managementPointId, this.setpoints, platform.log, this.name);
+    this.separateFan = new SeparateFanService(platform, accessory, this.name);
+
+    const { Characteristic } = this.platform;
     this.featureManager = new FeatureManager(platform, accessory, managementPointId);
+    this.service = this.accessory.getService(this.platform.Service.HeaterCooler)
+      || this.accessory.addService(this.platform.Service.HeaterCooler);
+    this.service.setCharacteristic(Characteristic.Name, this.name);
 
-    this.service = this.service || this.accessory.addService(this.platform.Service.HeaterCooler);
-
-    this.service.setCharacteristic(this.platform.Characteristic.Name, this.name);
-
-    // Required characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.Active)
+    // Required characteristics
+    this.service.getCharacteristic(Characteristic.Active)
       .onSet(this.handleActiveStateSet.bind(this))
       .onGet(this.handleActiveStateGet.bind(this));
-
-    // Required characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
+    this.service.getCharacteristic(Characteristic.CurrentTemperature)
       .onGet(this.handleCurrentTemperatureGet.bind(this));
-
-    // Required characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
-      .setProps({
-        minStep: 1,
-        minValue: 0,
-        maxValue: 2,
-      })
+    this.service.getCharacteristic(Characteristic.TargetHeaterCoolerState)
+      .setProps({ minStep: 1, minValue: 0, maxValue: 2 })
       .onGet(this.handleTargetHeaterCoolerStateGet.bind(this))
       .onSet(this.handleTargetHeaterCoolerStateSet.bind(this));
 
-    const roomTemperatureControlForCooling = accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`);
-    if (roomTemperatureControlForCooling) {
-      const coolingChar = this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature);
-      // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-      const coolingValue = typeof roomTemperatureControlForCooling.value === 'number' ? roomTemperatureControlForCooling.value : COOLING_TEMP_CLAMP_MAX;
-      const clampedCoolingValue = Math.max(HOMEKIT_TEMP_MIN, Math.min(COOLING_TEMP_CLAMP_MAX, coolingValue));
-      coolingChar.updateValue(clampedCoolingValue);
-      coolingChar
-        .setProps({
-          minStep: roomTemperatureControlForCooling.stepValue,
-          minValue: roomTemperatureControlForCooling.minValue,
-          maxValue: roomTemperatureControlForCooling.maxValue,
-        })
-        .onGet(this.handleCoolingThresholdTemperatureGet.bind(this))
-        .onSet(this.handleCoolingThresholdTemperatureSet.bind(this));
-    } else {
-      this.service.removeCharacteristic(this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature));
-    }
-
-    const roomTemperatureControlForHeating = accessory.context.device.getData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`);
-    if (roomTemperatureControlForHeating) {
-      const heatingChar = this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature);
-      // Set value within default HomeKit range first to avoid warning when setProps narrows the range
-      const heatingValue = typeof roomTemperatureControlForHeating.value === 'number' ? roomTemperatureControlForHeating.value : DEFAULT_ROOM_TEMPERATURE;
-      const clampedHeatingValue = Math.max(HEATING_TEMP_CLAMP_MIN, Math.min(HEATING_TEMP_CLAMP_MAX, heatingValue));
-      heatingChar.updateValue(clampedHeatingValue);
-      heatingChar
-        .setProps({
-          minStep: roomTemperatureControlForHeating.stepValue,
-          minValue: roomTemperatureControlForHeating.minValue,
-          maxValue: roomTemperatureControlForHeating.maxValue,
-        })
-        .onGet(this.handleHeatingThresholdTemperatureGet.bind(this))
-        .onSet(this.handleHeatingThresholdTemperatureSet.bind(this));
-    } else {
-      this.service.removeCharacteristic(this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature));
-    }
+    this.setupThreshold(
+      Characteristic.CoolingThresholdTemperature, DaikinOperationModes.COOLING,
+      COOLING_TEMP_CLAMP_MAX, HOMEKIT_TEMP_MIN, COOLING_TEMP_CLAMP_MAX,
+      this.handleCoolingThresholdTemperatureGet, this.handleCoolingThresholdTemperatureSet,
+    );
+    this.setupThreshold(
+      Characteristic.HeatingThresholdTemperature, DaikinOperationModes.HEATING,
+      DEFAULT_ROOM_TEMPERATURE, HEATING_TEMP_CLAMP_MIN, HEATING_TEMP_CLAMP_MAX,
+      this.handleHeatingThresholdTemperatureGet, this.handleHeatingThresholdTemperatureSet,
+    );
 
     this.addOrUpdateCharacteristicRotationSpeed();
+    this.lastOperationMode = this.getCurrentOperationMode();
 
-    if (this.hasSwingModeFeature()) {
+    if (this.swing.isSupported()) {
       this.platform.log.debug(`[${this.name}] Device has SwingMode, add Characteristic`);
-      this.service.getCharacteristic(this.platform.Characteristic.SwingMode)
+      this.service.getCharacteristic(Characteristic.SwingMode)
         .onGet(this.handleSwingModeGet.bind(this))
         .onSet(this.handleSwingModeSet.bind(this));
     }
@@ -119,88 +98,59 @@ export class ClimateControlService {
     this.setupSeparateFanService();
   }
 
-  /**
-   * Optional standalone Fan (Fanv2) service.
-   *
-   * HomeKit hides the HeaterCooler's RotationSpeed slider and SwingMode toggle
-   * when the accessory is grouped into a single tile in the Home app — they're
-   * only reachable by opening the device directly. Exposing a separate Fanv2
-   * service gives the fan speed slider and oscillation toggle their own tile that
-   * stays visible even when grouped.
-   *
-   * Gated behind the `showSeparateFanControl` config option, and only added when
-   * the device actually exposes a fixed fan speed and/or a swing mode. The fan's
-   * Active characteristic mirrors the unit on/off state, and its RotationSpeed /
-   * SwingMode reuse the same handlers as the HeaterCooler so both services stay
-   * in sync.
-   */
-  setupSeparateFanService(): void {
-    if (!this.service) {
-      return;
-    }
+  private get device(): DaikinCloudDevice {
+    return this.accessory.context.device;
+  }
 
-    const subtype = 'separate_fan';
-    const existing = this.accessory.getServiceById(this.platform.Service.Fanv2, subtype);
+  private getData(dataPoint: string, path?: string): DeviceDataPoint {
+    return this.device.getData(this.managementPointId, dataPoint, path);
+  }
 
-    const fanControl = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`);
-    const hasFanSpeed = fanControl.value !== undefined;
-    const hasSwing = this.hasSwingModeFeature();
-    const enabled = this.platform.config.showSeparateFanControl === true;
+  private setData(dataPoint: string, pathOrValue: unknown, value?: unknown): Promise<void> {
+    return this.device.setData(this.managementPointId, dataPoint, pathOrValue, value);
+  }
 
-    if (!enabled || (!hasFanSpeed && !hasSwing)) {
-      if (existing) {
-        this.platform.log.debug(`[${this.name}] Removing separate Fan service`);
-        this.accessory.removeService(existing);
-      }
-      this.fanService = undefined;
-      return;
-    }
-
-    const fanName = `${this.name} Fan`;
-    this.platform.log.debug(`[${this.name}] Adding separate Fan service`);
-    this.fanService = existing || this.accessory.addService(this.platform.Service.Fanv2, fanName, subtype);
-    this.fanService.setCharacteristic(this.platform.Characteristic.Name, fanName);
-    this.fanService.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
-    this.fanService.setCharacteristic(this.platform.Characteristic.ConfiguredName, fanName);
-
-    // Active mirrors the unit on/off (same handlers as the HeaterCooler Active).
-    this.fanService.getCharacteristic(this.platform.Characteristic.Active)
-      .onGet(this.handleActiveStateGet.bind(this))
-      .onSet(this.handleActiveStateSet.bind(this));
-
-    if (hasFanSpeed) {
-      this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
-        .setProps({
-          minStep: percentStep(fanControl.maxValue),
-          minValue: 0,
-          maxValue: 100,
-        })
-        .onGet(this.handleRotationSpeedGet.bind(this))
-        .onSet(this.handleRotationSpeedSet.bind(this));
-    } else {
-      this.fanService.removeCharacteristic(this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed));
-    }
-
-    if (hasSwing) {
-      this.fanService.getCharacteristic(this.platform.Characteristic.SwingMode)
-        .onGet(this.handleSwingModeGet.bind(this))
-        .onSet(this.handleSwingModeSet.bind(this));
-    }
+  private write(characteristic: string, op: () => Promise<void>): Promise<void> {
+    return withHapWrite(this.platform, `[${this.name}] ${characteristic}`, op);
   }
 
   /**
-   * Execute a device write operation with proper HAP error handling.
-   * Catches errors, logs a warning, and throws HapStatusError(SERVICE_COMMUNICATION_FAILURE)
-   * so HomeKit shows "No Response" instead of Homebridge logging "plugin threw an error".
+   * Threshold characteristics. getData() always returns a wrapper, so these are
+   * always present; the props come from the device's setpoint constraints.
    */
-  private async setDeviceData(characteristic: string, operation: () => Promise<void>): Promise<void> {
-    try {
-      await operation();
-      this.platform.forceUpdateDevices();
-    } catch (e) {
-      this.platform.log.warn(`[${this.name}] Failed to set ${characteristic}: ${e instanceof Error ? e.message : e}`);
-      throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-    }
+  private setupThreshold(
+    characteristic: WithUUID<new () => Characteristic>,
+    operationMode: DaikinOperationModes,
+    fallback: number,
+    clampMin: number,
+    clampMax: number,
+    onGet: () => Promise<CharacteristicValue>,
+    onSet: (value: CharacteristicValue) => Promise<void>,
+  ): void {
+    const setpoint = this.setpoints.read(operationMode);
+    const char = this.service.getCharacteristic(characteristic);
+    // Set value within default HomeKit range first to avoid warning when setProps narrows the range
+    const value = typeof setpoint.value === 'number' ? setpoint.value : fallback;
+    char.updateValue(Math.max(clampMin, Math.min(clampMax, value)));
+    char
+      .setProps({ minStep: setpoint.stepValue, minValue: setpoint.minValue, maxValue: setpoint.maxValue })
+      .onGet(onGet.bind(this))
+      .onSet(onSet.bind(this));
+  }
+
+  setupSeparateFanService(): void {
+    const fixed = this.fanSpeed.fixed();
+    this.separateFan.setup(
+      { hasFanSpeed: fixed.value !== undefined, fanSpeedMax: fixed.maxValue, hasSwing: this.swing.isSupported() },
+      {
+        getActive: this.handleActiveStateGet.bind(this),
+        setActive: this.handleActiveStateSet.bind(this),
+        getRotationSpeed: this.handleRotationSpeedGet.bind(this),
+        setRotationSpeed: this.handleRotationSpeedSet.bind(this),
+        getSwing: this.handleSwingModeGet.bind(this),
+        setSwing: this.handleSwingModeSet.bind(this),
+      },
+    );
   }
 
   /**
@@ -210,108 +160,61 @@ export class ClimateControlService {
    * scene commands before they ever reach onSet.
    */
   refreshValues(): void {
-    if (!this.service) {
-      return;
-    }
+    const { Characteristic } = this.platform;
     try {
-      const onOff = this.accessory.context.device.getData(this.managementPointId, 'onOffMode', undefined).value;
+      const isOn = this.getData('onOffMode').value === DaikinOnOffModes.ON;
       const operationMode = this.getCurrentOperationMode();
-      const isOn = onOff === DaikinOnOffModes.ON;
 
-      this.service.getCharacteristic(this.platform.Characteristic.Active)
-        .updateValue(isOn ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE);
-      this.fanService?.getCharacteristic(this.platform.Characteristic.Active)
-        .updateValue(isOn ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE);
+      // The fixed fan speed range (or its existence) depends on the operation
+      // mode, so re-evaluate the RotationSpeed characteristic only when it changes.
+      if (operationMode !== this.lastOperationMode) {
+        this.lastOperationMode = operationMode;
+        this.addOrUpdateCharacteristicRotationSpeed();
+      }
 
-      let currentState: number;
+      this.service.getCharacteristic(Characteristic.Active)
+        .updateValue(isOn ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE);
+      this.separateFan.updateActive(isOn);
+
+      let currentState: number = Characteristic.CurrentHeaterCoolerState.IDLE;
       if (!isOn) {
-        currentState = this.platform.Characteristic.CurrentHeaterCoolerState.INACTIVE;
+        currentState = Characteristic.CurrentHeaterCoolerState.INACTIVE;
       } else if (operationMode === DaikinOperationModes.COOLING) {
-        currentState = this.platform.Characteristic.CurrentHeaterCoolerState.COOLING;
+        currentState = Characteristic.CurrentHeaterCoolerState.COOLING;
       } else if (operationMode === DaikinOperationModes.HEATING) {
-        currentState = this.platform.Characteristic.CurrentHeaterCoolerState.HEATING;
-      } else {
-        currentState = this.platform.Characteristic.CurrentHeaterCoolerState.IDLE;
+        currentState = Characteristic.CurrentHeaterCoolerState.HEATING;
       }
-      this.service.getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)
-        .updateValue(currentState);
+      this.service.getCharacteristic(Characteristic.CurrentHeaterCoolerState).updateValue(currentState);
+      this.service.getCharacteristic(Characteristic.TargetHeaterCoolerState).updateValue(this.targetHeaterCoolerState(operationMode));
+      this.service.getCharacteristic(Characteristic.CurrentTemperature).updateValue(this.currentTemperature());
 
-      let targetState: number;
-      switch (operationMode) {
-        case DaikinOperationModes.COOLING:
-          targetState = this.platform.Characteristic.TargetHeaterCoolerState.COOL;
-          break;
-        case DaikinOperationModes.HEATING:
-          targetState = this.platform.Characteristic.TargetHeaterCoolerState.HEAT;
-          break;
-        default:
-          targetState = this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
-      }
-      this.service.getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
-        .updateValue(targetState);
-
-      const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/' + this.getCurrentControlMode()).value as number | undefined;
-      this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-        .updateValue(typeof temperature === 'number' && isFinite(temperature) ? temperature : DEFAULT_ROOM_TEMPERATURE);
-
-      const coolingTemp = this.accessory.context.device.getData(
-        this.managementPointId, 'temperatureControl',
-        `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`,
-      ).value as number | undefined;
+      const coolingTemp = this.setpoints.read(DaikinOperationModes.COOLING).value;
       if (coolingTemp !== undefined) {
-        this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature)
-          .updateValue(typeof coolingTemp === 'number' && isFinite(coolingTemp) ? coolingTemp : 25);
+        this.service.getCharacteristic(Characteristic.CoolingThresholdTemperature)
+          .updateValue(finiteOr(coolingTemp, DEFAULT_COOLING_TEMPERATURE));
       }
-
-      const heatingTemp = this.accessory.context.device.getData(
-        this.managementPointId, 'temperatureControl',
-        `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`,
-      ).value as number | undefined;
+      const heatingTemp = this.setpoints.read(DaikinOperationModes.HEATING).value;
       if (heatingTemp !== undefined) {
-        this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature)
-          .updateValue(typeof heatingTemp === 'number' && isFinite(heatingTemp) ? heatingTemp : DEFAULT_ROOM_TEMPERATURE);
+        this.service.getCharacteristic(Characteristic.HeatingThresholdTemperature)
+          .updateValue(finiteOr(heatingTemp, DEFAULT_ROOM_TEMPERATURE));
       }
 
-      // Only push RotationSpeed to HomeKit when the device is in 'fixed' fan mode.
-      // When in 'auto' or 'quiet' mode, the stored `fixed` value doesn't represent
-      // the actual fan speed — it's just a fallback for when the user switches back.
-      // Pushing it would seed the HomeKit cache with a misleading value, which the
-      // home hub may then replay (as a "cache verification") when another characteristic
-      // on this service is changed — accidentally switching the device out of auto/quiet
-      // mode. The onSet guard in handleRotationSpeedSet catches the replay, but keeping
-      // the cache accurate from the start prevents the scenario entirely.
-      const fanSpeedCurrentMode = this.accessory.context.device.getData(
-        this.managementPointId, 'fanControl',
-        `/operationModes/${operationMode}/fanSpeed/currentMode`,
-      );
-      if (fanSpeedCurrentMode.value === DaikinFanSpeedModes.FIXED) {
-        const fanSpeedData = this.accessory.context.device.getData(
-          this.managementPointId, 'fanControl',
-          `/operationModes/${operationMode}/fanSpeed/modes/fixed`,
-        );
-        if (fanSpeedData.value !== undefined) {
-          const percent = deviceSpeedToPercent(fanSpeedData.value as number, fanSpeedData.maxValue);
-          this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed)
-            .updateValue(percent);
-          if (this.fanService?.testCharacteristic(this.platform.Characteristic.RotationSpeed)) {
-            this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed).updateValue(percent);
-          }
-        }
+      // Only push RotationSpeed when the device is in 'fixed' fan mode. In 'auto'
+      // or 'quiet' the stored `fixed` value doesn't represent the actual speed;
+      // pushing it would seed the HomeKit cache with a value the home hub may
+      // replay (as a "cache verification") when another characteristic changes,
+      // accidentally switching the device out of auto/quiet. handleRotationSpeedSet
+      // guards against that replay too, but an accurate cache prevents it entirely.
+      const percent = this.fanSpeed.percentIfFixed(operationMode);
+      if (percent !== undefined) {
+        this.service.getCharacteristic(Characteristic.RotationSpeed).updateValue(percent);
+        this.separateFan.updateRotationSpeed(percent);
       }
 
-      if (this.hasSwingModeFeature()) {
-        const verticalSwingMode = this.hasSwingModeVerticalFeature()
-          ? this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanDirection/vertical/currentMode`).value
-          : null;
-        const horizontalSwingMode = this.hasSwingModeHorizontalFeature()
-          ? this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanDirection/horizontal/currentMode`).value
-          : null;
-        const swingEnabled = horizontalSwingMode !== DaikinFanDirectionHorizontalModes.STOP
-          && verticalSwingMode !== DaikinFanDirectionVerticalModes.STOP;
-        this.service.getCharacteristic(this.platform.Characteristic.SwingMode)
-          .updateValue(swingEnabled ? this.platform.Characteristic.SwingMode.SWING_ENABLED : this.platform.Characteristic.SwingMode.SWING_DISABLED);
-        this.fanService?.getCharacteristic(this.platform.Characteristic.SwingMode)
-          .updateValue(swingEnabled ? this.platform.Characteristic.SwingMode.SWING_ENABLED : this.platform.Characteristic.SwingMode.SWING_DISABLED);
+      if (this.swing.isSupported()) {
+        const swingMode = this.swing.isSwinging() ? Characteristic.SwingMode.SWING_ENABLED : Characteristic.SwingMode.SWING_DISABLED;
+        this.service.getCharacteristic(Characteristic.SwingMode).updateValue(swingMode);
+        this.separateFan.updateSwing(swingMode);
       }
 
       // Push feature switches (PowerfulMode, EconoMode, etc.) so toggling
@@ -319,517 +222,211 @@ export class ClimateControlService {
       // instead of waiting for the user to open the Home app.
       this.featureManager.refreshAll();
     } catch (e) {
-      this.platform.log.debug(`[${this.name}] refreshValues error: ${e instanceof Error ? e.message : e}`);
+      this.platform.log.debug(`[${this.name}] refreshValues error: ${toMessage(e)}`);
     }
   }
 
+  /**
+   * Add/refresh RotationSpeed for the current operation mode's fixed fan speed,
+   * or remove it when that mode has none (getData() returns `{ value: undefined }`
+   * for a missing path; setting it would fail at the API).
+   *
+   * The characteristic stays in percentage space (see fan-speed.ts). setProps
+   * runs FIRST to widen any narrow range left over from a prior session, or the
+   * updateValue below trips HAP's validateUserInput; minValue=0 (not
+   * stepPercent) keeps HAP happy for cached values below one step —
+   * percentToDeviceSpeed clamps writes up to the device minValue anyway.
+   */
   addOrUpdateCharacteristicRotationSpeed() {
-    if (!this.service) {
-      throw Error('Service not initialized');
+    const { RotationSpeed } = this.platform.Characteristic;
+    const fanControl = this.fanSpeed.fixed();
+
+    if (fanControl.value === undefined) {
+      this.service.removeCharacteristic(this.service.getCharacteristic(RotationSpeed));
+      return;
     }
 
-    // getData() returns { value: undefined } when the path is missing — checking the
-    // wrapper for truthiness always succeeds, so the characteristic was being added
-    // (with undefined min/max/step) even for devices that don't support a fixed fan
-    // speed in the current operation mode. Setting it would then fail at the API.
-    const fanControl = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`);
+    const rotationChar = this.service.getCharacteristic(RotationSpeed);
+    rotationChar
+      .setProps({ minStep: percentStep(fanControl.maxValue), minValue: 0, maxValue: 100 })
+      .onGet(this.handleRotationSpeedGet.bind(this))
+      .onSet(this.handleRotationSpeedSet.bind(this));
 
-    if (fanControl.value !== undefined) {
-      // Daikin units expose a small integer fan-speed scale (typically 1-5 or 1-3).
-      // iOS Home renders RotationSpeed as a 0-100% slider regardless of setProps,
-      // so we keep the characteristic in percentage space and map both directions:
-      // device 5/5 → HomeKit 100% (full bar), device 1/5 → 20%, etc.
-      // minStep = 100/maxValue gives the discrete positions that round-trip cleanly.
-      //
-      // Order matters: setProps FIRST to widen any narrow range left over from a
-      // prior session (e.g. an old build that capped at maxValue=5). Otherwise the
-      // updateValue below trips HAP's validateUserInput. minValue=0 (not stepPercent)
-      // keeps HAP happy when the cached value is below stepPercent — the slider's
-      // 0 position is harmless since percentToDeviceSpeed clamps writes up to the
-      // device minValue anyway.
-      const rotationChar = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
-      const stepPercent = percentStep(fanControl.maxValue);
-      const percent = deviceSpeedToPercent(fanControl.value as number, fanControl.maxValue);
-      rotationChar
-        .setProps({
-          minStep: stepPercent,
-          minValue: 0,
-          maxValue: 100,
-        })
-        .onGet(this.handleRotationSpeedGet.bind(this))
-        .onSet(this.handleRotationSpeedSet.bind(this));
-
-      // Only seed the HomeKit cache with the stored fixed percentage when the
-      // device is actually in 'fixed' fan mode. During construction this runs
-      // before refreshValues() — without this guard, the initial seed would
-      // push a misleading value (e.g. 100% when the device is in auto mode)
-      // that the home hub may later replay as a "cache verification" write.
-      const operationMode = this.getCurrentOperationMode();
-      const currentMode = this.accessory.context.device.getData(
-        this.managementPointId, 'fanControl',
-        `/operationModes/${operationMode}/fanSpeed/currentMode`,
-      );
-      if (currentMode.value === DaikinFanSpeedModes.FIXED) {
-        rotationChar.updateValue(percent);
-      }
-    } else {
-      this.service.removeCharacteristic(this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed));
+    // Only seed the cache in 'fixed' fan mode — during construction this runs
+    // before refreshValues(), and a misleading seed (e.g. 100% while in auto)
+    // may later be replayed by the home hub as a "cache verification" write.
+    const percent = this.fanSpeed.percentIfFixed();
+    if (percent !== undefined) {
+      rotationChar.updateValue(percent);
     }
   }
 
   async handleActiveStateGet(): Promise<CharacteristicValue> {
-    const state = this.accessory.context.device.getData(this.managementPointId, 'onOffMode', undefined).value;
-    this.platform.log.debug(`[${this.name}] GET ActiveState, state: ${state}, last update: ${this.accessory.context.device.getLastUpdated()}`);
+    const state = this.getData('onOffMode').value;
+    this.platform.log.debug(`[${this.name}] GET ActiveState, state: ${state}, last update: ${this.device.getLastUpdated()}`);
     return state === DaikinOnOffModes.ON;
   }
 
   async handleActiveStateSet(value: CharacteristicValue) {
     // HAP sends Active as 0 (INACTIVE) or 1 (ACTIVE), not a boolean
     const desired = value === this.platform.Characteristic.Active.ACTIVE;
-    const current = this.accessory.context.device.getData(this.managementPointId, 'onOffMode', undefined).value;
-    if ((current === DaikinOnOffModes.ON) === desired) {
+    if ((this.getData('onOffMode').value === DaikinOnOffModes.ON) === desired) {
       this.platform.log.debug(`[${this.name}] SET ActiveState skipped — already ${desired ? 'on' : 'off'}`);
       return;
     }
     this.platform.log.debug(`[${this.name}] SET ActiveState, state: ${value}`);
-    await this.setDeviceData('ActiveState', async () => {
-      await this.accessory.context.device.setData(this.managementPointId, 'onOffMode', desired ? DaikinOnOffModes.ON : DaikinOnOffModes.OFF, undefined);
-    });
+    await this.write('ActiveState', () => this.setData('onOffMode', desired ? DaikinOnOffModes.ON : DaikinOnOffModes.OFF, undefined));
   }
 
   async handleCurrentTemperatureGet(): Promise<CharacteristicValue> {
-    const temperature = this.accessory.context.device.getData(this.managementPointId, 'sensoryData', '/' + this.getCurrentControlMode()).value as number | undefined;
-    const lastUpdate = this.accessory.context.device.getLastUpdated();
-    this.platform.log.debug(
-      `[${this.name}] GET CurrentTemperature, temperature: ${temperature}, last update: ${lastUpdate}`,
-    );
-    // Return a valid temperature value, defaulting to 20 if undefined
-    return typeof temperature === 'number' && isFinite(temperature) ? temperature : DEFAULT_ROOM_TEMPERATURE;
+    const temperature = this.currentTemperature();
+    this.platform.log.debug(`[${this.name}] GET CurrentTemperature, temperature: ${temperature}, last update: ${this.device.getLastUpdated()}`);
+    return temperature;
+  }
+
+  private currentTemperature(): number {
+    return finiteOr(this.getData('sensoryData', '/' + this.getCurrentControlMode()).value, DEFAULT_ROOM_TEMPERATURE);
   }
 
   async handleCoolingThresholdTemperatureGet(): Promise<CharacteristicValue> {
-    const setpoint = this.getSetpoint(DaikinOperationModes.COOLING);
-    const path = `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${setpoint}`;
-    const temperature = this.accessory.context.device.getData(
-      this.managementPointId, 'temperatureControl', path,
-    ).value as number | undefined;
-    const lastUpdate = this.accessory.context.device.getLastUpdated();
-    this.platform.log.debug(
-      `[${this.name}] GET CoolingThresholdTemperature, temperature: ${temperature}, last update: ${lastUpdate}`,
-    );
-    return typeof temperature === 'number' && isFinite(temperature) ? temperature : 25;
+    return this.thresholdGet('cooling', DEFAULT_COOLING_TEMPERATURE);
   }
 
   async handleCoolingThresholdTemperatureSet(value: CharacteristicValue) {
+    await this.thresholdSet('cooling', value);
+  }
+
+  async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {
+    return this.thresholdGet('heating', DEFAULT_ROOM_TEMPERATURE);
+  }
+
+  async handleHeatingThresholdTemperatureSet(value: CharacteristicValue) {
+    await this.thresholdSet('heating', value);
+  }
+
+  private thresholdGet(kind: ThresholdKind, fallback: number): number {
+    const temperature = this.setpoints.read(thresholdMode(kind)).value;
+    const label = kind === 'cooling' ? 'CoolingThresholdTemperature' : 'HeatingThresholdTemperature';
+    this.platform.log.debug(`[${this.name}] GET ${label}, temperature: ${temperature}, last update: ${this.device.getLastUpdated()}`);
+    return finiteOr(temperature, fallback);
+  }
+
+  /**
+   * Write a threshold, then mirror the heating/cooling midpoint to Daikin's
+   * single AUTO setpoint — once, after concurrent threshold writes settle
+   * (see AutoSetpointSync).
+   */
+  private async thresholdSet(kind: ThresholdKind, value: CharacteristicValue): Promise<void> {
     const temperature = Math.round(value as number * 2) / 2;
-    this.platform.log.debug(`[${this.name}] SET CoolingThresholdTemperature, temperature to: ${temperature}`);
-    await this.setDeviceData('CoolingThresholdTemperature', async () => {
-      await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${this.getSetpoint(DaikinOperationModes.COOLING)}`, temperature);
-      await this.syncAutoSetpointIfSupported({ cooling: temperature });
-    });
+    const label = kind === 'cooling' ? 'CoolingThresholdTemperature' : 'HeatingThresholdTemperature';
+    const operationMode = thresholdMode(kind);
+    if (this.setpoints.read(operationMode).value === temperature) {
+      this.platform.log.debug(`[${this.name}] SET ${label} skipped — already ${temperature}`);
+      return;
+    }
+    this.platform.log.debug(`[${this.name}] SET ${label}, temperature to: ${temperature}`);
+    await this.write(label, () => this.autoSetpointSync.writeThreshold(kind, temperature,
+      () => this.setData('temperatureControl', this.setpoints.path(operationMode), temperature)));
   }
 
   async handleRotationSpeedGet(): Promise<CharacteristicValue> {
-    const fanSpeedData = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/modes/fixed`);
-    const speed = fanSpeedData.value as number | undefined;
-    const percent = typeof speed === 'number' && isFinite(speed)
-      ? deviceSpeedToPercent(speed, fanSpeedData.maxValue)
-      : percentStep(fanSpeedData.maxValue);
+    const { speed, percent } = this.fanSpeed.read();
     this.platform.log.debug(
-      `[${this.name}] GET RotationSpeed, device speed: ${speed} → ${percent}%, ` +
-        `last update: ${this.accessory.context.device.getLastUpdated()}`,
+      `[${this.name}] GET RotationSpeed, device speed: ${speed} → ${percent}%, last update: ${this.device.getLastUpdated()}`,
     );
     return percent;
   }
 
   async handleRotationSpeedSet(value: CharacteristicValue) {
-    const operationMode = this.getCurrentOperationMode();
-
-    // Skip if the current operation mode doesn't support a fixed fan speed.
-    // Without this check, we'd PATCH a non-existent path and the Daikin API would
-    // respond with a 422 (visible to the user as "No Response" in HomeKit).
-    const fixedFanSpeed = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/modes/fixed`);
-    if (fixedFanSpeed.value === undefined) {
-      this.platform.log.debug(`[${this.name}] SET RotationSpeed skipped — operationMode ${operationMode} does not support fixed fan speed`);
+    const plan = this.fanSpeed.plan(value as number);
+    if ('skip' in plan) {
+      this.platform.log.debug(`[${this.name}] SET RotationSpeed skipped — ${plan.skip}`);
       return;
     }
-
-    const deviceSpeed = percentToDeviceSpeed(value as number, fixedFanSpeed.minValue, fixedFanSpeed.maxValue);
-    this.platform.log.debug(`[${this.name}] SET RotationSpeed, ${value}% → device speed ${deviceSpeed}`);
-
-    const currentMode = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/currentMode`);
-
-    // Guard: skip when the device is in auto or quiet fan mode and the incoming
-    // speed matches the stored fixed value. HomeKit may replay the cached
-    // RotationSpeed when another characteristic (e.g. temperature setpoint)
-    // changes on the same service. Without this guard, a simple temperature
-    // adjustment would accidentally switch the fan from auto/quiet to fixed mode
-    // at the stored speed (often 5/5).
-    if (
-      currentMode.value !== undefined &&
-      currentMode.value !== DaikinFanSpeedModes.FIXED &&
-      deviceSpeed === fixedFanSpeed.value
-    ) {
-      this.platform.log.debug(
-        `[${this.name}] SET RotationSpeed skipped — device is in "${currentMode.value}" mode ` +
-        `and speed ${deviceSpeed} already matches the stored fixed value. ` +
-        'This is likely a HomeKit cache replay, not a user fan-speed change.',
-      );
-      return;
-    }
-
-    const allowedModes = (currentMode.values ?? []) as string[];
-
-    await this.setDeviceData('RotationSpeed', async () => {
-      // Only switch currentMode to 'fixed' when needed (and when supported). Some
-      // operation modes (e.g. dry on some units) restrict currentMode to 'auto' only.
-      if (currentMode.value !== DaikinFanSpeedModes.FIXED && allowedModes.includes(DaikinFanSpeedModes.FIXED)) {
-        await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/currentMode`, DaikinFanSpeedModes.FIXED);
+    this.platform.log.debug(`[${this.name}] SET RotationSpeed, ${value}% → device speed ${plan.deviceSpeed}`);
+    await this.write('RotationSpeed', async () => {
+      for (const { path, value: speedValue } of plan.writes) {
+        await this.setData('fanControl', path, speedValue);
       }
-      await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${operationMode}/fanSpeed/modes/fixed`, deviceSpeed);
     });
 
-    // Moving the slider flips fanSpeed/currentMode to 'fixed', which means any
-    // fan-mode switches (Auto fan mode, Indoor silent) are now off. Push their
-    // state immediately so HomeKit reflects it without waiting for the next poll
-    // — setData has already updated the in-memory cache optimistically.
+    // Moving the slider flips fanSpeed/currentMode to 'fixed', so the fan-mode
+    // switches (Auto fan mode, Indoor silent) are now off. Push their state now —
+    // setData has already updated the in-memory cache optimistically.
     this.featureManager.refreshAll();
   }
 
-  async handleHeatingThresholdTemperatureGet(): Promise<CharacteristicValue> {
-    const setpoint = this.getSetpoint(DaikinOperationModes.HEATING);
-    const path = `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${setpoint}`;
-    const temperature = this.accessory.context.device.getData(
-      this.managementPointId, 'temperatureControl', path,
-    ).value as number | undefined;
-    const lastUpdate = this.accessory.context.device.getLastUpdated();
-    this.platform.log.debug(
-      `[${this.name}] GET HeatingThresholdTemperature, temperature: ${temperature}, last update: ${lastUpdate}`,
-    );
-    return typeof temperature === 'number' && isFinite(temperature) ? temperature : DEFAULT_ROOM_TEMPERATURE;
-  }
-
-  async handleHeatingThresholdTemperatureSet(value: CharacteristicValue) {
-    const temperature = Math.round(value as number * 2) / 2;
-    this.platform.log.debug(`[${this.name}] SET HeatingThresholdTemperature, temperature to: ${temperature}`);
-    await this.setDeviceData('HeatingThresholdTemperature', async () => {
-      await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${this.getSetpoint(DaikinOperationModes.HEATING)}`, temperature);
-      await this.syncAutoSetpointIfSupported({ heating: temperature });
-    });
-  }
-
-  /**
-   * Daikin's auto operationMode uses a SINGLE setpoint, not a range like
-   * HomeKit's HeaterCooler (heating threshold + cooling threshold). Without
-   * this sync the Daikin app keeps showing whatever auto setpoint was there
-   * when the device was last in auto mode, regardless of what the user picks
-   * in HomeKit. Mirror the midpoint of the current heating/cooling thresholds
-   * to /operationModes/auto/setpoints/roomTemperature whenever either
-   * threshold is set, so the Daikin app and HomeKit stay in sync.
-   *
-   * No-op when the device doesn't expose an auto setpoint (e.g. devices
-   * without an auto operationMode at all).
-   */
-  private async syncAutoSetpointIfSupported(
-    overrides: { heating?: number; cooling?: number } = {},
-  ): Promise<void> {
-    // Best-effort. Failures here (e.g. getSetpoint throwing for Altherma's
-    // weatherDependentHeatingFixedCooling + leavingWaterTemperature combo, or
-    // any PATCH error) must not propagate — the primary heating/cooling write
-    // already succeeded by this point, and a missing auto-sync just leaves
-    // the Daikin app showing a slightly stale auto setpoint.
-    try {
-      const autoSetpointKey = this.getSetpoint(DaikinOperationModes.AUTO);
-      const autoPath = `/operationModes/${DaikinOperationModes.AUTO}/setpoints/${autoSetpointKey}`;
-      const autoData = this.accessory.context.device.getData(this.managementPointId, 'temperatureControl', autoPath);
-      if (autoData.value === undefined) {
-        return;
-      }
-
-      const heatingKey = this.getSetpoint(DaikinOperationModes.HEATING);
-      const coolingKey = this.getSetpoint(DaikinOperationModes.COOLING);
-      const heating = overrides.heating ?? (this.accessory.context.device.getData(
-        this.managementPointId, 'temperatureControl',
-        `/operationModes/${DaikinOperationModes.HEATING}/setpoints/${heatingKey}`,
-      ).value as number | undefined);
-      const cooling = overrides.cooling ?? (this.accessory.context.device.getData(
-        this.managementPointId, 'temperatureControl',
-        `/operationModes/${DaikinOperationModes.COOLING}/setpoints/${coolingKey}`,
-      ).value as number | undefined);
-      if (typeof heating !== 'number' || typeof cooling !== 'number') {
-        return;
-      }
-
-      // Midpoint rounded to nearest 0.5° — matches the step used by the
-      // heating/cooling setters above, and the stepValue Daikin returns.
-      let midpoint = Math.round(heating + cooling) / 2;
-      if (typeof autoData.minValue === 'number') {
-        midpoint = Math.max(autoData.minValue, midpoint);
-      }
-      if (typeof autoData.maxValue === 'number') {
-        midpoint = Math.min(autoData.maxValue, midpoint);
-      }
-
-      if (typeof autoData.value === 'number' && Math.abs(autoData.value - midpoint) < 0.01) {
-        return;
-      }
-
-      this.platform.log.debug(
-        `[${this.name}] SYNC AutoSetpoint, heating=${heating} cooling=${cooling} → auto=${midpoint}`,
-      );
-      await this.accessory.context.device.setData(this.managementPointId, 'temperatureControl', autoPath, midpoint);
-    } catch (e) {
-      this.platform.log.debug(
-        `[${this.name}] AutoSetpoint sync skipped: ${e instanceof Error ? e.message : e}`,
-      );
-    }
-  }
-
   async handleTargetHeaterCoolerStateGet(): Promise<CharacteristicValue> {
-    const operationMode: DaikinOperationModes = this.getCurrentOperationMode();
-    const lastUpdate = this.accessory.context.device.getLastUpdated();
+    const operationMode = this.getCurrentOperationMode();
     this.platform.log.debug(
-      `[${this.name}] GET TargetHeaterCoolerState, operationMode: ${operationMode}, last update: ${lastUpdate}`,
+      `[${this.name}] GET TargetHeaterCoolerState, operationMode: ${operationMode}, last update: ${this.device.getLastUpdated()}`,
     );
+    return this.targetHeaterCoolerState(operationMode);
+  }
 
+  private targetHeaterCoolerState(operationMode: DaikinOperationModes): number {
+    const { TargetHeaterCoolerState } = this.platform.Characteristic;
     switch (operationMode) {
       case DaikinOperationModes.COOLING:
-        return this.platform.Characteristic.TargetHeaterCoolerState.COOL;
+        return TargetHeaterCoolerState.COOL;
       case DaikinOperationModes.HEATING:
-        return this.platform.Characteristic.TargetHeaterCoolerState.HEAT;
-      case DaikinOperationModes.DRY:
-        this.addOrUpdateCharacteristicRotationSpeed();
-        return this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
+        return TargetHeaterCoolerState.HEAT;
       default:
-        return this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
+        return TargetHeaterCoolerState.AUTO;
     }
   }
 
   async handleTargetHeaterCoolerStateSet(value: CharacteristicValue) {
-    const operationMode = value as number;
+    const { TargetHeaterCoolerState } = this.platform.Characteristic;
     this.platform.log.debug(`[${this.name}] SET TargetHeaterCoolerState, OperationMode to: ${value}`);
-    let daikinOperationMode: DaikinOperationModes = DaikinOperationModes.COOLING;
+    const daikinOperationMode = value === TargetHeaterCoolerState.HEAT ? DaikinOperationModes.HEATING
+      : value === TargetHeaterCoolerState.AUTO ? DaikinOperationModes.AUTO
+        : DaikinOperationModes.COOLING;
 
-    switch (operationMode) {
-      case this.platform.Characteristic.TargetHeaterCoolerState.COOL:
-        daikinOperationMode = DaikinOperationModes.COOLING;
-        break;
-      case this.platform.Characteristic.TargetHeaterCoolerState.HEAT:
-        daikinOperationMode = DaikinOperationModes.HEATING;
-        break;
-      case this.platform.Characteristic.TargetHeaterCoolerState.AUTO:
-        daikinOperationMode = DaikinOperationModes.AUTO;
-        break;
+    // Compared against the Daikin mode, not the HomeKit state: AUTO while the
+    // unit is in dry/fanOnly (which read back as AUTO) must still switch to auto.
+    if (this.getCurrentOperationMode() === daikinOperationMode) {
+      this.platform.log.debug(`[${this.name}] SET TargetHeaterCoolerState skipped — already ${daikinOperationMode}`);
+      return;
     }
-
     this.platform.log.debug(`[${this.name}] SET TargetHeaterCoolerState, daikinOperationMode to: ${daikinOperationMode}`);
-    await this.setDeviceData('TargetHeaterCoolerState', async () => {
-      await this.accessory.context.device.setData(this.managementPointId, 'operationMode', daikinOperationMode, undefined);
-      // Note: onOffMode is intentionally NOT set here — the Active characteristic
-      // exclusively controls on/off. iOS always sends Active=1 alongside a mode
-      // change, so forcing onOffMode=ON here races against a concurrent Active=0
-      // (e.g. a "turn off" scene) and can leave devices ON.
-    });
+    // Note: onOffMode is intentionally NOT set here — the Active characteristic
+    // exclusively controls on/off. iOS always sends Active=1 alongside a mode
+    // change, so forcing onOffMode=ON here races against a concurrent Active=0
+    // (e.g. a "turn off" scene) and can leave devices ON.
+    await this.write('TargetHeaterCoolerState', () => this.setData('operationMode', daikinOperationMode, undefined));
   }
 
   async handleSwingModeSet(value: CharacteristicValue) {
-    const swingMode = value as number;
-    const daikinSwingMode = swingMode === 1 ? DaikinFanDirectionHorizontalModes.SWING : DaikinFanDirectionHorizontalModes.STOP;
-    this.platform.log.debug(`[${this.name}] SET SwingMode, swingmode to: ${swingMode}/${daikinSwingMode}`);
-    await this.setDeviceData('SwingMode', async () => {
-      if (this.hasSwingModeHorizontalFeature()) {
-        await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/horizontal/currentMode`, daikinSwingMode);
-      }
-
-      if (this.hasSwingModeVerticalFeature()) {
-        await this.accessory.context.device.setData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/vertical/currentMode`, daikinSwingMode);
-      }
-    });
+    const enabled = value === this.platform.Characteristic.SwingMode.SWING_ENABLED;
+    if (this.swing.axesToWrite(enabled).length === 0) {
+      this.platform.log.debug(`[${this.name}] SET SwingMode skipped — already ${enabled ? 'swinging' : 'stopped'}`);
+      return;
+    }
+    this.platform.log.debug(`[${this.name}] SET SwingMode, swingmode to: ${value}`);
+    await this.write('SwingMode', () => this.swing.set(enabled));
   }
 
   async handleSwingModeGet(): Promise<CharacteristicValue> {
-    const verticalSwingMode = this.hasSwingModeVerticalFeature() ? this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/vertical/currentMode`).value : null;
-    const horizontalSwingMode = this.hasSwingModeHorizontalFeature() ? this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/horizontal/currentMode`).value : null;
-    const lastUpdate = this.accessory.context.device.getLastUpdated();
-    this.platform.log.debug(
-      `[${this.name}] GET SwingMode, verticalSwingMode: ${verticalSwingMode}, last update: ${lastUpdate}`,
-    );
-    this.platform.log.debug(
-      `[${this.name}] GET SwingMode, horizontalSwingMode: ${horizontalSwingMode}, last update: ${lastUpdate}`,
-    );
-
-    if (horizontalSwingMode === DaikinFanDirectionHorizontalModes.STOP || verticalSwingMode === DaikinFanDirectionVerticalModes.STOP) {
-      return this.platform.Characteristic.SwingMode.SWING_DISABLED;
-    }
-
-    return this.platform.Characteristic.SwingMode.SWING_ENABLED;
+    this.platform.log.debug(`[${this.name}] GET SwingMode, ${this.swing.describe()}, last update: ${this.device.getLastUpdated()}`);
+    return this.swing.isSwinging()
+      ? this.platform.Characteristic.SwingMode.SWING_ENABLED
+      : this.platform.Characteristic.SwingMode.SWING_DISABLED;
   }
 
   getCurrentOperationMode(): DaikinOperationModes {
-    return this.accessory.context.device.getData(this.managementPointId, 'operationMode', undefined).value as DaikinOperationModes;
+    return this.getData('operationMode').value as DaikinOperationModes;
   }
 
   getCurrentControlMode(): DaikinControlModes {
-    const controlMode = this.accessory.context.device.getData(this.managementPointId, 'controlMode', undefined);
-
-    // Only Altherma devices have a controlMode, others have a fixed controlMode of ROOM_TEMPERATURE AFAIK
-    if (!controlMode.value) {
-      return DaikinControlModes.ROOM_TEMPERATURE;
-    }
-
-    return controlMode.value as DaikinControlModes;
-  }
-
-  getSetpointMode(): DaikinSetpointModes | null {
-    const setpointMode = this.accessory.context.device.getData(this.managementPointId, 'setpointMode', undefined);
-    if (!setpointMode.value) {
-      return null;
-    }
-    return setpointMode.value as DaikinSetpointModes;
-  }
-
-  getSetpoint(operationMode: DaikinOperationModes): DaikinTemperatureControlSetpoints {
-    // depending on the settings of the device the temperatureControl can be set in different ways "DaikinTemperatureControlSetpoints"
-    // Docs: https://developer.cloud.daikineurope.com/docs/b0dffcaa-7b51-428a-bdff-a7c8a64195c0/supported_features
-    // Looks like the setpointMode is the most important one to determine the setpoint,
-    // then the controleMode and in case of weatherDependentHeatingFixedCooling also the operation mode
-    // If the setpointMode is not available (in case on non-Althermas), we can use the controlMode to determine the setpoint
-
-    const setpointMode = this.getSetpointMode();
-    const controlMode = this.getCurrentControlMode();
-
-    if (setpointMode) {
-      switch (setpointMode) {
-        case DaikinSetpointModes.FIXED:
-          switch (controlMode) {
-            case DaikinControlModes.LEAVING_WATER_TEMPERATURE:
-              return DaikinTemperatureControlSetpoints.LEAVING_WATER_TEMPERATURE;
-            default:
-              return DaikinTemperatureControlSetpoints.ROOM_TEMPERATURE;
-          }
-        case DaikinSetpointModes.WEATHER_DEPENDENT:
-          switch (controlMode) {
-            case DaikinControlModes.LEAVING_WATER_TEMPERATURE:
-              return DaikinTemperatureControlSetpoints.LEAVING_WATER_OFFSET;
-            default:
-              return DaikinTemperatureControlSetpoints.ROOM_TEMPERATURE;
-          }
-        case DaikinSetpointModes.WEATHER_DEPENDENT_HEATING_FIXED_COOLING:
-          switch (controlMode) {
-            case DaikinControlModes.ROOM_TEMPERATURE:
-              return DaikinTemperatureControlSetpoints.ROOM_TEMPERATURE;
-            case DaikinControlModes.LEAVING_WATER_TEMPERATURE:
-              switch (operationMode) {
-                case DaikinOperationModes.HEATING:
-                  return DaikinTemperatureControlSetpoints.LEAVING_WATER_OFFSET;
-                case DaikinOperationModes.COOLING:
-                  return DaikinTemperatureControlSetpoints.LEAVING_WATER_TEMPERATURE;
-              }
-          }
-      }
-
-
-      throw new Error(
-        `Could not determine the TemperatureControlSetpoint for operationMode: ${operationMode}, `
-        + `setpointMode: ${setpointMode}, controlMode: ${controlMode}, deviceId: ${this.accessory.UUID}`,
-      );
-    }
-
-    switch (controlMode) {
-      case DaikinControlModes.LEAVING_WATER_TEMPERATURE:
-        return DaikinTemperatureControlSetpoints.LEAVING_WATER_OFFSET;
-      default:
-        return DaikinTemperatureControlSetpoints.ROOM_TEMPERATURE;
-    }
-  }
-
-  hasSwingModeVerticalFeature() {
-    // getData() returns { value: undefined } when the path is missing — checking the
-    // wrapper for truthiness always succeeds. We need to confirm the value itself is set.
-    const verticalSwing = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/vertical/currentMode`);
-    return verticalSwing.value !== undefined;
-  }
-
-  hasSwingModeHorizontalFeature() {
-    const horizontalSwing = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanDirection/horizontal/currentMode`);
-    return horizontalSwing.value !== undefined;
-  }
-
-  hasSwingModeFeature() {
-    return this.hasSwingModeVerticalFeature() || this.hasSwingModeHorizontalFeature();
-  }
-
-  hasPowerfulModeFeature() {
-    const powerfulMode = this.accessory.context.device.getData(this.managementPointId, 'powerfulMode', undefined);
-    this.platform.log.debug(`[${this.name}] hasPowerfulModeFeature, powerfulMode: ${Boolean(powerfulMode)}`);
-    return Boolean(powerfulMode);
-  }
-
-  hasEconoModeFeature() {
-    const econoMode = this.accessory.context.device.getData(this.managementPointId, 'econoMode', undefined);
-    this.platform.log.debug(`[${this.name}] hasEconoModeFeature, econoMode: ${Boolean(econoMode)}`);
-    return Boolean(econoMode);
-  }
-
-  hasStreamerModeFeature() {
-    const streamerMode = this.accessory.context.device.getData(this.managementPointId, 'streamerMode', undefined);
-    this.platform.log.debug(`[${this.name}] hasStreamerModeFeature, streamerMode: ${Boolean(streamerMode)}`);
-    return Boolean(streamerMode);
-  }
-
-  hasOutdoorSilentModeFeature() {
-    const OutdoorSilentMode = this.accessory.context.device.getData(this.managementPointId, 'outdoorSilentMode', undefined);
-    this.platform.log.debug(`[${this.name}] hasOutdoorSilentModeFeature, outdoorSilentMode: ${Boolean(OutdoorSilentMode)}`);
-    return Boolean(OutdoorSilentMode);
-  }
-
-  hasIndoorSilentModeFeature() {
-    const currentModeFanControl = this.accessory.context.device.getData(this.managementPointId, 'fanControl', `/operationModes/${this.getCurrentOperationMode()}/fanSpeed/currentMode`);
-    if (!currentModeFanControl) {
-      return false;
-    }
-    const fanSpeedValues: Array<string> = currentModeFanControl.values || [];
-    this.platform.log.debug(`[${this.name}] hasIndoorSilentModeFeature, indoorSilentMode: ${fanSpeedValues.includes(DaikinFanSpeedModes.QUIET)}`);
-    return fanSpeedValues.includes(DaikinFanSpeedModes.QUIET);
-  }
-
-  hasOperationMode(operationMode: DaikinOperationModes) {
-    const operationModeValues: Array<string> = this.accessory.context.device.getData(this.managementPointId, 'operationMode', undefined).values || [];
-    this.platform.log.debug(`[${this.name}] has ${operationMode}: ${operationModeValues.includes(operationMode)}`);
-    return operationModeValues.includes(operationMode);
-  }
-
-  hasDryOperationModeFeature() {
-    return this.hasOperationMode(DaikinOperationModes.DRY);
-  }
-
-  hasFanOnlyOperationModeFeature() {
-    return this.hasOperationMode(DaikinOperationModes.FAN_ONLY);
+    return this.setpoints.getControlMode();
   }
 }
 
-// Daikin's fan speed scale (e.g. 1..5) → HomeKit's 0..100% percentage slider.
-// Pulled to module scope so refreshValues / addOrUpdate / get / set use the
-// same math and the same fallback for missing maxValue.
-const DEFAULT_FAN_MAX = 5;
-
-function percentStep(maxValue: number | undefined): number {
-  return 100 / (maxValue && maxValue > 0 ? maxValue : DEFAULT_FAN_MAX);
+function thresholdMode(kind: ThresholdKind): DaikinOperationModes {
+  return kind === 'cooling' ? DaikinOperationModes.COOLING : DaikinOperationModes.HEATING;
 }
 
-function deviceSpeedToPercent(speed: number, maxValue: number | undefined): number {
-  const max = maxValue && maxValue > 0 ? maxValue : DEFAULT_FAN_MAX;
-  const percent = Math.round((speed / max) * 100);
-  return Math.max(0, Math.min(100, percent));
-}
-
-function percentToDeviceSpeed(
-  percent: number,
-  minValue: number | undefined,
-  maxValue: number | undefined,
-): number {
-  const min = minValue && minValue > 0 ? minValue : 1;
-  const max = maxValue && maxValue > 0 ? maxValue : DEFAULT_FAN_MAX;
-  const raw = Math.round((percent / 100) * max);
-  return Math.max(min, Math.min(max, raw));
+function finiteOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && isFinite(value) ? value : fallback;
 }
