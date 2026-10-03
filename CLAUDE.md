@@ -5,11 +5,12 @@
 This is a Homebridge plugin for Daikin Cloud (Onecta) integration that allows controlling Daikin air conditioning units through Apple HomeKit. The plugin supports both Developer Portal and Mobile App authentication methods.
 
 **Key Technologies:**
-- TypeScript (target: ESNext)
+- TypeScript (strict, target ES2022, CommonJS output in `dist/`)
 - Homebridge Plugin API
 - HAP-nodejs (HomeKit Accessory Protocol)
-- Jest for testing
-- ESLint for code quality
+- Zod for runtime validation of API payloads and config
+- Vitest for testing (with v8 coverage thresholds)
+- ESLint (flat config, `eslint.config.mjs`) for code quality
 
 ## Git Settings
 
@@ -55,61 +56,82 @@ Common scopes used in this project:
 - `fix(service): resolve temperature validation warning`
 - `chore(deps): update dependencies`
 - `refactor(features): extract feature modules from service`
-- `test(utils): add comprehensive StructuredLogger tests`
+- `test(config): cover feature flag resolution`
 
 ## Code Style Guidelines
 
 ### TypeScript & Code Quality
 
-1. **Indentation**: Use 4 spaces (enforced by ESLint)
-2. **Quotes**: Use single quotes for strings
-3. **Semicolons**: Optional but should be consistent
+1. **Indentation**: 2 spaces (enforced by ESLint)
+2. **Quotes**: Single quotes for strings
+3. **Semicolons**: Required
 4. **Trailing commas**: Required in multiline objects/arrays
 5. **Type safety**:
-   - `strict: true` in tsconfig
-   - `noImplicitAny: false` (be mindful of types)
+   - `strict: true` and `noImplicitAny: true` in tsconfig
+   - Use `import type` for type-only imports (enforced)
    - Prefer explicit types for public APIs
 
 ### ESLint Rules
-The project uses `@typescript-eslint` with custom rules:
-- No `console.log` - use Homebridge logger instead
+The project uses `@typescript-eslint` with custom rules, run with `--max-warnings=0`:
 - Prefer arrow callbacks
 - Always use curly braces
-- Enforce comma spacing
-- No trailing spaces
+- `eqeqeq` (smart), `prefer-const`, max line length 160
+- No `console.log` in plugin code by convention - use the Homebridge logger
 
 ### File Organization
 
 ```
 src/
-├── accessories/          # HAP accessories (air-conditioning, altherma)
-├── api/                  # Daikin API clients (OAuth, WebSocket, repository)
-├── config/               # Configuration management
+├── accessories/          # HAP accessories (base, air-conditioning, altherma)
+├── api/                  # Daikin Cloud client
+│   ├── daikin-controller.ts      # Orchestrates OAuth, REST API and WebSocket
+│   ├── daikin-api.ts             # REST client: rate limits, retries/backoff, write queue + coalescing
+│   ├── daikin-oauth.ts / daikin-mobile-oauth.ts  # Developer Portal / Mobile App auth
+│   ├── token-client.ts           # Shared token endpoint client for both auth modes
+│   ├── token-storage.ts          # Atomic 0600 token file persistence
+│   ├── http-transport.ts / http-defaults.ts      # node|curl transport, TLS/UA defaults
+│   ├── daikin-websocket.ts       # Real-time updates (Mobile App only)
+│   ├── daikin-device.ts          # Device model; emits 'updated'
+│   ├── daikin-schemas.ts         # Zod schemas
+│   └── daikin-cloud.repository.ts  # Masks sensitive device data for logs (nothing else)
+├── config/               # ConfigManager: single source of plugin configuration
 ├── constants/            # Shared constants (API, auth, device, time)
-├── device/               # Device profiles and capability detection
-├── di/                   # Dependency injection (service container)
-├── features/             # Feature modules (modes as switches)
-├── services/             # HAP services (climate control, hot water)
+├── device/               # Capability detection, accessory factory, data-paths.ts, profiles/
+├── features/             # Feature switches: base-feature, feature-manager,
+│   │                     #   on-off-data-point-feature.ts (shared on/off base)
+│   └── modes/            # One file per mode (powerful, econo, holiday, firmware, ...)
+├── services/             # HAP services
+│   ├── climate-control.service.ts  # HeaterCooler service (entry point)
+│   ├── climate-control/  # fan-speed, setpoint-resolver, swing-controller, separate-fan.service
+│   └── hot-water-tank.service.ts
 ├── types/                # TypeScript type definitions
-├── utils/                # Utility functions (logging, error handling)
-├── index.ts             # Plugin entry point
-├── platform.ts          # Main platform class
-└── settings.ts          # Plugin settings
+├── utils/                # errors.ts (toMessage), hap-write.ts (withHapWrite), sleep.ts,
+│                         #   strings.ts
+├── index.ts              # Plugin entry point
+├── platform.ts           # Platform: discovery, polling schedule, WebSocket wiring
+└── settings.ts           # Plugin/platform names
+homebridge-ui/            # Custom settings UI (server.js + public/)
+config.schema.json        # Config schema shown by Homebridge UI
 ```
 
 ### Test Organization
 
 ```
 test/
-├── fixtures/            # Test data (device responses)
+├── fixtures/            # Device API responses (TypeScript modules)
 ├── mocks/               # Mock objects for testing
-├── helpers/             # Test utilities
+├── helpers/             # createTestPlatform/useFakeTimersPerTest/hap; isolated-storage setup file
+├── hbConfig/            # Sample Homebridge config (config.json here is used by schema:check)
 ├── unit/                # Unit tests
+│   ├── accessories/
 │   ├── api/
+│   ├── config/
 │   ├── device/
+│   ├── features/
 │   ├── services/
+│   ├── ui/              # homebridge-ui/server.js (loaded via createRequire, uses dist/)
 │   └── utils/
-└── integration/         # Integration tests
+└── integration/         # Platform/accessory integration tests
 ```
 
 ## Development Workflow
@@ -126,15 +148,31 @@ npm run build
 # Run linter
 npm run lint
 
-# Run tests
+# Type-check src/ and test/ (vitest itself does not type-check)
+npm run typecheck
+
+# Run tests (vitest)
 npm test
 
+# Run tests with coverage (thresholds in vitest.config.mts; CI fails below them)
+npm run test:coverage
+
 # Update test snapshots
-npm run test:updateSnapshots
+npx vitest run -u
 
 # Development with auto-rebuild
 npm run watch
+
+# Schema drift check against the LIVE Daikin API (manual only, not run in CI):
+# needs real credentials in test/hbConfig/config.json and spends API quota
+npm run schema:check
 ```
+
+`scripts/manual/` holds ad-hoc scripts against the live Daikin endpoints (real credentials,
+not run by tests or CI); see its README.
+
+The UI server tests (`test/unit/ui`) load `homebridge-ui/server.js`, which requires
+compiled code from `dist/`, so run `npm run build` before `npm test` after changing `src/`.
 
 ### Testing Guidelines
 
@@ -142,18 +180,21 @@ npm run watch
 2. **Update snapshots carefully**: Review snapshot changes before committing
 3. **Use fixtures**: Add device response fixtures in `test/fixtures/` for new device types
 4. **Mock external dependencies**: Use mocks from `test/mocks/` for API calls
-5. **Test coverage**: Aim for good coverage, especially for API and service layers
+5. **Test coverage**: Keep above the thresholds in `vitest.config.mts` (covers `src/` and `homebridge-ui/server.js`)
+6. **Platform & HAP in tests**: build platforms with `createTestPlatform()` and use `hap` from
+   `test/helpers/platform.ts` (homebridge's HAP, not the standalone `hap-nodejs`); a vitest
+   setup file points the Homebridge storage path at a temp dir, so tests never touch `~/.homebridge`
 
 ### Common Development Tasks
 
 #### Adding a New Feature Mode
 
-1. Create feature class in `src/features/modes/`
-2. Extend `BaseFeature` class
-3. Register in feature registry
-4. Add configuration option in settings
-5. Add tests in `test/unit/features/`
-6. Update documentation
+1. Create feature class in `src/features/modes/` (extend `BaseFeature`, or
+   `OnOffDataPointFeature` for a simple on/off data point)
+2. Register it in `CLIMATE_CONTROL_FEATURES` / `HOT_WATER_TANK_FEATURES` in `src/features/feature-manager.ts`
+3. Add the `show*` toggle to `config.schema.json` (no `default` for extra features), `FEATURE_CONFIG_KEYS` in `src/config/config-manager.ts` and the custom UI's `FEATURE_KEYS`/`STANDALONE_KEYS` (a test keeps all three in sync)
+4. Add tests in `test/unit/features/`
+5. Update README (Features list and Configuration Options table)
 
 #### Adding Device Support
 
@@ -165,9 +206,9 @@ npm run watch
 
 #### Fixing API Issues
 
-1. Check error handling in `src/utils/error-handler.ts`
-2. Review rate limiting in `src/api/daikin-cloud.repository.ts`
-3. Update retry logic if needed
+1. Rate limiting, retries/backoff and write coalescing live in `src/api/daikin-api.ts`
+2. Poll scheduling (WebSocket stretch, failure backoff, low-quota stretch) is `computePollInterval()` in `src/platform.ts`
+3. Format errors with `toMessage()` (`src/utils/errors.ts`); wrap HomeKit SET handlers in `withHapWrite()` (`src/utils/hap-write.ts`)
 4. Add tests for error scenarios
 
 ## Homebridge-Specific Considerations
@@ -189,8 +230,9 @@ npm run watch
 
 Configuration is managed via Homebridge UI:
 - Uses Homebridge custom UI framework (`homebridge-ui/`) for plugin configuration management
-- Config schema defined in `package.json`
-- Validation in [src/config/config-manager.ts](src/config/config-manager.ts)
+- Config schema defined in [config.schema.json](config.schema.json)
+- [ConfigManager](src/config/config-manager.ts) is the single source of config: read
+  settings through it (defaults, legacy aliases, validation), not from the raw platform config
 
 ## API Integration Notes
 
@@ -208,14 +250,18 @@ Configuration is managed via Homebridge UI:
 
 ### Rate Limiting
 
-- Implemented in [daikin-cloud.repository.ts](src/api/daikin-cloud.repository.ts)
-- Exponential backoff for retries
-- Gateway timeout handling (502, 503, 504)
+- Implemented in [daikin-api.ts](src/api/daikin-api.ts): rate-limit headers, blocking on 429,
+  exponential backoff, per-device write queue that coalesces rapid writes
+- Gateway errors (502, 503, 504) are retried for writes, not for polling GETs (the next poll
+  is the retry; the platform backs off its poll interval)
+- While the WebSocket is connected, polling stretches to >= 60 min and forced post-write
+  refreshes are skipped
 
 ### WebSocket Support
 
 - Only available in Mobile App mode
-- Real-time device state updates
+- Real-time device state updates: applied to the `DaikinCloudDevice`, which emits
+  `'updated'` → accessory `refreshValues()` (`websocket_device_update` is informational)
 - Implemented in [daikin-websocket.ts](src/api/daikin-websocket.ts)
 
 ## Debugging Tips
@@ -236,14 +282,20 @@ homebridge -D
 
 ### Useful Log Contexts
 
-The codebase uses structured logging:
-- Check [log-context.ts](src/utils/log-context.ts) for log formatting
-- Error handling in [error-handler.ts](src/utils/error-handler.ts)
+Log lines are prefixed with a context tag such as `[API Syncing]` or `[<device name>]`.
+- Error formatting in [errors.ts](src/utils/errors.ts) and [hap-write.ts](src/utils/hap-write.ts)
+
+## CI
+
+[build.yml](.github/workflows/build.yml) runs lint, build and tests on Node 20/22/24/26, a
+coverage run with thresholds on Node 24, and a runtime smoke test (load the built plugin with
+production dependencies only) on the minimum `engines` versions 20.5.0 and 22.10.0, where the
+dev toolchain itself cannot run. `schema:check` is deliberately not in CI (live credentials).
 
 ## Release Process
 
 Publishing to npm is done by CI, not by hand: [publish.yml](.github/workflows/publish.yml)
-runs on a **published GitHub Release** and publishes with provenance. Do not run
+runs on a **published GitHub Release**, runs lint, build and tests, and publishes with provenance. Do not run
 `npm publish` locally for a normal release — it would publish the same version twice.
 
 1. Update version in [package.json](package.json) — `npm version X.Y.Z --no-git-tag-version`
@@ -277,6 +329,5 @@ only for one-off beta or recovery publishes.
 - Follow the established directory structure
 - Add tests for new features
 - Update documentation
-- Use dependency injection via service container
 - Handle errors gracefully with user-friendly messages
 - Consider API rate limits in all API calls

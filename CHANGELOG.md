@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **OAuth callback page XSS**: values reflected on the callback page are now HTML-escaped, the `state` parameter is required (and checked) before an `error` response is handled, and the page is served with a restrictive Content-Security-Policy.
+- **OAuth callback server exposure**: the callback server now honours `oidcCallbackServerBindAddr` (default `0.0.0.0`) and stops automatically after 10 minutes. The settings UI refuses to start authentication with a loopback bind address and a non-loopback callback address, since the browser's redirect could never reach it.
+- **Manual callback** (pasting the redirect URL) now requires a matching `state`.
+- **curl transport hardening**: header and body values containing CR, LF or NUL are rejected, and curl runs with `-q` (no user `.curlrc`) and `--proto =https`.
+- **URL path segments** (device and management-point IDs) are now percent-encoded.
+- **Token files** are written atomically and `0600` permissions are enforced on existing files.
+- **Settings UI**: values inserted via `innerHTML` are escaped.
+- The authorization URL (which carries the OAuth `state`) is no longer logged.
+
+### Fixed
+
+- **Polling interval leak** that stacked timers and multiplied API calls over time; polling also no longer restarts after Homebridge shutdown.
+- **Update failures logged as `{}`**: errors are now logged with their message.
+- The rate-limit warning now also fires when 0 calls remain.
+- **Altherma Powerful switch could be removed** by the climate-control feature manager: switches are now looked up by subtype and switches owned by other features are preserved.
+- **WebSocket reconnect flapping**: the backoff resets only after 60 s of stable connection and reconnects are jittered; fixed a possible crash when shutting down during the handshake.
+- **Altherma hot water tank** can be turned back on from HomeKit by choosing a heat/auto mode.
+- The capability log reported every feature as supported.
+- `config.schema.json` was missing 8 feature toggles and stated a 5000/day Mobile App limit (it is 3000).
+
+### Performance
+
+- While the WebSocket is connected, polling stretches to at least 60 minutes and forced refreshes after HomeKit writes are skipped (push updates already deliver the change).
+- Polling GETs are no longer retried on 502/503/504 (the next poll is the retry), and consecutive poll failures back off the poll interval exponentially.
+- Rapid HomeKit writes to the same setting are coalesced into a single API call.
+- AUTO-mode threshold sync runs once per update, and equality guards skip redundant work when values have not changed.
+- Settings UI: concurrent device-list requests are deduplicated and the list is cached for 5 minutes; the rate-limit display reads a status file written by the plugin instead of calling the API.
+
+### Changed
+
+- Removed the unused `class-validator` dependency.
+- Removed the outdated planning docs (`docs/NEXT_STEPS.md`, `docs/IMPROVEMENTS_SUMMARY.md`, `docs/IMPLEMENTATION_GUIDE.md`) and the empty `config.md`.
+- Removed `UpdateMapper`: WebSocket updates are applied to the device, which emits `'updated'` and refreshes the accessory.
+- Both OAuth flows share a single token client.
+- `ClimateControlService` split into focused modules (`src/services/climate-control/`).
+- `ConfigManager` is the single source of plugin configuration.
+
+### Tests
+
+- Test suite grew from 246 to 541+ tests; the custom UI server (`homebridge-ui/server.js`) is now tested.
+- CI enforces coverage thresholds, smoke-tests the minimum supported Node versions (20.5.0, 22.10.0), and the publish workflow runs lint, build and tests before publishing.
+
 ## [1.5.2] - 2026-09-10
 
 ### Changed

@@ -130,7 +130,10 @@ HTTP client for Daikin Cloud API with built-in resilience.
 **Features:**
 - Rate limit tracking (per-minute and per-day)
 - Automatic retry with exponential backoff
-- Gateway timeout handling (502, 503, 504)
+- Gateway timeout handling (502, 503, 504): writes and one-off reads retry; polling
+  GETs do not (the next poll is the retry, and the platform backs off its poll interval)
+- Per-device write queue: a queued-but-unsent write to the same target is coalesced
+  into the latest value
 - Request/response logging
 - Error categorization
 
@@ -167,9 +170,11 @@ Daikin Cloud
      ↓ (WebSocket)
 Plugin WebSocket Client
      ↓ (Event)
-Platform.handleWebSocketDeviceUpdate()
+DaikinCloudController.handleWebSocketDeviceUpdate()
+     ↓ device.applyWebSocketUpdate()
+DaikinCloudDevice emits 'updated'
      ↓
-UpdateMapper.applyUpdate()
+Accessory → service.refreshValues()
      ↓
 HAP Service.updateCharacteristic()
      ↓
@@ -355,52 +360,20 @@ showCustomMode?: boolean;
 
 ### 8. Utility Layer
 
-#### UpdateMapper ([utils/update-mapper.ts](src/utils/update-mapper.ts))
+#### Error helpers ([utils/errors.ts](src/utils/errors.ts), [utils/hap-write.ts](src/utils/hap-write.ts))
 
-Centralized WebSocket update mapping logic.
+- `toMessage(error)`: turns any thrown value into a loggable string (an `Error`'s
+  message rather than its empty JSON form)
+- `withHapWrite(platform, label, op)`: runs a HomeKit SET as a device write, schedules a
+  debounced refresh on success, and on failure logs a warning and throws
+  `HapStatusError(SERVICE_COMMUNICATION_FAILURE)` so HomeKit shows "No Response"
 
-**Consolidates:**
-- Characteristic name mapping
-- Service type handling (HeaterCooler vs Thermostat)
-- State conversion logic
-- Logging
-
-**Before (duplicated in platform.ts):**
-```typescript
-switch (characteristicName) {
-    case 'onOffMode':
-        // 50 lines of logic
-    case 'operationMode':
-        // 50 lines of logic
-}
-```
-
-**After (single source of truth):**
-```typescript
-const result = updateMapper.applyUpdate(accessory, update);
-this.log.debug(`Updated ${result.updated.join(', ')}`);
-```
-
-#### Error Handler ([utils/error-handler.ts](src/utils/error-handler.ts))
-
-Comprehensive error categorization and handling.
-
-**Error Categories:**
-- Network errors (timeout, connection refused)
-- Authentication errors (401, 403)
-- Rate limit errors (429)
-- Server errors (500, 502, 503, 504)
-- Validation errors (400)
-
-**Severity Levels:**
-- Critical: Authentication failure, controller not initialized
-- Error: API errors, device not found
-- Warning: Rate limit approaching, retry attempts
-- Info: Normal operations
+The typed API errors (rate limit, gateway timeout) live in
+[api/daikin-api.ts](src/api/daikin-api.ts).
 
 #### Config Manager ([config/config-manager.ts](src/config/config-manager.ts))
 
-Centralized configuration with validation and defaults.
+Single source of configuration for the platform: every config read goes through it.
 
 **Features:**
 - Type-safe configuration access
@@ -470,11 +443,12 @@ Centralized configuration with validation and defaults.
      ↓
 5. Parse and validate message
      ↓
-6. Emit 'websocket_device_update' event
+6. Controller applies it to the DaikinCloudDevice
+   (also emits 'websocket_device_update', informational/debug log only)
      ↓
-7. Platform.handleWebSocketDeviceUpdate()
+7. DaikinCloudDevice emits 'updated'
      ↓
-8. UpdateMapper.applyUpdate()
+8. Accessory calls refreshValues() on its services
      ↓
 9. Service.updateCharacteristic()
      ↓
@@ -625,7 +599,6 @@ Look for log prefixes:
 - `[OAuth]`: Authentication
 - `[API]`: API requests/responses
 - `[WebSocket]`: WebSocket events
-- `[UpdateMapper]`: State updates
 - `[Service]`: HAP service operations
 
 ## Future Enhancements
