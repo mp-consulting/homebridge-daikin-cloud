@@ -2,7 +2,6 @@
 dist/
 
 # Test files with sensitive data
-test/mobile-tokens.json
 test/*.tokens.json
 *.tokenset
 

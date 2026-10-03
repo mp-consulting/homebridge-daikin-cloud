@@ -14,6 +14,7 @@ export default defineConfig({
       'homebridge/lib/logger': path.resolve(dirname, 'node_modules/homebridge/dist/logger.js'),
       'homebridge/lib/platformAccessory.js': path.resolve(dirname, 'node_modules/homebridge/dist/platformAccessory.js'),
       'homebridge/lib/platformAccessory': path.resolve(dirname, 'node_modules/homebridge/dist/platformAccessory.js'),
+      'homebridge/lib/user.js': path.resolve(dirname, 'node_modules/homebridge/dist/user.js'),
     },
   },
   test: {
@@ -25,10 +26,22 @@ export default defineConfig({
       'tests/**/*.{test,spec}.ts',
     ],
     testTimeout: 10000,
+    // Redirects the Homebridge storage path to a temp dir so no test touches ~/.homebridge.
+    setupFiles: ['test/helpers/isolated-storage.setup.ts'],
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.ts'],
+      // homebridge-ui/server.js is exercised by test/unit/ui via createRequire and
+      // v8 picks it up, so it counts towards the totals.
+      include: ['src/**/*.ts', 'homebridge-ui/server.js'],
       exclude: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**'],
+      // ~3 points below the measured baseline (84.2 / 73.8 / 89.3 / 84.3),
+      // so CI fails on real regressions without flaking on small refactors.
+      thresholds: {
+        statements: 81,
+        branches: 70,
+        functions: 86,
+        lines: 81,
+      },
     },
   },
   oxc: {

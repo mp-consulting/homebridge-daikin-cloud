@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Vitest runs tests as ES modules (top-level await, import.meta).
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "homebridge/lib/*": ["./node_modules/homebridge/dist/*"]
+    }
+  },
+  "include": [
+    "src/",
+    "test/"
+  ],
+  "exclude": []
+}

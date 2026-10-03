@@ -434,8 +434,10 @@ async function main() {
       ...tokens,
       expires_at: Math.floor(Date.now() / 1000) + tokens.expires_in,
     };
-    fs.writeFileSync('mobile-tokens.json', JSON.stringify(tokenData, null, 2));
-    console.log('\n✓ Tokens saved to mobile-tokens.json');
+    // test/hbConfig/ is git-ignored; test-websocket-mobile.js reads the tokens from there.
+    const tokensFile = require('path').join(__dirname, '../../test/hbConfig/mobile-tokens.json');
+    fs.writeFileSync(tokensFile, JSON.stringify(tokenData, null, 2), { mode: 0o600 });
+    console.log(`\n✓ Tokens saved to ${tokensFile}`);
 
   } catch (error) {
     console.error('\n✗ Error:', error.message);

@@ -7,13 +7,17 @@
 
 const WebSocket = require('ws');
 const fs = require('fs');
+const path = require('path');
+
+// Written by test-gigya-auth.js; test/hbConfig/ is git-ignored.
+const TOKENS_FILE = path.join(__dirname, '../../test/hbConfig/mobile-tokens.json');
 
 // Load token from mobile-tokens.json
 let tokens;
 try {
-  tokens = JSON.parse(fs.readFileSync('mobile-tokens.json', 'utf8'));
+  tokens = JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8'));
 } catch (e) {
-  console.error('Error: Could not load mobile-tokens.json');
+  console.error(`Error: Could not load ${TOKENS_FILE}`);
   console.error('Run test-gigya-auth.js first to generate the token.');
   process.exit(1);
 }

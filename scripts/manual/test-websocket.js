@@ -8,8 +8,9 @@ const WebSocket = require('ws');
 
 // Read token from file
 const fs = require('fs');
+const path = require('path');
 const tokenData = JSON.parse(
-  fs.readFileSync('./hbConfig/.daikin-controller-cloud-tokenset', 'utf8'),
+  fs.readFileSync(path.join(__dirname, '../../test/hbConfig/.daikin-controller-cloud-tokenset'), 'utf8'),
 );
 
 const WEBSOCKET_URL = 'wss://wsapi.onecta.daikineurope.com';
