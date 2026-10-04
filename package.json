@@ -39,13 +39,13 @@
   ],
   "dependencies": {
     "@homebridge/plugin-ui-utils": "^2.2.6",
-    "@mp-consulting/homebridge-ai-core": "file:../homebridge-mcp-server/packages/ai-core",
+    "@mp-consulting/homebridge-ai-core": "^2.0.0",
     "ws": "^8.21.3",
     "zod": "^4.5.4"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@mp-consulting/homebridge-ui-kit": "file:../homebridge-ui-kit",
+    "@mp-consulting/homebridge-ui-kit": "^1.2.0",
     "@types/node": "^26.5.0",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^5.0.0",
