@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-10-04
+
+### Removed
+
+- **Node.js 20 is no longer supported.** The plugin now requires Node.js 22.10+, 24 or 26, matching `@mp-consulting/homebridge-ai-core` (the Assistant's runtime dependency since 1.7.0), so installing on Node 20 no longer gives an engine warning for a dependency. Node.js 20 reached end of life in April 2026; update Node before updating the plugin. CI no longer tests Node 20.
+
 ## [1.7.0] - 2026-10-04
 
 ### Added

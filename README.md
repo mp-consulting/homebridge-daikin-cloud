@@ -49,7 +49,7 @@ This plugin supports two authentication methods:
 
 ## Requirements
 
-- Node.js 20.5+, 22.10+, 24 or 26
+- Node.js 22.10+, 24 or 26
 - Homebridge >= 1.5.0 (including 2.x)
 - A Daikin account with devices registered in the Onecta app
 

@@ -293,9 +293,9 @@ Log lines are prefixed with a context tag such as `[API Syncing]` or `[<device n
 
 ## CI
 
-[build.yml](.github/workflows/build.yml) runs lint, build and tests on Node 20/22/24/26, a
+[build.yml](.github/workflows/build.yml) runs lint, build and tests on Node 22/24/26, a
 coverage run with thresholds on Node 24, and a runtime smoke test (load the built plugin with
-production dependencies only) on the minimum `engines` versions 20.5.0 and 22.10.0, where the
+production dependencies only) on the minimum `engines` version 22.10.0, where the
 dev toolchain itself cannot run. `schema:check` is deliberately not in CI (live credentials).
 
 ## Release Process
