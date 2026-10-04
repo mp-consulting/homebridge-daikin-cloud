@@ -32,7 +32,7 @@ export default defineConfig({
       provider: 'v8',
       // homebridge-ui/server.js is exercised by test/unit/ui via createRequire and
       // v8 picks it up, so it counts towards the totals.
-      include: ['src/**/*.ts', 'homebridge-ui/server.js'],
+      include: ['src/**/*.ts', 'homebridge-ui/server.js', 'homebridge-ui/assistant.js'],
       exclude: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**'],
       // ~3 points below the measured baseline (84.2 / 73.8 / 89.3 / 84.3),
       // so CI fails on real regressions without flaking on small refactors.

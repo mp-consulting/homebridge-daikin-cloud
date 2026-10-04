@@ -29,6 +29,7 @@ A [Homebridge](https://homebridge.io) plugin that integrates Daikin air conditio
   - Fan only mode (`showFanOnlyMode`)
   - Holiday (away) mode (`showHolidayMode`)
 - **Separate Fan Tile** (`showSeparateFanControl`): Expose fan speed and oscillation as a standalone Fan tile, so both stay visible even when the accessory is grouped into a single tile in the Home app
+- **Assistant (optional)**: Explains connection, login and offline-unit problems in the settings UI and suggests config changes, using the AI provider you set up in Homebridge AI Kit
 - **Firmware Updates** (`showFirmwareUpdateSwitch`): Manage gateway firmware updates from HomeKit instead of the Onecta app. The plugin logs when Daikin stages an update for your unit and exposes a "Firmware Update" switch — turn it on to install; it stays on while the update runs and the plugin logs the outcome. Not part of `showExtraFeatures`: it must be enabled explicitly, so an "all switches on" scene can never trigger an install. The unit is unavailable (and rejects commands) while it updates. The current firmware version is also shown in each accessory's HomeKit details.
 
 > **Note**: HomeKit doesn't natively support all Daikin operation modes. Extra features appear as switches in the Home app. Enable them individually in the plugin settings UI.
@@ -233,6 +234,33 @@ These errors indicate temporary issues with the Daikin Cloud servers:
 - If errors persist, the Daikin API may be experiencing extended downtime
 - Check [Daikin's status page](https://www.daikin.eu/) or try again later
 
+## Assistant
+
+The settings UI can explain problems and suggest configuration changes with the
+**Assistant**. It is off until you set up an AI provider once for all MP Consulting
+plugins in [Homebridge AI Kit](https://github.com/mp-consulting/homebridge-ai-kit)
+(or the Homebridge Glass UI): the plugin reads the shared `HomebridgeAiKit` platform
+block from `config.json` and has no AI settings of its own. When it is not set up,
+the UI looks exactly as before, with a small tip in the Settings tab.
+
+When it is enabled:
+
+- **Explain** buttons appear next to a failed connection test, a failed Mobile App
+  login, a Developer Portal login that cannot start or complete, a failed device list,
+  and every unit the Onecta cloud reports as offline. The answer streams into an
+  Assistant panel below.
+- **Describe Your Setup** (Settings tab) turns a request such as *"show the Powerful and
+  Econo switches and poll every 10 minutes"* into a configuration change, shown as a diff
+  to apply or reject. Like every other change in the Settings tab, an applied change is
+  saved straight away; restart Homebridge to use it.
+
+What is sent to the provider: the error message, the authentication method, the update
+interval, the WebSocket and HTTP transport settings, and for a unit its name, Daikin
+device ID, model, type, online flag and enabled feature switches. Your Daikin email and
+password, Client ID and Client Secret, tokens, and the callback and bind addresses are
+never sent (e-mail and IP addresses are also masked in error messages), and the
+provider's API key stays on the Homebridge server.
+
 ## Supported Devices
 
 Any device compatible with the [Daikin Onecta app](https://www.daikin.eu/en_us/product-group/control-systems/onecta/connectable-units.html), including:
@@ -265,6 +293,12 @@ npm run test:coverage
 # Add --dump-fixtures to also write per-device fixtures to test/fixtures/live/.
 npm run schema:check
 ```
+
+The build copies `@mp-consulting/homebridge-ui-kit` and Bootstrap Icons into
+`homebridge-ui/public/lib/` with `mp-ui-kit-copy --vendor`. Until
+`@mp-consulting/homebridge-ai-kit` 2.0.0 and `@mp-consulting/homebridge-ui-kit` 1.2.0
+are published, both are installed from sibling checkouts (`file:../homebridge-mcp-server`
+and `file:../homebridge-ui-kit`); they must become `^2.0.0` and `^1.2.0` before release.
 
 ### Code Quality
 

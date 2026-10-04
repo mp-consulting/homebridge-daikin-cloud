@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 1.7.0
+
+### Added
+
+- **Assistant in the settings UI.** When an AI provider is set up in Homebridge AI Kit (the shared `HomebridgeAiKit` platform block), an **Explain** button appears next to a failed connection test, a failed Mobile App login, a Developer Portal login that cannot start or complete, a failed device list, and units the Onecta cloud reports as offline. The explanation streams into an Assistant panel, with Daikin context (Developer Portal vs Mobile App, callback server, API quotas, common errors such as `invalid_grant`, 429 and 502/503/504). Only the error, the authentication method, polling/WebSocket/transport settings and non-sensitive unit facts (name, device ID, model, type, online flag, feature switches) are sent: never the Daikin login, Client ID/Secret, tokens or addresses; e-mail and IP addresses in error messages are masked. Without the AI Kit nothing changes, apart from a small tip in the Settings tab.
+- **Describe Your Setup** (Settings tab): describe a change in plain language and the Assistant proposes a config diff to apply or reject. Credentials and the callback/bind addresses are kept out of the request and merged back on apply.
+- `homebridge-ui/assistant.js` registers the `/ai/status`, `/ai/explain`, `/ai/ask` and `/ai/config` routes with `registerAiRoutes` from `@mp-consulting/homebridge-ai-kit/plugin` (new runtime dependency). The UI server is CommonJS and ai-kit is ESM-only, so it is loaded with `import()`; the server reports ready once the routes are registered, and the UI simply hides the Assistant if ai-kit cannot be loaded.
+
+### Changed
+
+- **UI assets are copied with `mp-ui-kit-copy --vendor`** from `@mp-consulting/homebridge-ui-kit` 1.2.0 instead of a hand-written copy script; `homebridge-ui/public/lib/` keeps the same layout and now also contains `ai.css`.
+
+### Release blockers
+
+- `@mp-consulting/homebridge-ai-kit` (`file:../homebridge-mcp-server`) and `@mp-consulting/homebridge-ui-kit` (`file:../homebridge-ui-kit`) are local, unpublished checkouts. Change them to `^2.0.0` and `^1.2.0` once published, and regenerate `package-lock.json`. Until then the CI runtime smoke test (production dependencies only) cannot install them.
+
 ## [1.6.3] - 2026-10-03
 
 ### Changed

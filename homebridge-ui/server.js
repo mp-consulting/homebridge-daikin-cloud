@@ -22,6 +22,7 @@ const {
   RATE_LIMIT_STATUS_FILE,
 } = require(join(__dirname, '..', 'dist', 'src', 'constants'));
 const { validateConfig } = require(join(__dirname, '..', 'dist', 'src', 'config', 'config-manager'));
+const { registerAssistant } = require('./assistant');
 
 // =============================================================================
 // Configuration
@@ -520,7 +521,11 @@ function createDaikinCloudUiServer(HomebridgePluginUiServer) {
 
       this.applyTransportFromConfig();
       this.registerHandlers();
-      this.ready();
+
+      // Assistant: /ai/status, /ai/explain, /ai/ask, /ai/config (configured in Homebridge AI Kit).
+      // ai-kit is ESM and loaded with import(); report ready once its routes are in place
+      // (registerAssistant never rejects) so the UI's first /ai/status call finds them.
+      this.assistantReady = registerAssistant(this).then(() => this.ready());
     }
 
     getStoragePath() {

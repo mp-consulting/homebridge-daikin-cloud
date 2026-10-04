@@ -536,3 +536,16 @@ describe('/config/validate', () => {
     expect(result.valid).toBe(true);
   });
 });
+
+describe('Assistant routes', () => {
+  it('registers the /ai routes and reports ready once they are in place', async () => {
+    const ready = vi.spyOn(FakePluginUiServer.prototype, 'ready');
+    const server = createServer();
+    expect(ready).not.toHaveBeenCalled();
+
+    await server.assistantReady;
+
+    expect(ready).toHaveBeenCalledTimes(1);
+    expect(Object.keys(server.handlers)).toEqual(expect.arrayContaining(['/ai/status', '/ai/explain', '/ai/ask', '/ai/config']));
+  });
+});

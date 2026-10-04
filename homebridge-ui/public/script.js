@@ -115,6 +115,199 @@ const UI = {
 };
 
 // ============================================================================
+// Assistant Module (Homebridge AI Kit)
+// ============================================================================
+// Shown only when the shared HomebridgeAiKit platform is set up and enabled.
+// Nothing sent to it may contain credentials, tokens or IP addresses.
+
+const Assistant = {
+  enabled: false,
+  available: false,
+
+  // Keys kept out of every request: credentials and network addresses
+  PRIVATE_KEYS: ['clientId', 'clientSecret', 'daikinEmail', 'daikinPassword', 'callbackServerExternalAddress', 'oidcCallbackServerBindAddr'],
+
+  async init() {
+    try {
+      if (window.MpKit && MpKit.ai) {
+        const status = await MpKit.ai.status();
+        this.available = true;
+        this.enabled = !!(status && status.enabled);
+      }
+    } catch {
+      // Routes missing (AI Kit not installed) or older Homebridge UI: no Assistant
+    }
+    DOM.toggle($id('assistant-hint'), this.available && !this.enabled);
+    if (this.enabled) {
+      this.setupConfigCard();
+    }
+  },
+
+  // Error text without e-mail addresses or LAN/public IPs (loopback and 0.0.0.0 stay: they explain bind problems)
+  scrub(text) {
+    return String(text ?? '')
+      .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '<email>')
+      .replace(/\b(?!127\.)(?!0\.0\.0\.0\b)(?:\d{1,3}\.){3}\d{1,3}\b/g, '<address>');
+  },
+
+  // Device facts the Assistant may see (whitelist)
+  device(d) {
+    return {
+      name: d.name,
+      id: d.id,
+      model: d.model,
+      type: d.type,
+      online: !!d.online,
+      features: Array.isArray(d.features) ? d.features : [],
+    };
+  },
+
+  // Plugin settings the Assistant may see, as one sentence (no credentials or addresses)
+  context(extra) {
+    const interval = $id('updateIntervalInMinutes')?.value;
+    return [
+      extra,
+      `Authentication method: ${AuthMode.current}.`,
+      interval ? `Update interval: ${interval} minutes.` : '',
+      AuthMode.current === 'mobile_app' ? `WebSocket: ${$id('enableWebSocket')?.checked ? 'on' : 'off'}.` : '',
+      `HTTP transport: ${$id('httpTransport')?.value || 'node'}.`,
+    ].filter(Boolean).join(' ');
+  },
+
+  // Streams an explanation of `error` into `answerEl`
+  async explain(button, answerEl, { error, context, device, title }) {
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    DOM.show(answerEl);
+    const answer = MpKit.ai.renderAnswer(answerEl, { title });
+    try {
+      const res = await MpKit.ai.explain({ error: this.scrub(error), context: this.scrub(context), device }, { onChunk: answer.append });
+      answer.done(res);
+    } catch (e) {
+      answer.error(e);
+    } finally {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+    }
+  },
+
+  /**
+   * Adds an "Explain" button (and its answer panel) to the slot `slotId`, next to an
+   * error the page already shows. With `alert: true` the error itself is shown too
+   * (for errors that otherwise only appear in the auto-hiding global banner).
+   */
+  offer(slotId, { message, context, title, alert = false }) {
+    const slot = $id(slotId);
+    if (!slot || !this.enabled) {
+      return;
+    }
+    slot.innerHTML = `
+      <div class="d-flex justify-content-between align-items-start gap-2 ${alert ? 'alert alert-danger mb-0' : ''}">
+        <div>${alert ? Utils.escapeHtml(message) : ''}</div>
+        ${MpKit.ai.renderButton({ label: 'Explain', size: 'sm', className: 'flex-shrink-0 js-explain', title: 'Explain this problem' })}
+      </div>
+      <div class="assistant-answer mt-2 d-none"></div>`;
+    DOM.show(slot);
+    const button = slot.querySelector('.js-explain');
+    button.addEventListener('click', () => this.explain(button, slot.querySelector('.assistant-answer'), {
+      error: message,
+      context: this.context(context),
+      title,
+    }));
+  },
+
+  clear(slotId) {
+    const slot = $id(slotId);
+    if (slot) {
+      DOM.hide(slot);
+      slot.innerHTML = '';
+    }
+  },
+
+  // ── Describe Your Setup ────────────────────────────────────────────────────
+
+  setupConfigCard() {
+    DOM.show($id('assistant-config-card'));
+    $id('assistant-config-badge').innerHTML = MpKit.ai.renderBadge();
+    $id('assistant-config-action').innerHTML = MpKit.ai.renderButton({ label: 'Suggest changes', id: 'btn-assistant-config' });
+    $id('btn-assistant-config').addEventListener('click', () => this.suggestConfig());
+  },
+
+  async suggestConfig() {
+    const request = $id('assistant-config-request').value.trim();
+    if (!request) {
+      UI.showError('Describe what you want to change first');
+      return;
+    }
+    const button = $id('btn-assistant-config');
+    const result = $id('assistant-config-result');
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    result.innerHTML = MpKit.ai.renderThinking('Preparing a suggestion…');
+    try {
+      const config = (await homebridge.getPluginConfig())[0] || { platform: 'DaikinCloud', name: 'Daikin Cloud' };
+      // Credentials and addresses stay in the browser: strip them before and merge them back on apply
+      const shareable = { ...config };
+      this.PRIVATE_KEYS.forEach(k => delete shareable[k]);
+      const schema = await homebridge.getPluginConfigSchema();
+      const res = await MpKit.ai.config({ schema, request, current: shareable });
+
+      // Keep keys the schema does not describe (platform, _bridge, ...) and the current key order
+      const known = new Set(Object.keys((schema.schema || schema).properties || {}));
+      const proposed = res.config || {};
+      const suggested = {};
+      Object.keys(shareable).forEach(k => {
+        if (!known.has(k)) {
+          suggested[k] = shareable[k];
+        } else if (k in proposed) {
+          suggested[k] = proposed[k];
+        }
+      });
+      Object.keys(proposed).forEach(k => {
+        if (known.has(k) && !(k in suggested)) {
+          suggested[k] = proposed[k];
+        }
+      });
+      this.PRIVATE_KEYS.forEach(k => delete suggested[k]);
+
+      result.innerHTML = '<div class="assistant-explanation mb-2"></div><div class="assistant-diff"></div>';
+      MpKit.ai.renderAnswer(result.querySelector('.assistant-explanation'), { text: res.explanation, streaming: false, title: 'Suggested change' });
+      MpKit.ai.renderDiff(result.querySelector('.assistant-diff'), {
+        before: shareable,
+        after: suggested,
+        applyLabel: 'Apply',
+        onApply: () => this.applyConfig(config, suggested),
+      });
+    } catch (e) {
+      result.innerHTML = '';
+      MpKit.ai.renderAnswer(result, { streaming: false }).error(e);
+    } finally {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+    }
+  },
+
+  async applyConfig(config, suggested) {
+    const newConfig = { ...suggested, platform: 'DaikinCloud', name: suggested.name || config.name || 'Daikin Cloud' };
+    this.PRIVATE_KEYS.forEach(k => {
+      if (config[k] !== undefined) {
+        newConfig[k] = config[k];
+      }
+    });
+    // The settings tab saves every change straight away; do the same here
+    await homebridge.updatePluginConfig([newConfig]);
+    await homebridge.savePluginConfig();
+
+    Settings.populateForm(newConfig);
+    Settings.excludedIds = newConfig.excludedDevicesByDeviceId || [];
+    Settings.loadDeviceToggles();
+    AuthMode.current = AuthMode.previous = newConfig.authMode || 'developer_portal';
+    AuthMode.updateUI();
+    homebridge.toast.success('Change saved. Restart Homebridge to apply it.');
+  },
+};
+
+// ============================================================================
 // Tab Navigation
 // ============================================================================
 
@@ -307,19 +500,32 @@ const Auth = {
   async testConnection() {
     UI.setButtonLoading(El.btnTest, true, 'Testing...');
     DOM.hide(El.testResult);
+    Assistant.clear('test-problem');
 
     try {
       const result = await homebridge.request('/auth/test');
       El.testResult.className = `alert ${result.success ? 'alert-success' : 'alert-danger'}`;
       El.testResult.textContent = result.message;
       DOM.show(El.testResult);
+      if (!result.success) {
+        this.offerExplain(result.message);
+      }
     } catch (error) {
       El.testResult.className = 'alert alert-danger';
       El.testResult.textContent = 'Test failed: ' + error.message;
       DOM.show(El.testResult);
+      this.offerExplain(El.testResult.textContent);
     }
 
     UI.setButtonLoading(El.btnTest, false, null, 'Test Connection');
+  },
+
+  offerExplain(message) {
+    Assistant.offer('test-problem', {
+      message,
+      context: 'Test Connection in the plugin settings (reads the saved token and lists the gateway devices from the Daikin Onecta API) failed.',
+      title: 'Why did the connection test fail?',
+    });
   },
 };
 
@@ -387,6 +593,7 @@ const Wizard = {
       }
 
       DOM.hide(El.validationErrors);
+      Assistant.clear('wizard-start-problem');
       const authResult = await Auth.startAuth(config);
 
       El.authUrlDisplay.textContent = authResult.authUrl;
@@ -403,6 +610,11 @@ const Wizard = {
     } catch (error) {
       El.validationErrors.innerHTML = `<div>${Utils.escapeHtml(error.message)}</div>`;
       DOM.show(El.validationErrors);
+      Assistant.offer('wizard-start-problem', {
+        message: error.message,
+        context: 'Starting the Developer Portal OAuth login (temporary HTTPS callback server) from the plugin settings failed.',
+        title: 'Why can the login not start?',
+      });
     }
 
     UI.hideLoading();
@@ -428,6 +640,7 @@ const Wizard = {
     }
 
     UI.showLoading();
+    Assistant.clear('wizard-auth-problem');
     try {
       const result = await homebridge.request('/auth/', { callbackUrl: url });
       if (result.success) {
@@ -435,12 +648,22 @@ const Wizard = {
         this.goToStep(3);
         await Config.save();
       } else {
-        UI.showError('Authentication failed: ' + (result.message || 'Unknown error'));
+        this.authFailed('Authentication failed: ' + (result.message || 'Unknown error'));
       }
     } catch (error) {
-      UI.showError('Authentication failed: ' + error.message);
+      this.authFailed('Authentication failed: ' + error.message);
     }
     UI.hideLoading();
+  },
+
+  authFailed(message) {
+    UI.showError(message);
+    Assistant.offer('wizard-auth-problem', {
+      message,
+      alert: true,
+      context: 'Completing the Developer Portal OAuth login (exchanging the authorization code from the Daikin redirect for tokens) failed.',
+      title: 'Why did the login fail?',
+    });
   },
 
   finish() {
@@ -493,7 +716,7 @@ const Polling = {
           await Config.save();
           Devices.load();
         } else {
-          UI.showError('Authentication failed: ' + (result.error || 'Unknown error'));
+          Wizard.authFailed('Authentication failed: ' + (result.error || 'Unknown error'));
         }
         return;
       }
@@ -853,11 +1076,15 @@ const Settings = {
 // ============================================================================
 
 const Devices = {
+  items: [],
+
   async load({ refresh = false } = {}) {
     DOM.show(El.devicesLoading);
     El.devicesList.innerHTML = '';
     DOM.hide(El.devicesEmpty);
     DOM.hide(El.devicesError);
+    Assistant.clear('devices-problem');
+    this.items = [];
 
     try {
       const result = await DeviceList.fetch({ refresh });
@@ -873,12 +1100,45 @@ const Devices = {
         return;
       }
 
-      El.devicesList.innerHTML = result.devices.map(d => this.render(d)).join('');
+      this.items = result.devices;
+      El.devicesList.innerHTML = result.devices.map((d, i) => this.render(d, i)).join('');
     } catch (error) {
       DOM.hide(El.devicesLoading);
       El.devicesError.textContent = 'Failed to load: ' + error.message;
       DOM.show(El.devicesError);
+      this.offerExplain(El.devicesError.textContent);
     }
+  },
+
+  offerExplain(message) {
+    Assistant.offer('devices-problem', {
+      message,
+      context: 'Loading the device list (GET /v1/gateway-devices on the Daikin Onecta API) in the plugin settings failed.',
+      title: 'Why did loading devices fail?',
+    });
+  },
+
+  // Why a device needs attention, or null when it looks fine
+  problem(device) {
+    if (!device.online) {
+      return 'The Daikin Onecta cloud reports this unit as offline: its Wi-Fi adapter has no cloud connection (isCloudConnectionUp is false), so HomeKit cannot control it.';
+    }
+    return null;
+  },
+
+  onListClick(e) {
+    const button = e.target.closest('.js-explain-device');
+    const row = button && button.closest('[data-device-index]');
+    const device = row && this.items[Number(row.dataset.deviceIndex)];
+    if (!device) {
+      return;
+    }
+    Assistant.explain(button, row.querySelector('.assistant-answer'), {
+      error: this.problem(device) || 'The unit does not respond as expected.',
+      context: Assistant.context('The user is looking at the device list of the Daikin Cloud plugin settings.'),
+      device: Assistant.device(device),
+      title: `Why does ${device.name || 'this unit'} need attention?`,
+    });
   },
 
   handleError(result) {
@@ -891,10 +1151,11 @@ const Devices = {
     } else {
       El.devicesError.textContent = result.message;
       DOM.show(El.devicesError);
+      this.offerExplain(result.message);
     }
   },
 
-  render(device) {
+  render(device, index) {
     const online = device.online;
     const powerOn = device.powerState === 'on';
     const mode = device.operationMode ? Utils.capitalize(device.operationMode) : '-';
@@ -909,15 +1170,21 @@ const Devices = {
       `<span class="device-meta-item">Model: <span class="text-body-secondary">${Utils.escapeHtml(device.model)}</span></span>`,
     ].filter(Boolean).join('<span class="device-meta-sep">·</span>');
 
+    const explainButton = Assistant.enabled && this.problem(device)
+      ? MpKit.ai.renderButton({ label: 'Explain', size: 'sm', className: 'js-explain-device', title: 'Explain this device problem' })
+      : '';
+
     return `
-            <div class="list-group-item">
+            <div class="list-group-item" data-device-index="${index}">
                 <div class="device-header">
                     <span class="device-power ${powerOn ? 'power-on' : 'power-off'}">${powerOn ? 'ON' : 'OFF'}</span>
                     <span class="device-name fw-semibold">${Utils.escapeHtml(device.name)}</span>
                     ${features ? `<div class="device-features">${features}</div>` : ''}
+                    ${explainButton}
                     <span class="device-status ${online ? 'online' : 'offline'}">${online ? 'Online' : 'Offline'}</span>
                 </div>
                 <div class="device-meta mt-1">${meta}</div>
+                <div class="assistant-answer mt-2 d-none"></div>
             </div>`;
   },
 
@@ -1023,6 +1290,7 @@ const MobileAuth = {
 
     DOM.hide(errors);
     DOM.hide(success);
+    Assistant.clear('mobile-auth-problem');
 
     if (!email || !password) {
       errors.textContent = 'Please enter email and password';
@@ -1050,13 +1318,23 @@ const MobileAuth = {
       } else {
         errors.textContent = result.message || 'Authentication failed';
         DOM.show(errors);
+        this.offerExplain(errors.textContent);
       }
     } catch (error) {
       errors.textContent = 'Failed: ' + error.message;
       DOM.show(errors);
+      this.offerExplain(errors.textContent);
     }
 
     UI.setButtonLoading(btn, false, null, 'Test & Save Credentials');
+  },
+
+  offerExplain(message) {
+    Assistant.offer('mobile-auth-problem', {
+      message,
+      context: 'Mobile App login (Onecta account, Gigya login at id.daikin.eu, then OIDC token exchange) from the plugin settings failed.',
+      title: 'Why did the Mobile App login fail?',
+    });
   },
 
   async saveCredentials(email, password) {
@@ -1237,6 +1515,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // getUserSettings not available in older versions — keep the early-detected theme
   }
   cacheElements();
+  await Assistant.init();
+  El.devicesList.addEventListener('click', (e) => Devices.onListClick(e));
   Auth.loadStatus();
   Config.load();
   await AuthMode.init();
