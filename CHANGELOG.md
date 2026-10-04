@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Assistant in the settings UI.** When an AI provider is set up in Homebridge AI Kit (the shared `HomebridgeAiKit` platform block), an **Explain** button appears next to a failed connection test, a failed Mobile App login, a Developer Portal login that cannot start or complete, a failed device list, and units the Onecta cloud reports as offline. The explanation streams into an Assistant panel, with Daikin context (Developer Portal vs Mobile App, callback server, API quotas, common errors such as `invalid_grant`, 429 and 502/503/504). Only the error, the authentication method, polling/WebSocket/transport settings and non-sensitive unit facts (name, device ID, model, type, online flag, feature switches) are sent: never the Daikin login, Client ID/Secret, tokens or addresses; e-mail and IP addresses in error messages are masked. Without the AI Kit nothing changes, apart from a small tip in the Settings tab.
 - **Describe Your Setup** (Settings tab): describe a change in plain language and the Assistant proposes a config diff to apply or reject. Credentials and the callback/bind addresses are kept out of the request and merged back on apply.
-- `homebridge-ui/assistant.js` registers the `/ai/status`, `/ai/explain`, `/ai/ask` and `/ai/config` routes with `registerAiRoutes` from `@mp-consulting/homebridge-ai-kit/plugin` (new runtime dependency). The UI server is CommonJS and ai-kit is ESM-only, so it is loaded with `import()`; the server reports ready once the routes are registered, and the UI simply hides the Assistant if ai-kit cannot be loaded.
+- `homebridge-ui/assistant.js` registers the `/ai/status`, `/ai/explain`, `/ai/ask` and `/ai/config` routes with `registerAiRoutes` from `@mp-consulting/homebridge-ai-core/plugin` (new runtime dependency: the slim core of Homebridge AI Kit, so the plugin does not pull in the MCP SDK, socket.io or a second copy of zod). The UI server is CommonJS and ai-core is ESM-only, so it is loaded with `import()`; the server reports ready once the routes are registered, and the UI simply hides the Assistant if ai-core cannot be loaded.
 
 ### Changed
 
@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Release blockers
 
-- `@mp-consulting/homebridge-ai-kit` (`file:../homebridge-mcp-server`) and `@mp-consulting/homebridge-ui-kit` (`file:../homebridge-ui-kit`) are local, unpublished checkouts. Change them to `^2.0.0` and `^1.2.0` once published, and regenerate `package-lock.json`. Until then the CI runtime smoke test (production dependencies only) cannot install them.
+- `@mp-consulting/homebridge-ai-core` (`file:../homebridge-mcp-server/packages/ai-core`) and `@mp-consulting/homebridge-ui-kit` (`file:../homebridge-ui-kit`) are local, unpublished checkouts. Change them to `^2.0.0` and `^1.2.0` once published, and regenerate `package-lock.json`. Until then the CI runtime smoke test (production dependencies only) cannot install them.
 
 ## [1.6.3] - 2026-10-03
 

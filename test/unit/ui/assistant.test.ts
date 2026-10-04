@@ -1,7 +1,7 @@
 /**
  * Tests for the Assistant routes of the custom UI (homebridge-ui/assistant.js).
  *
- * assistant.js is CommonJS and loads @mp-consulting/homebridge-ai-kit (ESM-only)
+ * assistant.js is CommonJS and loads @mp-consulting/homebridge-ai-core (ESM-only)
  * with import(); registerAssistant resolves once the routes are registered.
  * No network: the provider is a fake.
  */

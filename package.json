@@ -39,7 +39,7 @@
   ],
   "dependencies": {
     "@homebridge/plugin-ui-utils": "^2.2.6",
-    "@mp-consulting/homebridge-ai-kit": "file:../homebridge-mcp-server",
+    "@mp-consulting/homebridge-ai-core": "file:../homebridge-mcp-server/packages/ai-core",
     "ws": "^8.21.3",
     "zod": "^4.5.4"
   },

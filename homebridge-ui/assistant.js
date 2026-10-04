@@ -1,10 +1,10 @@
 /**
  * Assistant routes for the custom settings UI (/ai/status, /ai/explain, /ai/ask,
- * /ai/config), from @mp-consulting/homebridge-ai-kit/plugin. The provider is set up
+ * /ai/config), from @mp-consulting/homebridge-ai-core/plugin. The provider is set up
  * once in the shared `HomebridgeAiKit` block of config.json; its key never reaches
  * the browser.
  *
- * ai-kit is ESM-only and this UI server is CommonJS, so it is loaded lazily with
+ * ai-core is ESM-only and this UI server is CommonJS, so it is loaded lazily with
  * import(). When it cannot be loaded the routes are simply missing: the UI calls
  * /ai/status, gets an error and hides everything Assistant-related.
  */
@@ -43,12 +43,12 @@ const DAIKIN_AI_CONTEXT = [
 
 /**
  * Adds the Assistant routes to the plugin UI server. Resolves once they are
- * registered (or immediately when ai-kit cannot be loaded).
+ * registered (or immediately when ai-core cannot be loaded).
  *
  * `options` is passed through to `registerAiRoutes` (tests inject a provider).
  */
 function registerAssistant(server, options = {}) {
-  return import('@mp-consulting/homebridge-ai-kit/plugin')
+  return import('@mp-consulting/homebridge-ai-core/plugin')
     .then(({ registerAiRoutes }) => registerAiRoutes(server, {
       pluginName: ASSISTANT_PLUGIN_NAME,
       systemContext: DAIKIN_AI_CONTEXT,

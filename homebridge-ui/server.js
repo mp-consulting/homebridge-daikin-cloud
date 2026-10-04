@@ -523,7 +523,7 @@ function createDaikinCloudUiServer(HomebridgePluginUiServer) {
       this.registerHandlers();
 
       // Assistant: /ai/status, /ai/explain, /ai/ask, /ai/config (configured in Homebridge AI Kit).
-      // ai-kit is ESM and loaded with import(); report ready once its routes are in place
+      // ai-core is ESM and loaded with import(); report ready once its routes are in place
       // (registerAssistant never rejects) so the UI's first /ai/status call finds them.
       this.assistantReady = registerAssistant(this).then(() => this.ready());
     }
