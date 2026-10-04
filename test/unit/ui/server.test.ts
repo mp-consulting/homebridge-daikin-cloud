@@ -541,11 +541,14 @@ describe('Assistant routes', () => {
   it('registers the /ai routes and reports ready once they are in place', async () => {
     const ready = vi.spyOn(FakePluginUiServer.prototype, 'ready');
     const server = createServer();
-    expect(ready).not.toHaveBeenCalled();
+    // Servers built by earlier tests may still be finishing their own import(), so only
+    // count calls made on this instance.
+    const readyCalls = () => ready.mock.contexts.filter((context) => context === server).length;
+    expect(readyCalls()).toBe(0);
 
     await server.assistantReady;
 
-    expect(ready).toHaveBeenCalledTimes(1);
+    expect(readyCalls()).toBe(1);
     expect(Object.keys(server.handlers)).toEqual(expect.arrayContaining(['/ai/status', '/ai/explain', '/ai/ask', '/ai/config']));
   });
 });
