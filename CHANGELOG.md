@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-10-04
+
+### Fixed
+
+- **Assistant answer panel layout.** The UI now uses `@mp-consulting/homebridge-ui-kit` 1.2.1, whose Assistant panel fills its slot (`width: 100%`, `box-sizing: border-box`, `min-width: 0`), so it can never force a device row wider than the list, and whose header wraps, so a long title (e.g. "Why does <long unit name> need attention?") moves below the "Assistant" badge instead of being squeezed next to it. The plugin's answer slots were already full-width lines below each device row and each error, with no scroll box or max height that could clip them, so the markup is unchanged.
+
 ## [1.8.0] - 2026-10-04
 
 ### Removed
