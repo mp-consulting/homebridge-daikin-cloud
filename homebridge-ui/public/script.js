@@ -18,8 +18,35 @@ const DOM = {
   setValid: (el, valid) => el?.classList.toggle('is-invalid', !valid),
 };
 
+const NUMBER_FORMAT = new Intl.NumberFormat();
+
+// Daikin operationMode values (DaikinOperationModes) as shown to the user
+const OPERATION_MODE_LABELS = {
+  auto: 'Auto',
+  cooling: 'Cooling',
+  heating: 'Heating',
+  dry: 'Dry',
+  fanOnly: 'Fan only',
+};
+
 const Utils = {
   capitalize: (str) => str ? str.charAt(0).toUpperCase() + str.slice(1) : '',
+
+  // 3000 -> "3,000" (in the browser's locale); non-numbers are returned as-is
+  formatNumber(value) {
+    const num = typeof value === 'number' ? value : Number(value);
+    return value !== null && value !== undefined && value !== '' && Number.isFinite(num) ? NUMBER_FORMAT.format(num) : String(value ?? '');
+  },
+
+  plural: (count, singular, plural = `${singular}s`) => `${Utils.formatNumber(count)} ${count === 1 ? singular : plural}`,
+
+  // "fanOnly" -> "Fan only"; unknown camelCase values -> "Some value"
+  operationModeLabel(mode) {
+    if (!mode) {
+      return '';
+    }
+    return OPERATION_MODE_LABELS[mode] || Utils.capitalize(String(mode).replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase());
+  },
 
   escapeHtml(text) {
     const div = document.createElement('div');
@@ -92,11 +119,14 @@ const UI = {
   showLoading: () => DOM.show(El.loading),
   hideLoading: () => DOM.hide(El.loading),
 
+  errorTimeout: null,
+
   showError(message) {
     if (El.globalError) {
       El.globalError.innerHTML = `<div class="alert alert-danger">${Utils.escapeHtml(message)}</div>`;
       DOM.show(El.globalError);
-      setTimeout(() => DOM.hide(El.globalError), 10000);
+      clearTimeout(this.errorTimeout);
+      this.errorTimeout = setTimeout(() => DOM.hide(El.globalError), 10000);
     }
   },
 
@@ -203,7 +233,7 @@ const Assistant = {
     }
     slot.innerHTML = `
       <div class="d-flex justify-content-between align-items-start gap-2 ${alert ? 'alert alert-danger mb-0' : ''}">
-        <div>${alert ? Utils.escapeHtml(message) : ''}</div>
+        <div class="assistant-offer-message">${alert ? Utils.escapeHtml(message) : ''}</div>
         ${MpKit.ai.renderButton({ label: 'Explain', size: 'sm', className: 'flex-shrink-0 js-explain', title: 'Explain this problem' })}
       </div>
       <div class="assistant-answer mt-2 d-none"></div>`;
@@ -599,11 +629,8 @@ const Wizard = {
       El.authUrlDisplay.textContent = authResult.authUrl;
       DOM.show(El.authUrlContainer);
 
-      const manualCollapse = $id('manual-callback-collapse');
       DOM.toggle(El.callbackServerStatus, authResult.callbackServerRunning);
-      if (manualCollapse) {
-        manualCollapse.classList.toggle('show', !authResult.callbackServerRunning);
-      }
+      this.setManualEntryOpen(!authResult.callbackServerRunning);
 
       Polling.start();
       this.goToStep(2);
@@ -619,6 +646,23 @@ const Wizard = {
 
     UI.hideLoading();
     State.isValidating = false;
+  },
+
+  // "Manual entry" accordion: Bootstrap's JS is not loaded in the settings iframe, so toggle it here
+  setManualEntryOpen(open) {
+    const toggle = $id('manual-callback-toggle');
+    const panel = $id('manual-callback-collapse');
+    if (!toggle || !panel) {
+      return;
+    }
+    panel.classList.toggle('show', open);
+    toggle.classList.toggle('collapsed', !open);
+    toggle.setAttribute('aria-expanded', String(open));
+  },
+
+  toggleManualEntry() {
+    const panel = $id('manual-callback-collapse');
+    this.setManualEntryOpen(!panel?.classList.contains('show'));
   },
 
   getFormConfig() {
@@ -883,7 +927,8 @@ const Settings = {
     const validators = [
       ['oidcCallbackServerBindAddr', (v) => Utils.isValidIPv4(v.trim())],
       ['updateIntervalInMinutes', (v) => Utils.isValidNumber(v, 1, 60)],
-      ['forceUpdateDelay', (v) => Utils.isValidNumber(v, 1, 300)],
+      // Seconds here; config.schema.json stores milliseconds (5000-300000)
+      ['forceUpdateDelay', (v) => Utils.isValidNumber(v, 5, 300)],
     ];
 
     return validators.every(([id, validate]) => {
@@ -992,7 +1037,7 @@ const Settings = {
     return `
             <div class="list-group-item d-flex justify-content-between align-items-center gap-3">
                 <div class="min-w-0">
-                    <div class="fw-medium">${Utils.escapeHtml(device.name)}</div>
+                    <div class="fw-medium text-break">${Utils.escapeHtml(device.name)}</div>
                     <small class="device-id text-muted">${Utils.escapeHtml(device.id)}</small>
                 </div>
                 <div class="d-flex align-items-center gap-2 flex-shrink-0">
@@ -1065,8 +1110,9 @@ const Settings = {
     el.className = `badge ${type}`;
     el.textContent = message;
     DOM.show(el);
+    clearTimeout(this.statusTimeout);
     if (type === 'saved') {
-      setTimeout(() => DOM.hide(el), 2000);
+      this.statusTimeout = setTimeout(() => DOM.hide(el), 2000);
     }
   },
 };
@@ -1158,16 +1204,16 @@ const Devices = {
   render(device, index) {
     const online = device.online;
     const powerOn = device.powerState === 'on';
-    const mode = device.operationMode ? Utils.capitalize(device.operationMode) : '-';
+    const mode = Utils.operationModeLabel(device.operationMode);
     const features = device.features?.length
       ? device.features.map(f => `<span class="badge bg-secondary bg-opacity-50">${Utils.escapeHtml(f)}</span>`).join('')
       : '';
 
     const meta = [
-      device.roomTemp ? `<span class="device-meta-item">Room: <span class="text-body-secondary">${Utils.escapeHtml(device.roomTemp)}</span></span>` : '',
-      device.outdoorTemp ? `<span class="device-meta-item">Outdoor: <span class="text-body-secondary">${Utils.escapeHtml(device.outdoorTemp)}</span></span>` : '',
-      `<span class="device-meta-item">Mode: <span class="text-body-secondary">${Utils.escapeHtml(mode)}</span></span>`,
-      `<span class="device-meta-item">Model: <span class="text-body-secondary">${Utils.escapeHtml(device.model)}</span></span>`,
+      device.roomTemp ? `<span class="device-meta-item">Room: <span class="text-body">${Utils.escapeHtml(device.roomTemp)}</span></span>` : '',
+      device.outdoorTemp ? `<span class="device-meta-item">Outdoor: <span class="text-body">${Utils.escapeHtml(device.outdoorTemp)}</span></span>` : '',
+      mode ? `<span class="device-meta-item">Mode: <span class="text-body">${Utils.escapeHtml(mode)}</span></span>` : '',
+      device.model ? `<span class="device-meta-item">Model: <span class="text-body">${Utils.escapeHtml(device.model)}</span></span>` : '',
     ].filter(Boolean).join('<span class="device-meta-sep">·</span>');
 
     const explainButton = Assistant.enabled && this.problem(device)
@@ -1215,9 +1261,11 @@ const RateLimit = {
       const result = await homebridge.request('/api/rate-limit', { mode: AuthMode.current });
       if (result.success && result.rateLimit) {
         const { limitDay, remainingDay, limitMinute, remainingMinute } = result.rateLimit;
-        let text = remainingDay !== undefined ? `${remainingDay}/${limitDay} daily` : '';
+        const fmt = Utils.formatNumber;
+        let text = remainingDay !== undefined ? `${fmt(remainingDay)}/${fmt(limitDay)} daily` : '';
         if (remainingMinute !== undefined) {
-          text += text ? `, ${remainingMinute}/${limitMinute}/min` : `${remainingMinute}/${limitMinute}/min`;
+          const perMinute = `${fmt(remainingMinute)}/${fmt(limitMinute)}/min`;
+          text += text ? `, ${perMinute}` : perMinute;
         }
         display.textContent = text || 'No rate limit headers in the last response';
         this.showUpdated(updated, result);
@@ -1305,9 +1353,14 @@ const MobileAuth = {
 
       if (result.success) {
         await this.saveCredentials(email, password);
+        const remainingDay = result.rateLimit?.remainingDay;
+        const limitDay = Utils.formatNumber(result.rateLimit?.limitDay ?? 3000);
+        const quota = remainingDay !== undefined && remainingDay !== null
+          ? `${Utils.formatNumber(remainingDay)}/${limitDay}`
+          : limitDay;
         success.innerHTML = `
-                    <strong>Success!</strong> Found ${Utils.escapeHtml(result.deviceCount || 0)} device(s).<br>
-                    Rate limit: ${Utils.escapeHtml(result.rateLimit?.remainingDay ?? '?')}/${Utils.escapeHtml(result.rateLimit?.limitDay ?? '3000')}/day<br>
+                    <strong>Success!</strong> Found ${Utils.escapeHtml(Utils.plural(Number(result.deviceCount) || 0, 'device'))}.<br>
+                    Rate limit: ${Utils.escapeHtml(quota)}/day<br>
                     <small>Restart Homebridge to apply.</small>`;
         DOM.show(success);
         setTimeout(() => {
@@ -1394,8 +1447,13 @@ const AuthMode = {
     DOM.toggle($id('btn-authenticate-mobile'), isMobile);
 
     $id('auth-mode-text').textContent = isMobile ? 'Mobile App' : 'Developer Portal';
-    $id('rate-limit-display').textContent = isMobile ? '3000 requests/day' : '200 requests/day';
-    $id('rate-limit-info').textContent = `The Daikin API limits you to ${isMobile ? '3000' : '200'} requests per day.`;
+    const dailyLimit = Utils.formatNumber(isMobile ? 3000 : 200);
+    $id('rate-limit-display').textContent = `${dailyLimit} requests/day`;
+    $id('rate-limit-info').textContent = `The Daikin API limits you to ${dailyLimit} requests per day.`;
+    const mobileOption = $id('authMode').querySelector('option[value="mobile_app"]');
+    if (mobileOption) {
+      mobileOption.textContent = `Mobile App (${Utils.formatNumber(3000)} API calls/day + WebSocket)`;
+    }
 
     DOM.toggle($id('websocket-setting-row'), isMobile);
 
@@ -1409,7 +1467,7 @@ const AuthMode = {
 
     if (interval) {
       interval.placeholder = isMobile ? '5 (recommended)' : '15 (recommended)';
-      interval.title = isMobile ? '1-5 min (3000 calls/day)' : '15+ min (200 calls/day)';
+      interval.title = isMobile ? `1-5 min (${Utils.formatNumber(3000)} calls/day)` : '15+ min (200 calls/day)';
     }
     if (delay) {
       delay.placeholder = isMobile ? '10 (recommended)' : '60 (recommended)';
@@ -1517,6 +1575,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   cacheElements();
   await Assistant.init();
   El.devicesList.addEventListener('click', (e) => Devices.onListClick(e));
+  $id('manual-callback-toggle')?.addEventListener('click', () => Wizard.toggleManualEntry());
   Auth.loadStatus();
   Config.load();
   await AuthMode.init();
