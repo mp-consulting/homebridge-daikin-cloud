@@ -331,7 +331,7 @@
                     <label class="form-label" for="authMode">Authentication Method</label>
                     <select class="form-select" id="authMode" onchange="onAuthModeChange()">
                         <option value="developer_portal">Developer Portal (200 API calls/day)</option>
-                        <option value="mobile_app">Mobile App (3000 API calls/day + WebSocket)</option>
+                        <option value="mobile_app">Mobile App (3,000 API calls/day + WebSocket)</option>
                     </select>
                     <div class="form-text" id="auth-mode-hint">
                         Requires API credentials from the Daikin Developer Portal
@@ -342,9 +342,9 @@
                 <div class="card mb-3" id="auth-status-card">
                     <div class="card-body">
                         <div class="row g-3 mb-3">
-                            <div class="col-auto">
+                            <div class="col-auto mw-100">
                                 <div class="text-muted small text-uppercase">Status</div>
-                                <div class="fw-semibold" id="auth-status">Loading...</div>
+                                <div class="fw-semibold text-break" id="auth-status">Loading...</div>
                             </div>
                             <div class="col-auto" id="auth-mode-display">
                                 <div class="text-muted small text-uppercase">Mode</div>
@@ -506,11 +506,12 @@
                             <div class="accordion" id="manual-callback-section">
                                 <div class="accordion-item">
                                     <h2 class="accordion-header">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#manual-callback-collapse">
+                                        <button class="accordion-button collapsed" type="button" id="manual-callback-toggle"
+                                                aria-expanded="false" aria-controls="manual-callback-collapse">
                                             Manual entry (if automatic redirect fails)
                                         </button>
                                     </h2>
-                                    <div id="manual-callback-collapse" class="accordion-collapse collapse">
+                                    <div id="manual-callback-collapse" class="accordion-collapse collapse" role="region" aria-labelledby="manual-callback-toggle">
                                         <div class="accordion-body">
                                             <div class="alert alert-warning">
                                                 If you see an error page after login, copy the <strong>full URL</strong> from your browser's address bar and paste it below.
@@ -530,7 +531,7 @@
                         <!-- Step 3: Complete -->
                         <div class="wizard-content d-none" id="content-3">
                             <div class="text-center py-4">
-                                <div class="bg-success text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 64px; height: 64px; font-size: 32px;">
+                                <div class="wizard-success-icon bg-success text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 64px; height: 64px; font-size: 32px;">
                                     <i class="bi bi-check-lg"></i>
                                 </div>
                                 <h5>Authentication Successful!</h5>

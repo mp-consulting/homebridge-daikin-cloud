@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Settings page**: the "Manual entry" fallback for the sign-in callback opens again (it relied on Bootstrap's JavaScript, which the Homebridge UI does not load).
+- **Settings page**: a new error or status message is no longer hidden early by the timer of the previous one, long errors and unit names wrap instead of overflowing, the force-update delay accepts only the 5–300s the config schema allows, operation modes read "Fan only" rather than "FanOnly", device counts are pluralised and rate limits use thousands separators.
+
+### Changed
+
+- **Settings page** uses `@mp-consulting/homebridge-ui-kit` 1.4.0: long device names wrap to two lines, tabs scroll instead of wrapping, buttons press in, hover effects only apply with a mouse or trackpad, dialogs and toasts ease in and out, and the Assistant glow no longer repaints every frame.
+- **Settings page**: the loading overlay only appears for requests slower than 300ms, errors slide in, and the setup steps fill their connector and pop the final check (opacity only with reduced motion). Countdown digits no longer jitter.
+
 ## [1.8.2] - 2026-10-04
 
 ### Fixed
