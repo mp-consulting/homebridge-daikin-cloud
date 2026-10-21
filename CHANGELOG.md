@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Settings page** uses `@mp-consulting/homebridge-ui-kit` 1.4.0: long device names wrap to two lines, tabs scroll instead of wrapping, buttons press in, hover effects only apply with a mouse or trackpad, dialogs and toasts ease in and out, and the Assistant glow no longer repaints every frame.
 - **Settings page**: the loading overlay only appears for requests slower than 300ms, errors slide in, and the setup steps fill their connector and pop the final check (opacity only with reduced motion). Countdown digits no longer jitter.
 
 ## [1.8.2] - 2026-10-04
