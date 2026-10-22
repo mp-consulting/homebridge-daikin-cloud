@@ -71,10 +71,10 @@ async function writeConfig(platforms: unknown[]) {
 }
 
 describe('homebridge-ui Assistant routes', () => {
-  it('registers the four Assistant routes', async () => {
+  it('registers the five Assistant routes', async () => {
     const ui = fakeServer();
     await registerAssistant(ui.server, { loadConfig: async () => null });
-    expect([...ui.handlers.keys()].sort()).toEqual(['/ai/ask', '/ai/config', '/ai/explain', '/ai/status']);
+    expect([...ui.handlers.keys()].sort()).toEqual(['/ai/ask', '/ai/cancel', '/ai/config', '/ai/explain', '/ai/status']);
   });
 
   it('reports the Assistant as off when the AI Kit block is missing', async () => {
