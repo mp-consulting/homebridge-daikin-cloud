@@ -66,6 +66,11 @@ function lazyJson(producer: () => unknown, space?: number): object {
   return { [inspect.custom]: () => JSON.stringify(producer(), null, space) };
 }
 
+/** The token endpoint reports a refresh token it will not accept as `invalid_grant`. */
+function isInvalidGrantError(error: unknown): boolean {
+  return toMessage(error).includes('invalid_grant');
+}
+
 export type DaikinCloudAccessoryContext = {
     device: DaikinCloudDevice;
 };
@@ -96,6 +101,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
   private readonly accessoryFactory: AccessoryFactory;
   private readonly authMode: 'developer_portal' | 'mobile_app';
   private readonly deviceListeners = new Map<string, () => void>();
+  private reauthInFlight = false;
 
   constructor(
         public readonly log: Logger,
@@ -158,13 +164,11 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     }
 
     // Use different token file for mobile auth to avoid conflicts
-    const tokenFilePath = resolve(this.storagePath, TOKEN_FILES[this.authMode]);
-
-    const daikinCloudControllerConfig = configManager.getControllerConfig(tokenFilePath);
+    const daikinCloudControllerConfig = configManager.getControllerConfig(this.tokenFilePath);
 
     this.log.debug('[Config] Homebridge config', configManager.getRedactedConfig());
 
-    fs.stat(tokenFilePath, (err, stats) => {
+    fs.stat(this.tokenFilePath, (err, stats) => {
       if (err) {
         this.log.debug('[Config] Token file does NOT exist.');
         if (this.authMode === 'developer_portal') {
@@ -206,7 +210,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         }
       }
 
-      const onInvalidGrantError = () => this.onInvalidGrantError(tokenFilePath);
+      const onInvalidGrantError = () => this.onInvalidGrantError(this.tokenFilePath);
       const devices: DaikinCloudDevice[] = await this.discoverDevices(this.controller, onInvalidGrantError);
 
       if (devices.length > 0 && !this.isShuttingDown) {
@@ -242,6 +246,11 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
       }
       this.deviceListeners.clear();
     });
+  }
+
+  /** Token file for the configured auth mode; mobile and developer tokens must not collide. */
+  private get tokenFilePath(): string {
+    return resolve(this.storagePath, TOKEN_FILES[this.authMode]);
   }
 
   private registerControllerListeners(controller: DaikinCloudController): void {
@@ -289,7 +298,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         const message = `[API Syncing] Failed to get cloud devices from Daikin Cloud: ${error.message}`;
         this.log.error(message);
 
-        if (error.message.includes('invalid_grant')) {
+        if (isInvalidGrantError(error)) {
           onInvalidGrantError();
         }
       }
@@ -380,6 +389,9 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
         } catch (error) {
           this.consecutivePollFailures++;
           this.log.error(`[API Syncing] Failed to update devices data: ${toMessage(error)}`);
+          if (isInvalidGrantError(error)) {
+            this.onInvalidGrantError(this.tokenFilePath);
+          }
         }
       })().finally(() => {
         this.inFlightUpdate = undefined;
@@ -553,9 +565,45 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     this.log.warn('[API Syncing] TokenSet is invalid, removing TokenSet file');
     try {
       fs.unlinkSync(tokenFilePath);
-      this.log.warn('[API Syncing] TokenSet file removed. Please re-authenticate via the Homebridge UI.');
+      if (this.authMode === 'mobile_app') {
+        this.log.warn('[API Syncing] TokenSet file removed, logging in again with the configured credentials.');
+      } else {
+        this.log.warn('[API Syncing] TokenSet file removed. Please re-authenticate via the Homebridge UI.');
+      }
     } catch (e) {
       this.log.error('[API Syncing] TokenSet file could not be removed. Location:', tokenFilePath, e);
+    }
+
+    if (this.authMode === 'mobile_app') {
+      void this.reauthenticate();
+    }
+  }
+
+  /**
+   * Obtain a new token set after the stored one was rejected.
+   *
+   * In mobile_app mode the email and password are in the config, so there is
+   * nothing for the user to do. Without this the plugin kept every request
+   * failing on a deleted token file until it was restarted by hand.
+   */
+  private async reauthenticate(): Promise<void> {
+    const controller = this.controller;
+    if (!controller || this.reauthInFlight || this.isShuttingDown) {
+      return;
+    }
+    this.reauthInFlight = true;
+    try {
+      this.log.info('[Auth] Logging in with the configured credentials...');
+      await controller.authenticateMobile();
+      this.log.info('[Auth] Authentication successful!');
+      this.consecutivePollFailures = 0;
+      // Retry on the next tick: the request that reported invalid_grant is
+      // still the in-flight one, and awaiting it here would only rethrow.
+      setTimeout(() => void this.pollNow(), 0);
+    } catch (error) {
+      this.log.error(`[Auth] Authentication failed: ${toMessage(error)}`);
+    } finally {
+      this.reauthInFlight = false;
     }
   }
 

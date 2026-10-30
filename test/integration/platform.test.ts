@@ -460,3 +460,30 @@ describe('computePollInterval', () => {
     expect(computePollInterval({ ...base, remainingDay: 500 })).toBe(base.configuredMs);
   });
 });
+
+test('logs in again when a poll is rejected with invalid_grant', async () => {
+  mockController([airco()]);
+  const { controller, platform, updateSpy } = await startPlatform({ authMode: 'mobile_app', daikinEmail: 'a@b.c', daikinPassword: 'pw', forceUpdateDelay: 10000 });
+  updateSpy.mockClear();
+  updateSpy.mockRejectedValueOnce(new Error('Token refresh failed: invalid_grant'));
+
+  platform.forceUpdateDevices();
+  await vi.advanceTimersByTimeAsync(10000 + 100);
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(controller.authenticateMobile).toHaveBeenCalledTimes(1);
+  // The retry after the login succeeds, so polling carries on
+  expect(updateSpy.mock.calls.length).toBeGreaterThan(1);
+});
+
+test('tries the login once per rejected poll, and survives it failing', async () => {
+  mockController([airco()], { authenticateMobile: vi.fn().mockRejectedValue(new Error('bad password')) });
+  const { controller, platform, updateSpy } = await startPlatform({ authMode: 'mobile_app', daikinEmail: 'a@b.c', daikinPassword: 'pw', forceUpdateDelay: 10000 });
+  updateSpy.mockClear();
+  updateSpy.mockRejectedValue(new Error('Token refresh failed: invalid_grant'));
+
+  platform.forceUpdateDevices();
+  await vi.advanceTimersByTimeAsync(10000 + 100);
+
+  expect(controller.authenticateMobile).toHaveBeenCalledTimes(1);
+});
