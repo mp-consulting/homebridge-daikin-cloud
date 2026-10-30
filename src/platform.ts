@@ -274,6 +274,13 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     controller.on('websocket_device_update', (update) => {
       this.log.debug(`[WebSocket] Device update: ${update.deviceId} - ${update.characteristicName}`, lazyJson(() => update.data));
     });
+
+    // Group frames carry no device ID and there is no group-to-device map, so
+    // nothing was applied above. Fetch the devices instead of dropping them.
+    controller.on('websocket_group_update', (update) => {
+      this.log.debug(`[WebSocket] Group update: ${update.groupId} - ${update.characteristicName}, refreshing devices`);
+      this.forceUpdateDevices(undefined, { whenWebSocketConnected: true });
+    });
   }
 
   public configureAccessory(accessory: PlatformAccessory) {
@@ -400,12 +407,15 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     this.startUpdateDevicesInterval();
   }
 
-  forceUpdateDevices(delay: number = this.configManager.getForceUpdateDelayMs()) {
+  forceUpdateDevices(
+    delay: number = this.configManager.getForceUpdateDelayMs(),
+    options: { whenWebSocketConnected?: boolean } = {},
+  ) {
     if (this.isShuttingDown) {
       return;
     }
     // With a healthy WebSocket the change is pushed to us; a follow-up GET would only cost quota.
-    if (this.isWebSocketConnected()) {
+    if (this.isWebSocketConnected() && !options.whenWebSocketConnected) {
       this.log.debug('[API Syncing] WebSocket connected, skipping forced update (waiting for push update)');
       return;
     }

@@ -104,6 +104,22 @@ describe('DaikinCloudController', () => {
     expect(onError).toHaveBeenCalledWith('WebSocket error: boom');
   });
 
+  it('forwards group updates to listeners', () => {
+    const controller = makeController();
+    const onGroupUpdate = vi.fn();
+    controller.on('websocket_group_update', onGroupUpdate);
+    const update = {
+      groupId: 'group-1',
+      siteId: 'site-1',
+      characteristicName: 'onOffMode',
+      data: { name: 'onOffMode', value: 'on' },
+    };
+
+    wsInstance.emit('group_update', update);
+
+    expect(onGroupUpdate).toHaveBeenCalledWith(update);
+  });
+
   it('exposes the WebSocket connection state', () => {
     expect(makeController().isWebSocketConnected()).toBe(true);
   });

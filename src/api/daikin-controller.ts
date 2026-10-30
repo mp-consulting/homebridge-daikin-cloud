@@ -13,6 +13,7 @@ import type {
   OAuthProvider,
   TokenSet,
   WebSocketDeviceUpdate,
+  WebSocketGroupUpdate,
 } from './daikin-types';
 import { DEFAULT_CALLBACK_PORT } from '../constants';
 import { DaikinOAuth } from './daikin-oauth';
@@ -104,6 +105,10 @@ export class DaikinCloudController extends EventEmitter {
 
     this.websocket.on('device_update', (update: WebSocketDeviceUpdate) => {
       this.handleWebSocketDeviceUpdate(update);
+    });
+
+    this.websocket.on('group_update', (update: WebSocketGroupUpdate) => {
+      this.emit('websocket_group_update', update);
     });
 
     this.websocket.on('error', (error: Error) => {

@@ -150,6 +150,27 @@ export interface WebSocketDeviceUpdate {
     };
 }
 
+// WebSocket Group Update Event Data
+//
+// A group frame names a group and a characteristic, not a device. There is no
+// group-to-device map in the API this plugin uses, so the value cannot be
+// applied directly and the frame is only a hint that state changed.
+export interface WebSocketGroupUpdate {
+    groupId: string;
+    siteId: string;
+    characteristicName: string;
+    data: {
+        name: string;
+        settable?: boolean;
+        value: unknown;
+        values?: string[];
+        ref?: string;
+        minValue?: number;
+        maxValue?: number;
+        stepValue?: number;
+    };
+}
+
 /** Shape of RATE_LIMIT_STATUS_FILE */
 export interface RateLimitStatusFile extends RateLimitStatus {
     /** Auth mode the headers were observed under */
