@@ -460,3 +460,27 @@ describe('computePollInterval', () => {
     expect(computePollInterval({ ...base, remainingDay: 500 })).toBe(base.configuredMs);
   });
 });
+
+test('a group update fetches devices even while the WebSocket is connected', async () => {
+  mockController([airco()]);
+  const { controller, updateSpy } = await startPlatform({ forceUpdateDelay: 10000 });
+  updateSpy.mockClear();
+
+  controller.isWebSocketConnected.mockReturnValue(true);
+  controller.emit('websocket_connected');
+
+  // A device update was already applied to the device, so no fetch is needed
+  controller.emit('websocket_device_update', { deviceId: 'MOCK_ID', characteristicName: 'onOffMode' });
+  await vi.advanceTimersByTimeAsync(10000 + 100);
+  expect(updateSpy).not.toHaveBeenCalled();
+
+  // A group frame names no device, so the only way to reflect it is to poll
+  controller.emit('websocket_group_update', {
+    groupId: 'group-1',
+    siteId: 'site-1',
+    characteristicName: 'onOffMode',
+    data: { name: 'onOffMode', value: 'on' },
+  });
+  await vi.advanceTimersByTimeAsync(10000 + 100);
+  expect(updateSpy).toHaveBeenCalledTimes(1);
+});
