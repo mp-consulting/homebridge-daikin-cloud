@@ -28,6 +28,10 @@ export const WEBSOCKET_SAFETY_POLL_INTERVAL_MS = 60 * ONE_MINUTE_MS;
 export const LOW_QUOTA_POLL_INTERVAL_MS = 60 * ONE_MINUTE_MS;
 /** Upper bound of the failure backoff, as a multiple of the base interval */
 export const MAX_POLL_BACKOFF_MULTIPLIER = 4;
+/** First delay before device discovery is retried after a failed attempt */
+export const DISCOVERY_RETRY_INITIAL_DELAY_MS = ONE_MINUTE_MS;
+/** Upper bound of the device discovery retry backoff */
+export const DISCOVERY_RETRY_MAX_DELAY_MS = ONE_MINUTE_MS * 5;
 /** Minimum time between two writes of the rate-limit status file */
 const RATE_LIMIT_FILE_MIN_WRITE_INTERVAL_MS = 5 * ONE_SECOND_MS;
 
@@ -83,6 +87,8 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
 
   public readonly updateIntervalDelay: number;
   private pollTimer: NodeJS.Timeout | undefined;
+  private discoveryRetryTimer: NodeJS.Timeout | undefined;
+  private discoveryRetryDelay = DISCOVERY_RETRY_INITIAL_DELAY_MS;
   private forceUpdateTimeout: NodeJS.Timeout | undefined;
   private inFlightUpdate: Promise<void> | undefined;
   private pollingStarted = false;
@@ -186,39 +192,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
       // listener would throw.
       this.registerControllerListeners(this.controller);
 
-      // Handle authentication based on mode
-      if (!this.controller.isAuthenticated()) {
-        if (this.authMode === 'mobile_app') {
-          // For mobile auth, automatically authenticate using stored credentials
-          this.log.info('[Auth] Authenticating with Daikin Cloud using mobile app credentials...');
-          try {
-            await this.controller.authenticateMobile();
-            this.log.info('[Auth] Authentication successful!');
-          } catch (error) {
-            this.log.error(`[Auth] Authentication failed: ${toMessage(error)}`);
-            this.log.info('--------------- End Daikin info for debugging reasons --------------------');
-            return;
-          }
-        } else {
-          this.log.warn('[Auth] Not authenticated. Please use the Homebridge UI to authenticate with Daikin Cloud.');
-          this.log.info('--------------- End Daikin info for debugging reasons --------------------');
-          return;
-        }
-      }
-
-      const onInvalidGrantError = () => this.onInvalidGrantError(tokenFilePath);
-      const devices: DaikinCloudDevice[] = await this.discoverDevices(this.controller, onInvalidGrantError);
-
-      if (devices.length > 0 && !this.isShuttingDown) {
-        this.createDevices(devices);
-        this.pollingStarted = true;
-        this.startUpdateDevicesInterval();
-
-        // Enable WebSocket for real-time updates (unless explicitly disabled)
-        if (this.configManager.isWebSocketEnabled()) {
-          await this.enableWebSocket();
-        }
-      }
+      await this.startDeviceDiscovery(tokenFilePath);
 
       this.log.info('--------------- End Daikin info for debugging reasons --------------------');
     });
@@ -228,6 +202,8 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
       this.log.debug('[Platform] Shutting down, cleaning up resources...');
       this.isShuttingDown = true;
       this.stopPolling();
+      clearTimeout(this.discoveryRetryTimer);
+      this.discoveryRetryTimer = undefined;
       clearTimeout(this.forceUpdateTimeout);
       this.forceUpdateTimeout = undefined;
       clearTimeout(this.rateLimitWriteTimer);
@@ -279,6 +255,88 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
   public configureAccessory(accessory: PlatformAccessory) {
     this.log.info('[Platform] Loading accessory from cache:', accessory.displayName);
     this.accessories.push(accessory as PlatformAccessory<DaikinCloudAccessoryContext>);
+  }
+
+  /**
+   * Log in when there is no usable token set yet. Failures are logged and left
+   * to the discovery retry: a cloud that is unreachable at boot must not cost
+   * the user their accessories until the next restart.
+   */
+  private async authenticateAtStartup(): Promise<void> {
+    const controller = this.controller;
+    if (!controller || controller.isAuthenticated()) {
+      return;
+    }
+    if (this.authMode !== 'mobile_app') {
+      this.log.warn('[Auth] Not authenticated. Please use the Homebridge UI to authenticate with Daikin Cloud.');
+      return;
+    }
+    this.log.info('[Auth] Authenticating with Daikin Cloud using mobile app credentials...');
+    try {
+      await controller.authenticateMobile();
+      this.log.info('[Auth] Authentication successful!');
+    } catch (error) {
+      this.log.error(`[Auth] Authentication failed: ${toMessage(error)}`);
+    }
+  }
+
+  /**
+   * Fetch the devices and hand them to the accessory layer, retrying on an
+   * empty result.
+   *
+   * Discovery is the only place accessories are created, and polling is only
+   * scheduled once devices exist. A cloud that is throttling, restarting or
+   * briefly unreachable when the plugin boots would otherwise leave it with
+   * nothing to expose and no timer to try again, which HomeKit reports as
+   * "Not Responding" until the plugin is restarted.
+   */
+  private async startDeviceDiscovery(tokenFilePath: string): Promise<void> {
+    const controller = this.controller;
+    if (!controller || this.isShuttingDown) {
+      return;
+    }
+
+    await this.authenticateAtStartup();
+    if (this.isShuttingDown) {
+      return;
+    }
+
+    const devices: DaikinCloudDevice[] = await this.discoverDevices(controller, () => this.onInvalidGrantError(tokenFilePath));
+    if (this.isShuttingDown) {
+      return;
+    }
+
+    if (devices.length === 0) {
+      this.log.warn(`[API Syncing] No devices returned, retrying in ${Math.round(this.discoveryRetryDelay / ONE_SECOND_MS)}s`);
+      this.scheduleDiscoveryRetry(tokenFilePath);
+      return;
+    }
+
+    if (this.discoveryRetryDelay > DISCOVERY_RETRY_INITIAL_DELAY_MS) {
+      this.log.info('[API Syncing] Device discovery succeeded after a retry');
+    }
+    this.discoveryRetryDelay = DISCOVERY_RETRY_INITIAL_DELAY_MS;
+
+    this.createDevices(devices);
+    this.pollingStarted = true;
+    this.startUpdateDevicesInterval();
+
+    // Enable WebSocket for real-time updates (unless explicitly disabled)
+    if (this.configManager.isWebSocketEnabled()) {
+      await this.enableWebSocket();
+    }
+  }
+
+  private scheduleDiscoveryRetry(tokenFilePath: string): void {
+    if (this.isShuttingDown) {
+      return;
+    }
+    clearTimeout(this.discoveryRetryTimer);
+    this.discoveryRetryTimer = setTimeout(() => {
+      this.discoveryRetryTimer = undefined;
+      this.discoveryRetryDelay = Math.min(this.discoveryRetryDelay * 2, DISCOVERY_RETRY_MAX_DELAY_MS);
+      void this.startDeviceDiscovery(tokenFilePath);
+    }, this.discoveryRetryDelay);
   }
 
   private async discoverDevices(controller: DaikinCloudController, onInvalidGrantError: () => void): Promise<DaikinCloudDevice[]> {

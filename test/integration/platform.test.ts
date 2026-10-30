@@ -3,6 +3,8 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import {
   computePollInterval,
+  DISCOVERY_RETRY_INITIAL_DELAY_MS,
+  DISCOVERY_RETRY_MAX_DELAY_MS,
   WEBSOCKET_SAFETY_POLL_INTERVAL_MS,
   LOW_QUOTA_POLL_INTERVAL_MS,
 } from '../../src/platform';
@@ -459,4 +461,47 @@ describe('computePollInterval', () => {
     expect(computePollInterval({ ...base, remainingDay: 0 })).toBe(LOW_QUOTA_POLL_INTERVAL_MS);
     expect(computePollInterval({ ...base, remainingDay: 500 })).toBe(base.configuredMs);
   });
+});
+
+test('retries device discovery when the first attempt returns nothing', async () => {
+  const getCloudDevices = vi.fn().mockResolvedValueOnce([]).mockResolvedValue([airco()]);
+  mockController([], { getCloudDevices });
+
+  const api = createTestApi();
+  createTestPlatform({}, api);
+  api.signalFinished();
+  await vi.advanceTimersByTimeAsync(100);
+
+  // No devices, so no accessory and no polling yet.
+  expect(AirConditioningAccessory).not.toHaveBeenCalled();
+  expect(getCloudDevices).toHaveBeenCalledTimes(1);
+
+  await vi.advanceTimersByTimeAsync(DISCOVERY_RETRY_INITIAL_DELAY_MS + 100);
+
+  expect(getCloudDevices).toHaveBeenCalledTimes(2);
+  expect(AirConditioningAccessory).toHaveBeenCalled();
+});
+
+test('backs off the discovery retry and stops it on shutdown', async () => {
+  const getCloudDevices = vi.fn().mockRejectedValue(new Error('fetch failed'));
+  mockController([], { getCloudDevices });
+
+  const api = createTestApi();
+  createTestPlatform({}, api);
+  api.signalFinished();
+  await vi.advanceTimersByTimeAsync(100);
+
+  await vi.advanceTimersByTimeAsync(DISCOVERY_RETRY_INITIAL_DELAY_MS + 100);
+  expect(getCloudDevices).toHaveBeenCalledTimes(2);
+
+  // Third attempt is two minutes after the second
+  await vi.advanceTimersByTimeAsync(DISCOVERY_RETRY_INITIAL_DELAY_MS + 100);
+  expect(getCloudDevices).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(DISCOVERY_RETRY_INITIAL_DELAY_MS);
+  expect(getCloudDevices).toHaveBeenCalledTimes(3);
+
+  api.signalShutdown();
+  const callsAtShutdown = getCloudDevices.mock.calls.length;
+  await vi.advanceTimersByTimeAsync(DISCOVERY_RETRY_MAX_DELAY_MS * 2);
+  expect(getCloudDevices).toHaveBeenCalledTimes(callsAtShutdown);
 });
