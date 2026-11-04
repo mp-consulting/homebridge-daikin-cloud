@@ -69,10 +69,16 @@ export class OAuthTokenError extends Error {
 /**
  * Whether the token endpoint rejected the grant itself: the refresh token is
  * expired, revoked or otherwise no longer accepted, so refreshing again with
- * it cannot succeed.
+ * it cannot succeed. Matches `error` or any error it wraps through `cause`.
  */
 export function isInvalidGrant(error: unknown): boolean {
-  return error instanceof OAuthTokenError && error.code === 'invalid_grant';
+  // Walk `cause` too: DaikinApi wraps a refresh that failed on a 401.
+  for (let e: unknown = error; e instanceof Error; e = e.cause) {
+    if (e instanceof OAuthTokenError && e.code === 'invalid_grant') {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**

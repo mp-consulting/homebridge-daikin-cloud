@@ -9,6 +9,8 @@ import {
   LOW_QUOTA_POLL_INTERVAL_MS,
 } from '../../src/platform';
 import type { DaikinCloudDevice } from '../../src/api';
+import { CredentialsRejectedError } from '../../src/api/daikin-mobile-oauth';
+import { OAuthTokenError } from '../../src/api/token-client';
 import { DaikinCloudController } from '../../src/api';
 import { AirConditioningAccessory, AlthermaAccessory } from '../../src/accessories';
 import { createTestApi, createTestPlatform, useFakeTimersPerTest } from '../helpers/platform';
@@ -431,7 +433,8 @@ describe('rate limit status', () => {
 
 test('invalid_grant during discovery removes the token file', async () => {
   const unlinkSpy = vi.spyOn(fs, 'unlinkSync').mockImplementation(() => undefined);
-  mockController([], { getCloudDevices: vi.fn().mockRejectedValue(new Error('invalid_grant: refresh token expired')) });
+  const invalidGrant = new OAuthTokenError('Token refresh failed: invalid_grant - refresh token expired (HTTP 400)', 'invalid_grant');
+  mockController([], { getCloudDevices: vi.fn().mockRejectedValue(invalidGrant) });
   const { api, controller } = await startPlatform();
 
   expect(unlinkSpy).toHaveBeenCalledWith(`${api.user.storagePath()}/.daikin-controller-cloud-tokenset`);
@@ -463,8 +466,8 @@ describe('computePollInterval', () => {
   });
 });
 
-test('retries device discovery when the first attempt returns nothing', async () => {
-  const getCloudDevices = vi.fn().mockResolvedValueOnce([]).mockResolvedValue([airco()]);
+test('retries device discovery when the first attempt fails', async () => {
+  const getCloudDevices = vi.fn().mockRejectedValueOnce(new Error('fetch failed')).mockResolvedValue([airco()]);
   mockController([], { getCloudDevices });
 
   const api = createTestApi();
@@ -480,6 +483,81 @@ test('retries device discovery when the first attempt returns nothing', async ()
 
   expect(getCloudDevices).toHaveBeenCalledTimes(2);
   expect(AirConditioningAccessory).toHaveBeenCalled();
+});
+
+test('does not retry discovery for an account without devices', async () => {
+  const getCloudDevices = vi.fn().mockResolvedValue([]);
+  mockController([], { getCloudDevices });
+  const api = createTestApi();
+  const platform = createTestPlatform({}, api);
+  const warn = vi.spyOn(platform.log, 'warn');
+  api.signalFinished();
+
+  await vi.advanceTimersByTimeAsync(DISCOVERY_RETRY_MAX_DELAY_MS * 2);
+
+  expect(getCloudDevices).toHaveBeenCalledTimes(1);
+  expect((platform.controller as any).updateAllDeviceData).not.toHaveBeenCalled();
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining('No devices found'));
+  expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('retrying'));
+});
+
+test('does not retry discovery after invalid_grant in Developer Portal mode', async () => {
+  vi.spyOn(fs, 'unlinkSync').mockImplementation(() => undefined);
+  const invalidGrant = new OAuthTokenError('Token refresh failed: invalid_grant (HTTP 400)', 'invalid_grant');
+  // DaikinApi wraps a refresh that failed on a 401; the code is found through `cause`
+  const getCloudDevices = vi.fn().mockRejectedValue(new Error('Unauthorized (401): Token refresh failed.', { cause: invalidGrant }));
+  mockController([], { getCloudDevices });
+  await startPlatform();
+
+  await vi.advanceTimersByTimeAsync(DISCOVERY_RETRY_MAX_DELAY_MS * 2);
+
+  expect(fs.unlinkSync).toHaveBeenCalled();
+  expect(getCloudDevices).toHaveBeenCalledTimes(1);
+});
+
+test('does not retry discovery when the configured credentials are rejected', async () => {
+  const rejected = new CredentialsRejectedError('Login failed (403042): Invalid LoginID', 403042);
+  const authenticateMobile = vi.fn().mockRejectedValue(rejected);
+  const getCloudDevices = vi.fn();
+  mockController([], { isAuthenticated: vi.fn().mockReturnValue(false), authenticateMobile, getCloudDevices });
+  const api = createTestApi();
+  const platform = createTestPlatform({ authMode: 'mobile_app', daikinEmail: 'a@b.c', daikinPassword: 'pw' }, api);
+  const error = vi.spyOn(platform.log, 'error');
+  const warn = vi.spyOn(platform.log, 'warn');
+  api.signalFinished();
+
+  await vi.advanceTimersByTimeAsync(DISCOVERY_RETRY_MAX_DELAY_MS * 2);
+
+  expect(authenticateMobile).toHaveBeenCalledTimes(1);
+  expect(getCloudDevices).not.toHaveBeenCalled();
+  expect(error).toHaveBeenCalledWith(expect.stringContaining('rejected the configured email or password'));
+  expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('retrying'));
+});
+
+test('retries the startup login after a transient failure', async () => {
+  const authenticateMobile = vi.fn()
+    .mockRejectedValueOnce(new Error('getaddrinfo ENOTFOUND id.daikin.eu'))
+    .mockResolvedValue({});
+  const isAuthenticated = vi.fn().mockReturnValue(false);
+  mockController([airco()], { isAuthenticated, authenticateMobile });
+  const { controller } = await startPlatform({ authMode: 'mobile_app', daikinEmail: 'a@b.c', daikinPassword: 'pw' });
+
+  expect(controller.getCloudDevices).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(DISCOVERY_RETRY_INITIAL_DELAY_MS + 100);
+
+  expect(authenticateMobile).toHaveBeenCalledTimes(2);
+  expect(controller.getCloudDevices).toHaveBeenCalledTimes(1);
+  expect(AirConditioningAccessory).toHaveBeenCalled();
+});
+
+test('does not retry discovery when Developer Portal mode is not authenticated', async () => {
+  const getCloudDevices = vi.fn();
+  mockController([], { isAuthenticated: vi.fn().mockReturnValue(false), getCloudDevices });
+  await startPlatform();
+
+  await vi.advanceTimersByTimeAsync(DISCOVERY_RETRY_MAX_DELAY_MS * 2);
+
+  expect(getCloudDevices).not.toHaveBeenCalled();
 });
 
 test('backs off the discovery retry and stops it on shutdown', async () => {

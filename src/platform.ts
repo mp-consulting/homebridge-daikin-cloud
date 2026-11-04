@@ -12,6 +12,8 @@ import fs from 'node:fs';
 import type { DaikinCloudDevice, RateLimitStatus, RateLimitStatusFile } from './api';
 import { DaikinCloudRepo, DaikinCloudController } from './api';
 import { configureHttpTransport, getHttpTransportMode } from './api/http-transport';
+import { isCredentialsRejected } from './api/daikin-mobile-oauth';
+import { isInvalidGrant } from './api/token-client';
 import type { PluginConfig } from './config/config-manager';
 import { ConfigManager } from './config/config-manager';
 import {
@@ -258,31 +260,46 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
   }
 
   /**
-   * Log in when there is no usable token set yet. Failures are logged and left
-   * to the discovery retry: a cloud that is unreachable at boot must not cost
-   * the user their accessories until the next restart.
+   * Log in when there is no usable token set yet.
+   *
+   * - `ready`: authenticated, discovery can run
+   * - `retry`: the login failed for a reason that may go away (network, Daikin
+   *   server errors), so discovery is retried later
+   * - `stop`: retrying cannot help. Developer Portal tokens are created in the
+   *   Homebridge UI and the token file is only read at startup; rejected
+   *   mobile credentials must not be sent again, as each attempt counts
+   *   towards an account lockout. Both need a restart once fixed.
    */
-  private async authenticateAtStartup(): Promise<void> {
+  private async authenticateAtStartup(): Promise<'ready' | 'retry' | 'stop'> {
     const controller = this.controller;
-    if (!controller || controller.isAuthenticated()) {
-      return;
+    if (!controller) {
+      return 'stop';
+    }
+    if (controller.isAuthenticated()) {
+      return 'ready';
     }
     if (this.authMode !== 'mobile_app') {
-      this.log.warn('[Auth] Not authenticated. Please use the Homebridge UI to authenticate with Daikin Cloud.');
-      return;
+      this.log.warn('[Auth] Not authenticated. Please use the Homebridge UI to authenticate with Daikin Cloud, then restart Homebridge.');
+      return 'stop';
     }
     this.log.info('[Auth] Authenticating with Daikin Cloud using mobile app credentials...');
     try {
       await controller.authenticateMobile();
       this.log.info('[Auth] Authentication successful!');
+      return 'ready';
     } catch (error) {
       this.log.error(`[Auth] Authentication failed: ${toMessage(error)}`);
+      if (isCredentialsRejected(error)) {
+        this.log.error('[Auth] Daikin rejected the configured email or password. Fix them in the plugin settings, then restart Homebridge.');
+        return 'stop';
+      }
+      return 'retry';
     }
   }
 
   /**
-   * Fetch the devices and hand them to the accessory layer, retrying on an
-   * empty result.
+   * Fetch the devices and hand them to the accessory layer, retrying when the
+   * request failed.
    *
    * Discovery is the only place accessories are created, and polling is only
    * scheduled once devices exist. A cloud that is throttling, restarting or
@@ -296,19 +313,23 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
       return;
     }
 
-    await this.authenticateAtStartup();
-    if (this.isShuttingDown) {
+    const auth = await this.authenticateAtStartup();
+    if (this.isShuttingDown || auth === 'stop') {
       return;
     }
-
-    const devices: DaikinCloudDevice[] = await this.discoverDevices(controller, () => this.onInvalidGrantError(tokenFilePath));
-    if (this.isShuttingDown) {
-      return;
-    }
-
-    if (devices.length === 0) {
-      this.log.warn(`[API Syncing] No devices returned, retrying in ${Math.round(this.discoveryRetryDelay / ONE_SECOND_MS)}s`);
+    if (auth === 'retry') {
       this.scheduleDiscoveryRetry(tokenFilePath);
+      return;
+    }
+
+    const result = await this.discoverDevices(controller, () => this.onInvalidGrantError(tokenFilePath));
+    if (this.isShuttingDown) {
+      return;
+    }
+    if (result.outcome !== 'devices') {
+      if (result.outcome === 'retry') {
+        this.scheduleDiscoveryRetry(tokenFilePath);
+      }
       return;
     }
 
@@ -317,7 +338,14 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     }
     this.discoveryRetryDelay = DISCOVERY_RETRY_INITIAL_DELAY_MS;
 
-    this.createDevices(devices);
+    // An account without devices is an answer, not a failure: retrying would
+    // only spend quota.
+    if (result.devices.length === 0) {
+      this.log.warn('[API Syncing] No devices found in the Daikin Cloud account. Add them in the Onecta app, then restart Homebridge.');
+      return;
+    }
+
+    this.createDevices(result.devices);
     this.pollingStarted = true;
     this.startUpdateDevicesInterval();
 
@@ -331,6 +359,7 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     if (this.isShuttingDown) {
       return;
     }
+    this.log.warn(`[API Syncing] Device discovery failed, retrying in ${Math.round(this.discoveryRetryDelay / ONE_SECOND_MS)}s`);
     clearTimeout(this.discoveryRetryTimer);
     this.discoveryRetryTimer = setTimeout(() => {
       this.discoveryRetryTimer = undefined;
@@ -339,19 +368,28 @@ export class DaikinCloudPlatform implements DynamicPlatformPlugin {
     }, this.discoveryRetryDelay);
   }
 
-  private async discoverDevices(controller: DaikinCloudController, onInvalidGrantError: () => void): Promise<DaikinCloudDevice[]> {
+  /**
+   * Fetch the device list. A failed request is retried unless the error says
+   * a retry cannot succeed: a refresh token the Developer Portal no longer
+   * accepts (the user has to authenticate again in the UI) or mobile
+   * credentials Daikin rejected.
+   */
+  private async discoverDevices(
+    controller: DaikinCloudController,
+    onInvalidGrantError: () => void,
+  ): Promise<{ outcome: 'devices'; devices: DaikinCloudDevice[] } | { outcome: 'retry' | 'stop' }> {
     try {
-      return await controller.getCloudDevices();
+      return { outcome: 'devices', devices: await controller.getCloudDevices() };
     } catch (error) {
-      if (error instanceof Error) {
-        const message = `[API Syncing] Failed to get cloud devices from Daikin Cloud: ${error.message}`;
-        this.log.error(message);
-
-        if (error.message.includes('invalid_grant')) {
-          onInvalidGrantError();
-        }
+      this.log.error(`[API Syncing] Failed to get cloud devices from Daikin Cloud: ${toMessage(error)}`);
+      if (isInvalidGrant(error)) {
+        onInvalidGrantError();
+        return { outcome: 'stop' };
       }
-      return [];
+      if (isCredentialsRejected(error)) {
+        return { outcome: 'stop' };
+      }
+      return { outcome: 'retry' };
     }
   }
 
