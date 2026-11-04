@@ -19,7 +19,7 @@ import {
 } from '../constants';
 import { httpRequest, type TransportResponse } from './http-transport';
 import { GigyaLoginResultSchema } from './daikin-schemas';
-import { TokenClient, parseJsonBody, parseTokenResponse } from './token-client';
+import { TokenClient, isInvalidGrant, parseJsonBody, parseTokenResponse } from './token-client';
 import { sleep } from '../utils/sleep';
 
 interface PKCEPair {
@@ -29,8 +29,45 @@ interface PKCEPair {
 
 type GigyaLoginResult = z.infer<typeof GigyaLoginResultSchema>;
 
+/**
+ * Gigya refused the configured email and password (wrong password, unknown
+ * account, locked account, ...). Gigya error codes in the 4xxxxx range are
+ * answers about the request itself, unlike 5xxxxx server errors, so sending
+ * the same credentials again cannot succeed and would only count towards an
+ * account lockout.
+ */
+export class CredentialsRejectedError extends Error {
+  constructor(message: string, readonly gigyaErrorCode: number, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'CredentialsRejectedError';
+  }
+}
+
+function isGigyaRequestError(errorCode: number): boolean {
+  return errorCode >= 400000 && errorCode < 500000;
+}
+
+/**
+ * Whether `error`, or an error it wraps through `cause`, is a
+ * CredentialsRejectedError.
+ */
+export function isCredentialsRejected(error: unknown): boolean {
+  for (let e: unknown = error; e instanceof Error; e = e.cause) {
+    if (e instanceof CredentialsRejectedError) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export class DaikinMobileOAuth extends TokenClient {
   private cookies = '';
+  /**
+   * Set once Gigya rejected the configured credentials, so a dead refresh
+   * token does not lead to one login attempt per API request. Cleared by a
+   * successful authenticate().
+   */
+  private credentialsRejected: CredentialsRejectedError | null = null;
 
   constructor(
         private readonly config: MobileClientConfig,
@@ -46,6 +83,68 @@ export class DaikinMobileOAuth extends TokenClient {
      * Returns tokens with WebSocket access and 5000/day rate limit.
      */
   async authenticate(): Promise<TokenSet> {
+    return this.setTokenSet(await this.login());
+  }
+
+  /**
+   * Refresh the token set. When the refresh token itself is rejected
+   * (`invalid_grant`), log in again with the configured email and password
+   * instead: they are in the config, so there is nothing for the user to do.
+   *
+   * This runs inside TokenClient's single-flight refresh, so every caller
+   * (polling, HomeKit writes, the WebSocket) recovers the same way and
+   * concurrent requests share one login.
+   */
+  protected async requestTokenRefresh(refreshToken: string): Promise<TokenSet> {
+    try {
+      return await this.requestRefreshGrant(refreshToken);
+    } catch (error) {
+      if (!isInvalidGrant(error)) {
+        throw error;
+      }
+      if (this.credentialsRejected) {
+        throw new CredentialsRejectedError(
+          `Refresh token rejected, and the configured credentials were rejected earlier (${this.credentialsRejected.message}). `
+          + 'Check the email and password in the plugin settings, then restart Homebridge.',
+          this.credentialsRejected.gigyaErrorCode,
+          { cause: error },
+        );
+      }
+      this.onLog?.('Refresh token rejected (invalid_grant), logging in again with the configured credentials...');
+      return this.login();
+    }
+  }
+
+  // =========================================================================
+  // Private authentication methods
+  // =========================================================================
+
+  private requestRefreshGrant(refreshToken: string): Promise<TokenSet> {
+    const params = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    });
+    return this.requestIdpToken(params, 'Token refresh failed');
+  }
+
+  /**
+   * Run the full Gigya + PKCE login and return the token set, without storing it.
+   * Protected so tests can stub the multi-step HTTP flow.
+   */
+  protected async login(): Promise<TokenSet> {
+    try {
+      const tokenSet = await this.runLoginFlow();
+      this.credentialsRejected = null;
+      return tokenSet;
+    } catch (error) {
+      if (error instanceof CredentialsRejectedError) {
+        this.credentialsRejected = error;
+      }
+      throw error;
+    }
+  }
+
+  private async runLoginFlow(): Promise<TokenSet> {
     const pkce = this.generatePKCE();
 
     // Step 1: Get OIDC context
@@ -61,22 +160,8 @@ export class DaikinMobileOAuth extends TokenClient {
     const code = await this.authorizeWithToken(context, loginToken);
 
     // Step 5: Exchange code for tokens at IDP
-    const tokenSet = await this.exchangeCodeForTokens(code, pkce);
-
-    return this.setTokenSet(tokenSet);
+    return this.exchangeCodeForTokens(code, pkce);
   }
-
-  protected async requestTokenRefresh(refreshToken: string): Promise<TokenSet> {
-    const params = new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-    });
-    return this.requestIdpToken(params, 'Token refresh failed');
-  }
-
-  // =========================================================================
-  // Private authentication methods
-  // =========================================================================
 
   private get gigyaPostHeaders(): Record<string, string> {
     return {
@@ -238,6 +323,12 @@ export class DaikinMobileOAuth extends TokenClient {
       }
     }
 
+    if (isGigyaRequestError(result.errorCode)) {
+      throw new CredentialsRejectedError(
+        'Login failed (' + result.errorCode + '): ' + (result.errorMessage || result.errorDetails),
+        result.errorCode,
+      );
+    }
     return this.extractLoginToken(result, 'Login failed');
   }
 

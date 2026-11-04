@@ -13,7 +13,8 @@ const transport = vi.hoisted(() => ({ httpRequest: vi.fn() }));
 vi.mock('../../../src/api/token-storage', () => storage);
 vi.mock('../../../src/api/http-transport', () => transport);
 
-import { DaikinMobileOAuth } from '../../../src/api/daikin-mobile-oauth';
+import { CredentialsRejectedError, DaikinMobileOAuth, isCredentialsRejected } from '../../../src/api/daikin-mobile-oauth';
+import { OAuthTokenError } from '../../../src/api/token-client';
 
 const mockConfig = {
   email: 'john.doe@example.com',
@@ -131,16 +132,103 @@ describe('DaikinMobileOAuth token refresh', () => {
 
   it('throws the OAuth error from an error body (keeping the error code)', async () => {
     transport.httpRequest.mockResolvedValue(jsonResponse(400, {
-      error: 'invalid_grant',
-      error_description: 'Refresh token is expired',
+      error: 'invalid_request',
+      error_description: 'Missing parameter',
     }));
     const oauth = new DaikinMobileOAuth(mockConfig);
 
-    await expect(oauth.getAccessToken()).rejects.toThrow(
-      'Token refresh failed: invalid_grant - Refresh token is expired (HTTP 400)',
-    );
+    const error = await oauth.getAccessToken().catch((e: Error) => e);
+    expect(error).toBeInstanceOf(OAuthTokenError);
+    expect((error as OAuthTokenError).code).toBe('invalid_request');
+    expect((error as Error).message).toBe('Token refresh failed: invalid_request - Missing parameter (HTTP 400)');
     expect(storage.saveTokenToFile).not.toHaveBeenCalled();
     expect(oauth.getTokenSet()?.access_token).toBe('old-access');
+  });
+
+  describe('when the refresh token is rejected (invalid_grant)', () => {
+    const invalidGrant = () => jsonResponse(400, { error: 'invalid_grant', error_description: 'Refresh token is expired' });
+    // login() runs the multi-step Gigya flow; its HTTP steps are covered in daikin-mobile-oauth.test.ts
+    const stubLogin = () => vi.spyOn(DaikinMobileOAuth.prototype as unknown as { login: () => Promise<TokenSet> }, 'login');
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('logs in again with the configured credentials and stores the new token set', async () => {
+      transport.httpRequest.mockResolvedValue(invalidGrant());
+      const login = stubLogin().mockResolvedValue(freshTokens);
+      const onLog = vi.fn();
+      const oauth = new DaikinMobileOAuth(mockConfig, undefined, undefined, onLog);
+
+      await expect(oauth.getAccessToken()).resolves.toBe('new-access');
+
+      expect(login).toHaveBeenCalledTimes(1);
+      expect(onLog).toHaveBeenCalledWith(expect.stringContaining('logging in again'));
+      expect(storage.saveTokenToFile).toHaveBeenCalledWith(mockConfig.tokenFilePath, expect.objectContaining({ access_token: 'new-access' }));
+    });
+
+    it('shares one login between concurrent callers', async () => {
+      transport.httpRequest.mockResolvedValue(invalidGrant());
+      const login = stubLogin().mockResolvedValue(freshTokens);
+      const oauth = new DaikinMobileOAuth(mockConfig);
+
+      const tokens = await Promise.all([oauth.getAccessToken(), oauth.getAccessToken(), oauth.refreshToken()]);
+
+      expect(tokens.map((t) => (typeof t === 'string' ? t : t.access_token))).toEqual(['new-access', 'new-access', 'new-access']);
+      expect(login).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not log in for refresh failures other than invalid_grant', async () => {
+      transport.httpRequest.mockResolvedValue(jsonResponse(503, '<html>Service Unavailable</html>'));
+      const login = stubLogin();
+      const oauth = new DaikinMobileOAuth(mockConfig);
+
+      await expect(oauth.getAccessToken()).rejects.toThrow('Token refresh failed');
+      expect(login).not.toHaveBeenCalled();
+    });
+
+    it('tries the login again after a transient login failure', async () => {
+      transport.httpRequest.mockResolvedValue(invalidGrant());
+      const login = stubLogin()
+        .mockRejectedValueOnce(new Error('getaddrinfo ENOTFOUND id.daikin.eu'))
+        .mockResolvedValueOnce(freshTokens);
+      const oauth = new DaikinMobileOAuth(mockConfig);
+
+      await expect(oauth.getAccessToken()).rejects.toThrow('ENOTFOUND');
+      await expect(oauth.getAccessToken()).resolves.toBe('new-access');
+      expect(login).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops logging in once the credentials were rejected', async () => {
+      transport.httpRequest.mockResolvedValue(invalidGrant());
+      const rejected = new CredentialsRejectedError('Login failed (403042): Invalid LoginID', 403042);
+      // Stub the HTTP flow underneath login() so its bookkeeping of the rejection runs
+      const flow = vi.spyOn(DaikinMobileOAuth.prototype as unknown as { runLoginFlow: () => Promise<TokenSet> }, 'runLoginFlow')
+        .mockRejectedValue(rejected);
+      const oauth = new DaikinMobileOAuth(mockConfig);
+
+      await expect(oauth.getAccessToken()).rejects.toBe(rejected);
+      const second = await oauth.getAccessToken().catch((e: Error) => e);
+
+      expect(flow).toHaveBeenCalledTimes(1);
+      expect((second as Error).message).toMatch(/Check the email and password.*restart Homebridge/);
+      expect(isCredentialsRejected(second)).toBe(true);
+    });
+
+    it('logs in again after a successful authenticate() cleared an earlier rejection', async () => {
+      transport.httpRequest.mockResolvedValue(invalidGrant());
+      const flow = vi.spyOn(DaikinMobileOAuth.prototype as unknown as { runLoginFlow: () => Promise<TokenSet> }, 'runLoginFlow')
+        .mockRejectedValueOnce(new CredentialsRejectedError('Login failed (403042): Invalid LoginID', 403042))
+        .mockResolvedValueOnce({ ...freshTokens, expires_in: 1 })
+        .mockResolvedValueOnce(freshTokens);
+      const oauth = new DaikinMobileOAuth(mockConfig);
+
+      await expect(oauth.getAccessToken()).rejects.toBeInstanceOf(CredentialsRejectedError);
+      await oauth.authenticate();
+      // The token from authenticate() is already inside the expiry buffer, so this refreshes
+      await expect(oauth.getAccessToken()).resolves.toBe('new-access');
+      expect(flow).toHaveBeenCalledTimes(3);
+    });
   });
 
   it('reports a WAF HTML page clearly instead of a JSON SyntaxError', async () => {

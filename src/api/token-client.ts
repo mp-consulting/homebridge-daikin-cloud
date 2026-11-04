@@ -56,6 +56,26 @@ export function parseJsonBody(response: ResponseLike, url: string, context: stri
 }
 
 /**
+ * A token endpoint answered with an OAuth error body (RFC 6749 section 5.2).
+ * `code` is the OAuth error code, e.g. `invalid_grant`.
+ */
+export class OAuthTokenError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+    this.name = 'OAuthTokenError';
+  }
+}
+
+/**
+ * Whether the token endpoint rejected the grant itself: the refresh token is
+ * expired, revoked or otherwise no longer accepted, so refreshing again with
+ * it cannot succeed.
+ */
+export function isInvalidGrant(error: unknown): boolean {
+  return error instanceof OAuthTokenError && error.code === 'invalid_grant';
+}
+
+/**
  * Validate a token endpoint response: OAuth error bodies, non-2xx statuses and
  * malformed token sets all become errors with a readable message. The message
  * keeps the OAuth error code (e.g. `invalid_grant`), which callers match on.
@@ -67,8 +87,9 @@ export function parseTokenResponse(response: ResponseLike, url: string, context:
   const oauthError = OAuthErrorSchema.safeParse(body);
   if (oauthError.success) {
     const { error, error_description: description } = oauthError.data;
-    throw new Error(
+    throw new OAuthTokenError(
       `${context}: ${error}${description ? ` - ${description}` : ''} (HTTP ${response.statusCode})`,
+      error,
     );
   }
 

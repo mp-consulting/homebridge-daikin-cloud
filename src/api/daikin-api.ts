@@ -385,8 +385,8 @@ export class DaikinApi {
           const delay = this.getRetryDelay(retryCount);
           await sleep(delay);
           return this.request<T>(path, method, body, retryCount + 1, options);
-        } catch {
-          throw new Error(`Unauthorized (${HTTP_STATUS.UNAUTHORIZED}): Token refresh failed. Please re-authenticate.`);
+        } catch (error) {
+          throw new Error(`Unauthorized (${HTTP_STATUS.UNAUTHORIZED}): Token refresh failed. Please re-authenticate.`, { cause: error });
         }
 
       case HTTP_STATUS.NOT_FOUND:
