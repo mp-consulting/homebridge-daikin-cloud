@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import type { ClientRequest } from 'node:http';
-import { DaikinMobileOAuth } from '../../../src/api/daikin-mobile-oauth';
+import { CredentialsRejectedError, DaikinMobileOAuth } from '../../../src/api/daikin-mobile-oauth';
 import type { TokenSet } from '../../../src/api/daikin-types';
 import * as https from 'node:https';
 
@@ -372,9 +372,9 @@ describe('DaikinMobileOAuth', () => {
         return mockHttpsResponse(500, 'Unexpected')(urlArg, callback);
       });
 
-      await expect(oauth.authenticate()).rejects.toThrow(
-        'Login failed (403042): Invalid LoginID',
-      );
+      const error = await oauth.authenticate().catch((e: Error) => e);
+      expect(error).toBeInstanceOf(CredentialsRejectedError);
+      expect((error as Error).message).toBe('Login failed (403042): Invalid LoginID');
     });
   });
 
