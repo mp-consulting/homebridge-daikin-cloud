@@ -121,6 +121,17 @@ describe('DaikinApi', () => {
       expect(https.request).toHaveBeenCalledTimes(2);
     });
 
+    it('keeps the refresh failure as the cause of the 401 error', async () => {
+      mockHttpsRequest(401, 'Unauthorized');
+      const refreshError = new Error('Refresh failed');
+      mockOAuth.refreshToken.mockRejectedValue(refreshError);
+
+      const api = new DaikinApi(mockOAuth);
+
+      const error = await api.getDevices().catch((e: Error) => e);
+      expect((error as Error).cause).toBe(refreshError);
+    });
+
     it('should throw error if refresh fails on 401', async () => {
       mockHttpsRequest(401, 'Unauthorized');
       mockOAuth.refreshToken.mockRejectedValue(new Error('Refresh failed'));
