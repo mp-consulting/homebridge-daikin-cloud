@@ -89,12 +89,8 @@ describe('DaikinMobileOAuth', () => {
       const oauth = new DaikinMobileOAuth(mockConfig, onTokenUpdate, onError, onLog);
 
       // Mock the sequence of HTTPS calls:
-      // 1. getOidcContext (302 redirect with context)
-      // 2. initGigyaSdk (bootstrap, returns cookies)
-      // 3. gigyaLogin (returns 206001 with regToken)
-      // 4. completePendingRegistration (returns login_token)
-      // 5. authorizeWithToken (302 redirect with code)
-      // 6. exchangeCodeForTokens (returns tokens)
+      // 1-4. Initial OAuth flow reaches 206001 and completes registration
+      // 5-9. A fresh OAuth transaction logs in again, authorizes, and exchanges the code
 
       const requestMock = vi.mocked(https.request);
       let callIndex = 0;
@@ -143,15 +139,29 @@ describe('DaikinMobileOAuth', () => {
           }))(urlArg, callback);
         }
 
-        // authorizeWithToken - 302 redirect with code
+        // Start a fresh OAuth transaction after registration completion
         if (callIndex === 5) {
           return mockHttpsResponse(302, '', {
-            location: 'daikinunified://login?code=auth-code-456',
+            location: 'https://id.daikin.eu/?context=fresh-context-456&mode=login',
           })(urlArg, callback);
         }
-
-        // exchangeCodeForTokens - returns tokens
         if (callIndex === 6) {
+          return mockHttpsResponse(200, '{}', {
+            'set-cookie': ['gig_canary=fresh456; Path=/'],
+          })(urlArg, callback);
+        }
+        if (callIndex === 7) {
+          return mockHttpsResponse(200, JSON.stringify({
+            errorCode: 0,
+            sessionInfo: { login_token: 'fresh-login-token' },
+          }))(urlArg, callback);
+        }
+        if (callIndex === 8) {
+          return mockHttpsResponse(302, '', {
+            location: 'daikinunified://login?code=fresh-auth-code-456',
+          })(urlArg, callback);
+        }
+        if (callIndex === 9) {
           return mockHttpsResponse(200, JSON.stringify({
             access_token: 'access-token-final',
             refresh_token: 'refresh-token-final',
@@ -172,6 +182,10 @@ describe('DaikinMobileOAuth', () => {
       expect(onLog).toHaveBeenCalledWith(
         expect.stringContaining('Pending registration completed successfully'),
       );
+      expect(onLog).toHaveBeenCalledWith(
+        expect.stringContaining('restarting authentication with a fresh OAuth transaction'),
+      );
+      expect(callIndex).toBe(9);
       // Should use existing profile data, not derive from email
       expect(onLog).not.toHaveBeenCalledWith(
         expect.stringContaining('Using derived name'),
@@ -217,10 +231,26 @@ describe('DaikinMobileOAuth', () => {
         }
         if (callIndex === 5) {
           return mockHttpsResponse(302, '', {
-            location: 'daikinunified://login?code=auth-code',
+            location: 'https://id.daikin.eu/?context=fresh-ctx&mode=login',
           })(urlArg, callback);
         }
         if (callIndex === 6) {
+          return mockHttpsResponse(200, '{}', {
+            'set-cookie': ['gig_canary=fresh; Path=/'],
+          })(urlArg, callback);
+        }
+        if (callIndex === 7) {
+          return mockHttpsResponse(200, JSON.stringify({
+            errorCode: 0,
+            sessionInfo: { login_token: 'fresh-login-token' },
+          }))(urlArg, callback);
+        }
+        if (callIndex === 8) {
+          return mockHttpsResponse(302, '', {
+            location: 'daikinunified://login?code=fresh-auth-code',
+          })(urlArg, callback);
+        }
+        if (callIndex === 9) {
           return mockHttpsResponse(200, JSON.stringify({
             access_token: 'at',
             refresh_token: 'rt',

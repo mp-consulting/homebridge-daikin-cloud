@@ -30,7 +30,7 @@ export const GigyaLoginResultSchema = z.object({
   regToken: z.string().optional(),
   data: z.object({ profile: z.record(z.string(), z.unknown()).optional() }).loose().optional(),
   profile: z.object({ firstName: z.string().nullish(), lastName: z.string().nullish() }).loose().optional(),
-  sessionInfo: z.object({ login_token: z.string() }).loose().optional(),
+  sessionInfo: z.object({ login_token: z.string().optional() }).loose().optional(),
 }).loose();
 
 // Daikin "characteristic" objects always carry extra metadata Zod would

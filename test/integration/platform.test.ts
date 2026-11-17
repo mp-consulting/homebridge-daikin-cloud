@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
+import path from 'node:path';
 import {
   computePollInterval,
   DISCOVERY_RETRY_INITIAL_DELAY_MS,
@@ -87,7 +88,7 @@ test('Initialize platform', async () => {
     'callbackServerExternalAddress': 'SERVER_EXTERNAL_ADDRESS',
     'callbackServerPort': 8583,
     'oidcCallbackServerBindAddr': 'SERVER_BIND_ADDRESS',
-    'tokenFilePath': `${api.user.storagePath()}/.daikin-controller-cloud-tokenset`,
+    'tokenFilePath': path.join(api.user.storagePath(), '.daikin-controller-cloud-tokenset'),
   }));
   expect(platform.updateIntervalDelay).toBe(900000);
 });
@@ -392,9 +393,9 @@ describe('rate limit status', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(writeSpy).toHaveBeenCalledTimes(1);
     const [tmpPath, content] = writeSpy.mock.calls[0] as [string, string];
-    expect(tmpPath).toBe(`${api.user.storagePath()}/.daikin-rate-limit.json.tmp`);
+    expect(tmpPath).toBe(path.join(api.user.storagePath(), '.daikin-rate-limit.json.tmp'));
     expect(JSON.parse(content)).toMatchObject({ remainingDay: 0, limitDay: 200, mode: 'developer_portal' });
-    expect(renameSpy).toHaveBeenCalledWith(tmpPath, `${api.user.storagePath()}/.daikin-rate-limit.json`);
+    expect(renameSpy).toHaveBeenCalledWith(tmpPath, path.join(api.user.storagePath(), '.daikin-rate-limit.json'));
 
     // A burst within the throttle window results in a single trailing write of the latest value
     controller.emit('rate_limit_status', { remainingDay: 150, limitDay: 200 });
@@ -437,7 +438,7 @@ test('invalid_grant during discovery removes the token file', async () => {
   mockController([], { getCloudDevices: vi.fn().mockRejectedValue(invalidGrant) });
   const { api, controller } = await startPlatform();
 
-  expect(unlinkSpy).toHaveBeenCalledWith(`${api.user.storagePath()}/.daikin-controller-cloud-tokenset`);
+  expect(unlinkSpy).toHaveBeenCalledWith(path.join(api.user.storagePath(), '.daikin-controller-cloud-tokenset'));
   expect(controller.updateAllDeviceData).not.toHaveBeenCalled();
 });
 
