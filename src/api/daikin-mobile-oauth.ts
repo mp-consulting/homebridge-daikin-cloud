@@ -144,7 +144,7 @@ export class DaikinMobileOAuth extends TokenClient {
     }
   }
 
-  private async runLoginFlow(): Promise<TokenSet> {
+  private async runLoginFlow(restartedAfterRegistration = false): Promise<TokenSet> {
     const pkce = this.generatePKCE();
 
     // Step 1: Get OIDC context
@@ -155,6 +155,13 @@ export class DaikinMobileOAuth extends TokenClient {
 
     // Step 3: Login with Gigya
     const loginToken = await this.gigyaLogin();
+    if (loginToken === null) {
+      if (restartedAfterRegistration) {
+        throw new Error('Daikin still reports pending registration after registration completion.');
+      }
+      this.onLog?.('Pending registration completed; restarting authentication with a fresh OAuth transaction...');
+      return this.runLoginFlow(true);
+    }
 
     // Step 4: Exchange for authorization code
     const code = await this.authorizeWithToken(context, loginToken);
@@ -293,7 +300,7 @@ export class DaikinMobileOAuth extends TokenClient {
     });
   }
 
-  private async gigyaLogin(): Promise<string> {
+  private async gigyaLogin(): Promise<string | null> {
     const params = new URLSearchParams({
       ...this.gigyaSdkParams,
       loginID: this.config.email,
@@ -319,7 +326,8 @@ export class DaikinMobileOAuth extends TokenClient {
         return result.sessionInfo.login_token;
       }
       if (result.regToken) {
-        return await this.completePendingRegistration(result.regToken, result.data, result.profile);
+        await this.completePendingRegistration(result.regToken, result.data, result.profile);
+        return null;
       }
     }
 
