@@ -216,7 +216,9 @@ describe('handleHttpsCallback', () => {
     expect(res.writeHead.mock.calls[0][0]).toBe(200);
     const saved = JSON.parse(fs.readFileSync(server.getTokenFilePath(), 'utf8'));
     expect(saved.access_token).toBe('new');
-    expect(fs.statSync(server.getTokenFilePath()).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(server.getTokenFilePath()).mode & 0o777).toBe(0o600);
+    }
   });
 });
 
